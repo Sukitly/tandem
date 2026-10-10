@@ -4,6 +4,15 @@
  * Everything exported here must run in both Node/Bun and the browser: no runtime-specific imports.
  */
 
+export {
+  Conversation,
+  type ConversationSummary,
+  Conversations,
+  type ConversationsState,
+  type ConversationView,
+  type SubmitInput,
+} from "./conversations.ts";
+
 /** The server only listens on the loopback interface. */
 export const DEFAULT_HOST = "127.0.0.1";
 
