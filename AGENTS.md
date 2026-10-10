@@ -6,13 +6,13 @@ Guidance for coding agents working in this repository. Humans should start with 
 
 Tandem is a local-first agent product built on [pi-durable](https://github.com/earendil-works/pi/tree/main/packages/durable). The first use case is interactive coding in the browser: the user works with an agent on Git repositories on their own machine, and conversations survive page reloads, disconnects, and backend restarts.
 
-The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The repository is currently a scaffold: the server only answers `/health` and the web app only shows its status.
+The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The project is early: the server serves conversations over WebSocket, answered by a local faux model, and the web app only shows the server's status.
 
 ## Repository layout
 
 | Path | Package | Purpose |
 |---|---|---|
-| `apps/server` | `@tandem/server` | Backend process. Runs on Node; will host the pi-durable Harness, pi-server, and the workspace runtimes |
+| `apps/server` | `@tandem/server` | Backend process. Runs on Node; hosts the pi-durable Harness and pi-server, and later the workspace runtimes |
 | `apps/web` | `@tandem/web` | React + Vite single-page app |
 | `packages/contracts` | `@tandem/contracts` | Constants, types, and service contracts shared by server and clients |
 | `packages/client` | `@tandem/client` | Connects to the server: bootstrap, pi-client over WebSocket, service bindings, reconnects. Used by the web app and by server integration tests |
@@ -39,6 +39,16 @@ The backend runs on **Node >= 22.19**, not Bun: pi-durable's SQLite storage need
 
 Before finishing a change, `bun run check` and `bun run test` must pass.
 
+## State directory
+
+The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/src/state-dir.ts`):
+
+| File | Content |
+|---|---|
+| `app.sqlite` | The Harness database: every conversation of every workspace |
+| `server.json` | Server identity and session token, mode `0600`. Kept across restarts so that open pages reconnect by themselves |
+| `server.lock` | Held while a server runs: pi-durable allows one process per database |
+
 ## Code style
 
 - TypeScript in strict mode with `noUncheckedIndexedAccess`; shared options are in `tsconfig.base.json`.
@@ -46,6 +56,14 @@ Before finishing a change, `bun run check` and `bun run test` must pass.
 - ES modules only. Import local files with their `.ts` / `.tsx` extension, as Node's type stripping requires.
 - Use `import type` for type-only imports (`verbatimModuleSyntax` is on). Only erasable TypeScript syntax: no `enum`, no `namespace`, no parameter properties.
 - `packages/contracts` and `packages/client` must stay runtime-neutral: no Node or Bun imports. `packages/client` may use the `WebSocket` and `fetch` globals, which browsers and Node 22+ both provide.
+
+## Services
+
+- Service contracts live in `packages/contracts`; implementations in `apps/server/src/services/`.
+- Reject bad client input with `invalidInput()` (`apps/server/src/services/errors.ts`), which throws a Chord `RemoteServiceError`. pi-server forwards only service and server errors; any other error reaches the client as "Internal server error" and goes to the server's `onError`.
+- Methods receive untrusted JSON. Validate every argument at runtime; the TypeScript types are not checked on the wire.
+- Resources that outlive a call, such as view states and spawned instances, are created with `BACKGROUND_CONTEXT`, not with the call's context.
+- Remote service handles accept any member name, including `then`. Never resolve a promise with a handle or `await` one: that calls `then` as a remote method. Wrap handles in an object instead.
 
 ## Language
 
@@ -55,6 +73,7 @@ All content in this repository is written in English: code, comments, identifier
 
 - Tests use Vitest (running on Node) and live in each package's `test/` directory, named `*.test.ts`.
 - Start servers on port `0` in tests and stop them in `afterEach`.
+- Give every test server its own temporary state directory (`mkdtemp`). Never touch `~/.tandem` in tests.
 - Add or update tests for the behavior you change.
 
 ## Architecture rules
@@ -75,7 +94,7 @@ These are deliberate decisions. Do not break them without discussing it first:
 - The server binds to `127.0.0.1` only. Do not change the default host.
 - There is no sandbox yet: the agent runs with the user's permissions. Do not describe the product as isolated.
 - Model credentials stay in the backend and are never sent to clients.
-- WebSocket endpoints must check the session token and the `Origin` header once they exist.
+- Every WebSocket endpoint checks the session token and the `Origin` header (`apps/server/src/server.ts`).
 
 ## Upstream references
 
