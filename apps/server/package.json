@@ -13,9 +13,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@tandem/contracts": "workspace:*"
+    "@earendil-works/chord": "1.1.0",
+    "@earendil-works/pi-server": "1.1.0",
+    "@tandem/contracts": "workspace:*",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
-    "@types/node": "^22.20.5"
+    "@tandem/client": "workspace:*",
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2"
   }
 }

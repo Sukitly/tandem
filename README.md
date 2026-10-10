@@ -31,6 +31,7 @@ bun run dev:web      # web app; proxies API calls to the backend
 | `apps/server` | Backend process |
 | `apps/web` | React + Vite web app |
 | `packages/contracts` | Code shared by server and clients |
+| `packages/client` | Client library for connecting to the server |
 
 ## License
 
