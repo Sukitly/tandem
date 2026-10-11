@@ -14,6 +14,16 @@ import {
   SunIcon,
 } from "lucide-react";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
@@ -144,6 +154,7 @@ function ProjectItem({
 }) {
   const { startConversation, removeProject, starting } = useWorkbench();
   const [open, setOpen] = useState(true);
+  const [confirming, setConfirming] = useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
       {/* Room for both actions, which sit side by side at the row's end. */}
@@ -173,12 +184,35 @@ function ProjectItem({
         </DropdownMenuTrigger>
         {/* The content takes the trigger's width by default; the trigger is an icon, as in shadcn's sidebar blocks. */}
         <DropdownMenuContent side="right" align="start" className="w-48">
-          <DropdownMenuItem onClick={() => removeProject(project.id)}>
+          <DropdownMenuItem variant="destructive" onClick={() => setConfirming(true)}>
             <FolderMinusIcon />
             Remove project
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {project.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The project and its conversations leave the sidebar. Nothing is deleted: add the same directory again to
+              bring them back.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setConfirming(false);
+                removeProject(project.id);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <CollapsibleContent>
         <SidebarMenuSub>
           {conversations.map((summary) => (
