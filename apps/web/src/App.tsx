@@ -43,7 +43,7 @@ function Workbench() {
                   <MessageSquareIcon />
                 </EmptyMedia>
                 <EmptyTitle>No conversation open</EmptyTitle>
-                <EmptyDescription>Start a conversation in a directory from the sidebar.</EmptyDescription>
+                <EmptyDescription>Choose a conversation in the sidebar, or start a new one.</EmptyDescription>
               </EmptyHeader>
             </Empty>
           </>

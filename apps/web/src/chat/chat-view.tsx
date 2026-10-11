@@ -46,22 +46,29 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   return (
     <section className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" aria-label="Conversation">
       <ChatHeader conversationId={conversationId} />
-      <StickToBottom
-        className="relative min-h-0 flex-1 overflow-y-hidden"
-        initial="instant"
-        resize="smooth"
-        role="log"
-        aria-label="Transcript"
-      >
-        <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-          {empty && <p className="mt-[25vh] text-center text-lg font-medium">What are we working on?</p>}
-          {transcript.items.map((item) => (
-            <TranscriptEntry key={item.key} item={item} />
-          ))}
-          <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
-        </StickToBottom.Content>
-        <ScrollToBottom />
-      </StickToBottom>
+      {empty ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>What are we working on?</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <StickToBottom
+          className="relative min-h-0 flex-1 overflow-y-hidden"
+          initial="instant"
+          resize="smooth"
+          role="log"
+          aria-label="Transcript"
+        >
+          <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+            {transcript.items.map((item) => (
+              <TranscriptEntry key={item.key} item={item} />
+            ))}
+            <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
+          </StickToBottom.Content>
+          <ScrollToBottom />
+        </StickToBottom>
+      )}
       <div className="mx-auto grid w-full max-w-3xl gap-3 px-4 pt-2 pb-4">
         {notices.map((notice) => (
           <Notice key={notice.id} notice={notice} />
@@ -137,7 +144,7 @@ function ScrollToBottom() {
     <Button
       variant="outline"
       size="icon-sm"
-      className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full"
+      className="absolute bottom-3 left-1/2 -translate-x-1/2"
       aria-label="Scroll to the latest message"
       onClick={() => void scrollToBottom()}
     >

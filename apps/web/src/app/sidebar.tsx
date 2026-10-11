@@ -48,15 +48,15 @@ import { type ThemeChoice, useTheme } from "@/theme.tsx";
 const LAST_CWD_KEY = "tandem.lastCwd";
 
 /**
- * Conversations grouped by directory, and a form to start one in a directory. Projects replace the directory field
- * later.
+ * The app's navigation: conversations grouped by their directory, which stands in for workspaces until those exist.
+ * A conversation's link sets the URL hash, which is how the open conversation is chosen.
  */
 export function AppSidebar({ selected, onSelect }: { selected: number | null; onSelect: (id: number) => void }) {
   const { conversations } = useConnected();
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
   const providers = useProvidersDialog();
   return (
-    // Collapsed, the sidebar keeps a column of icons; the conversation list and the directory field hide.
+    // Collapsed, the sidebar keeps a column of icons; the directory tree hides.
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarBrand />
@@ -78,11 +78,7 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
                     <SidebarMenuSub>
                       {group.map((summary) => (
                         <SidebarMenuSubItem key={summary.id}>
-                          <SidebarMenuSubButton
-                            isActive={summary.id === selected}
-                            onClick={() => onSelect(summary.id)}
-                            render={<button type="button" className="w-full" />}
-                          >
+                          <SidebarMenuSubButton href={`#${summary.id}`} isActive={summary.id === selected}>
                             <span className="truncate">{summary.title ?? "New conversation"}</span>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
@@ -119,15 +115,17 @@ function SidebarBrand() {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton
-          tooltip={collapsed ? "Expand the sidebar" : undefined}
-          aria-label={collapsed ? "Expand the sidebar" : undefined}
-          onClick={collapsed ? toggleSidebar : undefined}
-          className="font-semibold"
-        >
-          <BikeIcon />
-          <span>Tandem</span>
-        </SidebarMenuButton>
+        {/* Folded, the icon is the button that unfolds the sidebar; unfolded, the name is only a name. */}
+        {collapsed ? (
+          <SidebarMenuButton tooltip="Expand the sidebar" aria-label="Expand the sidebar" onClick={toggleSidebar}>
+            <BikeIcon />
+          </SidebarMenuButton>
+        ) : (
+          <div className="flex h-8 items-center gap-2 px-2 text-sm font-semibold [&>svg]:size-4">
+            <BikeIcon />
+            Tandem
+          </div>
+        )}
         <SidebarMenuAction onClick={toggleSidebar} aria-label="Collapse the sidebar" title="Collapse the sidebar">
           <PanelLeftIcon />
         </SidebarMenuAction>

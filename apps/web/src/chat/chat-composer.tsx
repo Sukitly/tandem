@@ -50,8 +50,7 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, status }
 
   const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (busy && empty) onStop();
-    else void send("steer");
+    void send("steer");
   };
 
   return (
@@ -82,7 +81,7 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, status }
           />
           <InputGroupAddon align="inline-end" className="self-end pb-1.5">
             {busy && empty ? (
-              <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label="Stop">
+              <InputGroupButton type="button" variant="default" size="icon-sm" aria-label="Stop" onClick={onStop}>
                 <SquareIcon />
               </InputGroupButton>
             ) : (

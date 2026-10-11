@@ -129,7 +129,8 @@ export function toTranscript(view: ConversationView): TranscriptState {
   }
 
   const partial = live?.generation?.message;
-  if (busy && partial?.role === "assistant" && partial.content.length > 0) {
+  const streaming = busy && partial?.role === "assistant" && partial.content.length > 0;
+  if (streaming && partial?.role === "assistant") {
     items.push({
       kind: "assistant",
       key: `streaming:${live?.generation?.attempt ?? 0}`,
@@ -139,7 +140,6 @@ export function toTranscript(view: ConversationView): TranscriptState {
   }
   const compacting = (live?.compactions ?? []).length > 0;
   if (compacting) items.push({ kind: "compacting", key: "compacting" });
-  const streaming = items.at(-1)?.kind === "assistant" && (items.at(-1) as { ending: string }).ending === "streaming";
   const toolsRunning = (live?.tools ?? []).some((slot) => slot.status !== "done");
   const silent = busy && !streaming && !toolsRunning && !compacting;
   const lastUser = items.findLastIndex((item) => item.kind === "user");

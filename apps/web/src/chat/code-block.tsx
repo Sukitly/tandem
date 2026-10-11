@@ -118,11 +118,7 @@ function useHighlighted(code: string, language: string | undefined, streaming: b
 
 /** The token's color in each theme; Shiki puts the dark one in `--shiki-dark`. */
 function tokenStyle(token: Token): CSSProperties {
-  const style: Record<string, string> = {};
-  const light = token.htmlStyle?.color ?? token.color;
-  const dark = token.htmlStyle?.["--shiki-dark"];
-  if (light !== undefined) style["--code-light"] = light;
-  style["--code-dark"] = dark ?? light ?? "inherit";
-  if (light === undefined) style["--code-light"] = "inherit";
-  return style as CSSProperties;
+  const light = token.htmlStyle?.color ?? token.color ?? "inherit";
+  const dark = token.htmlStyle?.["--shiki-dark"] ?? light;
+  return { "--code-light": light, "--code-dark": dark } as CSSProperties;
 }

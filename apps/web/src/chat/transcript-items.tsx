@@ -84,9 +84,9 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
         return <Markdown key={index} text={part.text} streaming={streaming && last} />;
       })}
       {item.ending === "interrupted" && (
-        <div>
-          <Badge variant="outline">Interrupted</Badge>
-        </div>
+        <Badge variant="outline" className="self-start">
+          Interrupted
+        </Badge>
       )}
       {item.ending === "failed" && (
         <Alert variant="destructive">
@@ -233,20 +233,19 @@ function describeTool(part: ToolPart): { icon: ReactNode; summary: string } {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label={copied ? "Copied" : "Copy"}
-        onClick={() => {
-          void navigator.clipboard.writeText(text).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          });
-        }}
-      >
-        {copied ? <CheckIcon /> : <CopyIcon />}
-      </Button>
-    </div>
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className="self-start"
+      aria-label={copied ? "Copied" : "Copy"}
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </Button>
   );
 }
