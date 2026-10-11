@@ -49,6 +49,9 @@ async function client(server: TandemServer) {
   const conversations = connection.services.use(Conversations);
   /** Add a directory as a project; the system's temporary directory by default. */
   const project = (path: string = tmpdir()) => workspaces.add({ path }, context);
+  /** Start a conversation with its first message; in a project of the system's temporary directory by default. */
+  const startIn = async (text: string, workspaceId?: number) =>
+    conversations.start({ workspaceId: workspaceId ?? (await project()), text }, context);
   const open = new Map<number, Conversation>();
   const observed: number[] = [];
   connection.services.observe(Conversation, async (instance, instanceContext: Context) => {
@@ -71,7 +74,7 @@ async function client(server: TandemServer) {
     return { conversation: open.get(id) as Conversation };
   };
   const view = (id: number) => open.get(id)?.view.value;
-  return { connection, workspaces, conversations, project, open, observed, openConversation, view };
+  return { connection, workspaces, conversations, project, startIn, open, observed, openConversation, view };
 }
 
 async function waitFor(check: () => boolean, timeoutMs = 3_000): Promise<void> {
@@ -107,17 +110,18 @@ function isBusy(view: ConversationView | undefined): boolean {
 }
 
 describe("conversations", () => {
-  test("a submitted message is answered in the conversation's view", async () => {
+  test("a conversation starts with its first message, and later messages are answered in its view", async () => {
     const { server } = await start();
-    const { conversations, project, openConversation, view } = await client(server);
+    const { conversations, startIn, openConversation, view } = await client(server);
 
-    const id = await conversations.create({ workspaceId: await project() }, context);
-    await waitFor(() => conversations.state.value?.conversations[0]?.id === id);
+    const id = await startIn("hello");
+    expect(conversations.state.value?.conversations[0]).toMatchObject({ id, title: "hello" });
     const { conversation } = await openConversation(id);
+    await waitFor(() => answers(view(id)).includes("You said: hello") && !isBusy(view(id)));
 
-    await conversation.submit({ text: "hello", whenBusy: "followUp" }, context);
-    await waitFor(() => answers(view(id)).includes("You said: hello"));
-    await waitFor(() => conversations.state.value?.conversations[0]?.title === "hello");
+    await conversation.submit({ text: "again", whenBusy: "followUp" }, context);
+    await waitFor(() => answers(view(id)).includes("You said: again"));
+    expect(conversations.state.value?.conversations[0]?.title).toBe("hello");
   });
 
   test("two clients see the same list and the same conversation", async () => {
@@ -125,7 +129,7 @@ describe("conversations", () => {
     const first = await client(server);
     const second = await client(server);
 
-    const id = await first.conversations.create({ workspaceId: await first.project() }, context);
+    const id = await first.startIn("from the first");
     await waitFor(() => second.conversations.state.value?.conversations.some((summary) => summary.id === id) ?? false);
     await first.openConversation(id);
     const { conversation } = await second.openConversation(id);
@@ -140,14 +144,14 @@ describe("conversations", () => {
     const { server } = await start();
     const first = await client(server);
     const second = await client(server);
-    const workspaceId = await first.project();
-    const a = await first.conversations.create({ workspaceId }, context);
-    const b = await first.conversations.create({ workspaceId }, context);
+    const a = await first.startIn("for a");
+    const b = await first.startIn("for b");
 
     await first.openConversation(a);
     const { conversation } = await second.openConversation(b);
+    await waitFor(() => answers(second.view(b)).length === 1 && !isBusy(second.view(b)));
     await conversation.submit({ text: "only for b", whenBusy: "followUp" }, context);
-    await waitFor(() => answers(second.view(b)).length === 1);
+    await waitFor(() => answers(second.view(b)).length === 2);
     expect(first.observed).toEqual([a]);
     expect(second.observed).toEqual([b]);
 
@@ -157,18 +161,23 @@ describe("conversations", () => {
 
   test("rejects invalid input", async () => {
     const { server } = await start();
-    const { workspaces, conversations, project, openConversation } = await client(server);
+    const { workspaces, conversations, project, startIn, openConversation } = await client(server);
     await expect(workspaces.add({ path: "relative/path" }, context)).rejects.toThrow("absolute");
     await expect(workspaces.add({ path: join(tmpdir(), "does-not-exist-tandem") }, context)).rejects.toThrow(
       "Not a directory",
     );
     await expect(workspaces.remove(999, context)).rejects.toThrow("does not exist");
-    await expect(conversations.create({ workspaceId: 999 }, context)).rejects.toThrow("does not exist");
+    await expect(conversations.start({ workspaceId: 999, text: "hi" }, context)).rejects.toThrow("does not exist");
     await expect(conversations.open(999, context)).rejects.toThrow("does not exist");
+    const workspaceId = await project();
+    await expect(conversations.start({ workspaceId, text: " " }, context)).rejects.toThrow("non-empty");
+    await expect(
+      conversations.start({ workspaceId, text: "hi", model: { provider: "nope", modelId: "x" } }, context),
+    ).rejects.toThrow("not available");
+    // A refused start leaves no conversation behind.
+    expect(conversations.state.value?.conversations).toEqual([]);
 
-    const { conversation } = await openConversation(
-      await conversations.create({ workspaceId: await project() }, context),
-    );
+    const { conversation } = await openConversation(await startIn("hi", workspaceId));
     await expect(conversation.submit({ text: " ", whenBusy: "followUp" }, context)).rejects.toThrow("non-empty");
   });
 
@@ -176,11 +185,10 @@ describe("conversations", () => {
     const reply = (text: string) => `${text}: ${"word ".repeat(200).trim()}`;
     const slow = await start({ providers: [createFauxProvider({ tokensPerSecond: 50, reply })] });
     const user = await client(slow.server);
-    const id = await user.conversations.create({ workspaceId: await user.project() }, context);
+    const id = await user.startIn("long");
     const held = new OpenConversations(user.connection);
     held.hold(id);
     await waitFor(() => held.get(id) !== undefined);
-    await held.get(id)?.submit({ text: "long", whenBusy: "followUp" }, context);
     // Stop while the answer is streaming.
     await waitFor(
       () => (held.get(id)?.view.value?.docs["pi.live"] as LiveState | undefined)?.generation?.message !== undefined,
@@ -208,7 +216,7 @@ describe("conversations", () => {
 
   test("projects are added, listed, and removed; removing hides their conversations until added again", async () => {
     const { server } = await start();
-    const { workspaces, conversations, project } = await client(server);
+    const { workspaces, conversations, project, startIn } = await client(server);
     const pathA = await mkdtemp(join(tmpdir(), "tandem-a-"));
     const pathB = await mkdtemp(join(tmpdir(), "tandem-b-"));
     const a = await project(pathA);
@@ -219,19 +227,19 @@ describe("conversations", () => {
       { id: b, path: pathB, name: basename(pathB) },
     ]);
 
-    const inA = await conversations.create({ workspaceId: a }, context);
-    const inB = await conversations.create({ workspaceId: b }, context);
+    const inA = await startIn("in a", a);
+    const inB = await startIn("in b", b);
     expect(conversations.state.value?.conversations.find((summary) => summary.id === inA)).toMatchObject({
       workspaceId: a,
       cwd: pathA,
-      running: false,
+      title: "in a",
     });
 
     await workspaces.remove(a, context);
     await waitFor(() => workspaces.state.value?.workspaces.length === 1);
     expect(conversations.state.value?.conversations.map((summary) => summary.id)).toEqual([inB]);
     await expect(conversations.open(inA, context)).rejects.toThrow("does not exist");
-    await expect(conversations.create({ workspaceId: a }, context)).rejects.toThrow("does not exist");
+    await expect(conversations.start({ workspaceId: a, text: "hi" }, context)).rejects.toThrow("does not exist");
 
     expect(await project(pathA)).toBe(a);
     await waitFor(() => conversations.state.value?.conversations.length === 2);
@@ -240,37 +248,45 @@ describe("conversations", () => {
   test("the list is ordered by the last message, and shows which conversations are running", async () => {
     const slow = { providers: [createFauxProvider({ tokensPerSecond: 50, reply: () => "word ".repeat(40) })] };
     const { server } = await start(slow);
-    const { conversations, project, openConversation } = await client(server);
-    const workspaceId = await project();
-    const first = await conversations.create({ workspaceId }, context);
-    const second = await conversations.create({ workspaceId }, context);
+    const { conversations, startIn, openConversation } = await client(server);
     const ids = () => conversations.state.value?.conversations.map((summary) => summary.id);
-    const running = () => conversations.state.value?.conversations.find((summary) => summary.id === first)?.running;
+    const running = (id: number) =>
+      conversations.state.value?.conversations.find((summary) => summary.id === id)?.running;
+    const first = await startIn("one");
+    await waitFor(() => running(first) === true);
+    await waitFor(() => running(first) === false, 5_000);
+    const second = await startIn("two");
+    await waitFor(() => running(second) === false, 5_000);
     expect(ids()).toEqual([second, first]);
 
     const { conversation } = await openConversation(first);
     await conversation.submit({ text: "go", whenBusy: "followUp" }, context);
-    await waitFor(() => ids()?.[0] === first && running() === true);
-    await waitFor(() => running() === false, 5_000);
+    await waitFor(() => ids()?.[0] === first && running(first) === true);
+    await waitFor(() => running(first) === false, 5_000);
   });
 
-  test("conversations created before projects existed get a project per directory", async () => {
+  test("conversations created before projects existed get a project per directory; ones never sent to stay out", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "tandem-test-"));
     const pathA = await mkdtemp(join(tmpdir(), "tandem-a-"));
     const pathB = await mkdtemp(join(tmpdir(), "tandem-b-"));
+    const pathC = await mkdtemp(join(tmpdir(), "tandem-c-"));
     const models = createAppModels(new FileCredentialStore(join(stateDir, "auth.json")), [createFauxProvider()]);
     const opened = await openHarness({ databasePath: join(stateDir, "app.sqlite"), models }, context);
-    for (const [cwd, createdAt] of [
-      [pathA, 1],
-      [pathB, 2],
-      [pathA, 3],
+    // Conversations used to be created before their first message, and titled after it.
+    for (const [cwd, createdAt, title] of [
+      [pathA, 1, "one"],
+      [pathB, 2, "two"],
+      [pathA, 3, "three"],
+      [pathC, 4, undefined],
     ] as const) {
       await opened.harness.createConversation(
         {
           ownership: { kind: "ownerless" },
           agent: { cwd },
           init: async (tx, id) => {
-            (await tx.doc(ConversationMetaDoc, id)).createdAt = createdAt;
+            const meta = await tx.doc(ConversationMetaDoc, id);
+            meta.createdAt = createdAt;
+            if (title !== undefined) meta.title = title;
           },
         },
         context,

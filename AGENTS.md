@@ -85,6 +85,7 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 - Methods receive untrusted JSON. Validate every argument at runtime; the TypeScript types are not checked on the wire.
 - Resources that outlive a call, such as view states and spawned instances, are created with `BACKGROUND_CONTEXT`, not with the call's context.
 - Workspaces are called projects in the UI. The list is a Session document (`tandem.workspaces`, `apps/server/src/services/workspaces.ts`); each conversation records its workspace in `tandem.conversation` and works in the workspace's directory. Removing a workspace only marks it removed, so adding the directory again brings back its conversations.
+- A conversation exists from its first message: `Conversations.start` creates it and submits that message in one call, with the model and thinking level chosen beforehand. Until then, a new conversation lives only in the web app (`NewChat`). Conversations from before this that never got a message have no title and stay out of the list.
 - The conversation list carries what the sidebar needs without opening a conversation: the last activity, and whether the agent is running, which comes from the Harness's task graph.
 - Remote service handles accept any member name, including `then`. Never resolve a promise with a handle or `await` one: that calls `then` as a remote method. Wrap handles in an object instead.
 

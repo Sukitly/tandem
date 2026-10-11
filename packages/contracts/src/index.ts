@@ -12,6 +12,7 @@ export {
   Conversations,
   type ConversationsState,
   type ConversationView,
+  type StartInput,
   type SubmitInput,
 } from "./conversations.ts";
 export {

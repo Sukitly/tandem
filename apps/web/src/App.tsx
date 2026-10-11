@@ -7,7 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./app/sidebar.tsx";
 import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
-import { ChatView } from "./chat/chat-view.tsx";
+import { ChatView, NewChat } from "./chat/chat-view.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 import { useReplicatedState } from "./rpc/use-replicated-state.ts";
@@ -45,19 +45,9 @@ function Workbench() {
 function Main() {
   const { workspaces } = useConnected();
   const listed = useReplicatedState(workspaces.state)?.workspaces;
-  const { selected, starting, addProject } = useWorkbench();
-  if (starting) {
-    return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia>
-            <Spinner />
-          </EmptyMedia>
-          <EmptyTitle>Starting a conversation</EmptyTitle>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
+  const { selected, draft, addProject } = useWorkbench();
+  // Keyed, so that starting another new conversation begins from an empty box.
+  if (draft !== null) return <NewChat key={draft} workspaceId={draft} />;
   if (selected !== null) return <ChatView conversationId={selected} />;
   return (
     <>

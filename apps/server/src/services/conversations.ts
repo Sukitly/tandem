@@ -7,12 +7,13 @@ import {
 } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
+  type AgentChange,
   AgentDoc,
   type ConversationId,
   type Cursor,
   defineDoc,
   type Harness,
-  type ModelRef,
+  type Conversation as HarnessConversation,
   type TaskGraph,
 } from "@earendil-works/pi-durable";
 import type { ConversationSummary, ConversationsState } from "@tandem/contracts";
@@ -25,6 +26,7 @@ type ConversationMeta = {
   /** Absent in conversations created before workspaces; `load()` fills it in. */
   workspaceId?: number;
   updatedAt?: number;
+  /** From the first message. Conversations created before they started with a message may have none, and stay out. */
   title?: string;
 };
 
@@ -50,23 +52,15 @@ type Stored = Omit<ConversationSummary, "running">;
 export class ConversationCatalog {
   readonly #harness: Harness;
   readonly #workspaces: WorkspaceCatalog;
-  readonly #defaultModel: () => ModelRef | undefined;
   readonly #now: () => number;
   readonly #stored: Map<number, Stored>;
   readonly #state: MutableReplicatedState<ConversationsState>;
   readonly #stop: (() => void)[] = [];
   #running = new Set<number>();
 
-  private constructor(
-    harness: Harness,
-    workspaces: WorkspaceCatalog,
-    defaultModel: () => ModelRef | undefined,
-    now: () => number,
-    stored: Stored[],
-  ) {
+  private constructor(harness: Harness, workspaces: WorkspaceCatalog, now: () => number, stored: Stored[]) {
     this.#harness = harness;
     this.#workspaces = workspaces;
-    this.#defaultModel = defaultModel;
     this.#now = now;
     this.#stored = new Map(stored.map((summary) => [summary.id, summary]));
     this.#state = replicatedState<ConversationsState>({ conversations: this.#list() });
@@ -77,7 +71,6 @@ export class ConversationCatalog {
   static async load(
     harness: Harness,
     workspaces: WorkspaceCatalog,
-    defaultModel: () => ModelRef | undefined,
     context: Context,
     now: () => number = Date.now,
   ): Promise<ConversationCatalog> {
@@ -92,7 +85,7 @@ export class ConversationCatalog {
       }
       cursor = page.next;
     } while (cursor !== undefined);
-    const catalog = new ConversationCatalog(harness, workspaces, defaultModel, now, stored);
+    const catalog = new ConversationCatalog(harness, workspaces, now, stored);
     await catalog.#followTasks(context);
     return catalog;
   }
@@ -106,51 +99,58 @@ export class ConversationCatalog {
     return this.#state.value.conversations.some((summary) => summary.id === id);
   }
 
-  async create(workspaceId: number, context: Context): Promise<ConversationSummary> {
+  /**
+   * Create a conversation in a workspace, titled after the first message, which the caller submits next. The list
+   * shows it from here on.
+   */
+  async create(
+    workspaceId: number,
+    firstMessage: string,
+    agent: Omit<AgentChange, "cwd">,
+    context: Context,
+  ): Promise<HarnessConversation> {
     const workspace = this.#workspaces.get(workspaceId);
     if (workspace === undefined) throw invalidInput(`Project ${workspaceId} does not exist`);
     const stats = await stat(workspace.path).catch(() => undefined);
     if (stats?.isDirectory() !== true) throw invalidInput(`The project's directory is gone: ${workspace.path}`);
     const createdAt = this.#now();
-    const model = this.#defaultModel();
+    const title = toTitle(firstMessage);
     const conversation = await this.#harness.createConversation(
       {
         ownership: { kind: "ownerless" },
         // Without a model, the first message reports that none is selected.
-        agent: { cwd: workspace.path, ...(model === undefined ? {} : { model }) },
+        agent: { ...agent, cwd: workspace.path },
         init: async (tx, id) => {
           const meta = await tx.doc(ConversationMetaDoc, id);
           meta.createdAt = createdAt;
           meta.updatedAt = createdAt;
           meta.workspaceId = workspaceId;
+          meta.title = title;
         },
       },
       context,
     );
-    const summary: Stored = {
+    this.#stored.set(conversation.id, {
       id: conversation.id,
       workspaceId,
       cwd: workspace.path,
       createdAt,
       updatedAt: createdAt,
-    };
-    this.#stored.set(summary.id, summary);
+      title,
+    });
     this.#publish();
-    return { ...summary, running: false };
+    return conversation;
   }
 
-  /** Marks the conversation active now, and titles it after the message just sent if it has no title. */
-  async noteMessage(id: number, text: string, context: Context): Promise<void> {
+  /** Marks the conversation active now, after a message was sent to it. */
+  async noteMessage(id: number, context: Context): Promise<void> {
     const summary = this.#stored.get(id);
     if (summary === undefined) return;
     const updatedAt = this.#now();
-    const title = summary.title ?? (toTitle(text) || undefined);
     await this.#harness.commit(async (tx) => {
-      const meta = await tx.doc(ConversationMetaDoc, id as ConversationId);
-      meta.updatedAt = updatedAt;
-      if (title !== undefined) meta.title ??= title;
+      (await tx.doc(ConversationMetaDoc, id as ConversationId)).updatedAt = updatedAt;
     }, context);
-    this.#stored.set(id, { ...summary, updatedAt, ...(title === undefined ? {} : { title }) });
+    this.#stored.set(id, { ...summary, updatedAt });
     this.#publish();
   }
 
@@ -200,8 +200,8 @@ async function readSummary(
     harness.snapshot(AgentDoc, id, context),
     harness.snapshot(ConversationMetaDoc, id, context),
   ]);
-  // Without both, the conversation was not created by Tandem.
-  if (agent?.cwd === undefined || meta === undefined) return undefined;
+  // Without both, the conversation was not created by Tandem. Without a title, it never got a message.
+  if (agent?.cwd === undefined || meta?.title === undefined) return undefined;
   let workspaceId = meta.workspaceId;
   if (workspaceId === undefined) {
     const assigned = await workspaces.forPath(agent.cwd, context);
@@ -216,7 +216,7 @@ async function readSummary(
     cwd: agent.cwd,
     createdAt: meta.createdAt,
     updatedAt: meta.updatedAt ?? meta.createdAt,
-    ...(meta.title === undefined ? {} : { title: meta.title }),
+    title: meta.title,
   };
 }
 

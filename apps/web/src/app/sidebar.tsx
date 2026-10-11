@@ -68,7 +68,7 @@ export function AppSidebar() {
   const { workspaces, conversations } = useConnected();
   const projects = useReplicatedState(workspaces.state)?.workspaces ?? [];
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
-  const { selected, addProject } = useWorkbench();
+  const { selected, draft, addProject } = useWorkbench();
   const providers = useProvidersDialog();
   const names = new Map(projects.map((project) => [project.id, project.name]));
   return (
@@ -76,7 +76,10 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarBrand />
-        <NewConversation projects={projects} current={list.find((summary) => summary.id === selected)?.workspaceId} />
+        <NewConversation
+          projects={projects}
+          current={draft ?? list.find((summary) => summary.id === selected)?.workspaceId}
+        />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -109,7 +112,7 @@ export function AppSidebar() {
                       isActive={summary.id === selected}
                       title={summary.cwd}
                     >
-                      <span className="truncate">{titleOf(summary)}</span>
+                      <span className="truncate">{summary.title}</span>
                       {summary.running ? (
                         <Spinner aria-label="Running" className="ml-auto" />
                       ) : (
@@ -152,7 +155,7 @@ function ProjectItem({
   conversations: ConversationSummary[];
   selected: number | null;
 }) {
-  const { startConversation, removeProject, starting } = useWorkbench();
+  const { newConversation, removeProject } = useWorkbench();
   const [open, setOpen] = useState(true);
   const [confirming, setConfirming] = useState(false);
   return (
@@ -171,8 +174,7 @@ function ProjectItem({
         className="right-7"
         title={`New conversation in ${project.name}`}
         aria-label={`New conversation in ${project.name}`}
-        disabled={starting}
-        onClick={() => startConversation(project.id)}
+        onClick={() => newConversation(project.id)}
       >
         <PlusIcon />
       </SidebarMenuAction>
@@ -213,18 +215,20 @@ function ProjectItem({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <CollapsibleContent>
-        <SidebarMenuSub>
-          {conversations.map((summary) => (
-            <SidebarMenuSubItem key={summary.id}>
-              <SidebarMenuSubButton href={`#${summary.id}`} isActive={summary.id === selected}>
-                <span className="truncate">{titleOf(summary)}</span>
-                {summary.running && <Spinner aria-label="Running" className="ml-auto" />}
-              </SidebarMenuSubButton>
-            </SidebarMenuSubItem>
-          ))}
-        </SidebarMenuSub>
-      </CollapsibleContent>
+      {conversations.length > 0 && (
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {conversations.map((summary) => (
+              <SidebarMenuSubItem key={summary.id}>
+                <SidebarMenuSubButton href={`#${summary.id}`} isActive={summary.id === selected}>
+                  <span className="truncate">{summary.title}</span>
+                  {summary.running && <Spinner aria-label="Running" className="ml-auto" />}
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            ))}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      )}
     </Collapsible>
   );
 }
@@ -289,11 +293,11 @@ function ThemeMenu() {
 }
 
 /**
- * Start a conversation in the open conversation's project, else in the project a conversation was last started in,
- * else in the first project.
+ * Open a new conversation in the open conversation's project, else in the project one was last opened in, else in the
+ * first project.
  */
 function NewConversation({ projects, current }: { projects: WorkspaceSummary[]; current: number | undefined }) {
-  const { startConversation, starting, lastWorkspaceId } = useWorkbench();
+  const { newConversation, lastWorkspaceId } = useWorkbench();
   const listed = (id: number | undefined) => projects.find((project) => project.id === id)?.id;
   const target = listed(current) ?? listed(lastWorkspaceId) ?? projects[0]?.id;
   return (
@@ -301,8 +305,8 @@ function NewConversation({ projects, current }: { projects: WorkspaceSummary[]; 
       <SidebarMenuItem>
         <SidebarMenuButton
           tooltip="New conversation"
-          disabled={starting || target === undefined}
-          onClick={() => target !== undefined && startConversation(target)}
+          disabled={target === undefined}
+          onClick={() => target !== undefined && newConversation(target)}
         >
           <SquarePenIcon />
           <span>New conversation</span>
@@ -310,8 +314,4 @@ function NewConversation({ projects, current }: { projects: WorkspaceSummary[]; 
       </SidebarMenuItem>
     </SidebarMenu>
   );
-}
-
-function titleOf(summary: ConversationSummary): string {
-  return summary.title ?? "New conversation";
 }

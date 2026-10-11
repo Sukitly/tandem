@@ -1,9 +1,15 @@
 import { RemoteServiceProvider } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId, Harness } from "@earendil-works/pi-durable";
-import { Conversation, Conversations, Models, Workspaces } from "@tandem/contracts";
+import { Conversation, Conversations, Models, type StartInput, Workspaces } from "@tandem/contracts";
 import type { ConnectionServices } from "../rpc-host.ts";
-import { createConversationService, type NoticeBoard } from "./conversation.ts";
+import {
+  createConversationService,
+  initialAgent,
+  type NoticeBoard,
+  parseSubmitInput,
+  submitMessage,
+} from "./conversation.ts";
 import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
@@ -54,7 +60,7 @@ export function createConnectionServices({
           view,
           notices,
           models,
-          onSubmitted: (text, context) => catalog.noteMessage(id, text, context),
+          onSubmitted: (_text, context) => catalog.noteMessage(id, context),
         }),
       );
       return {
@@ -111,10 +117,18 @@ export function createConnectionServices({
 
   provider.provide(Conversations, {
     state: catalog.state,
-    async create(input, context) {
-      const { workspaceId } = (input ?? {}) as { workspaceId?: unknown };
+    async start(input, context) {
+      const { workspaceId, model, thinkingLevel } = (input ?? {}) as { [K in keyof StartInput]?: unknown };
       parseId(workspaceId, "Project");
-      return (await catalog.create(workspaceId, context)).id;
+      const { text } = parseSubmitInput({ ...(input ?? {}), whenBusy: "followUp" });
+      const conversation = await catalog.create(
+        workspaceId,
+        text,
+        initialAgent(models, { model, thinkingLevel }),
+        context,
+      );
+      await submitMessage(conversation, notices, { text, whenBusy: "followUp" }, context);
+      return conversation.id as number;
     },
     async open(id) {
       parseId(id);

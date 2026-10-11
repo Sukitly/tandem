@@ -43,12 +43,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     cleanups.push(() => opened.close(context));
     const notices = new NoticeBoard();
     const workspaces = await WorkspaceCatalog.load(opened.harness, context);
-    const catalog = await ConversationCatalog.load(
-      opened.harness,
-      workspaces,
-      () => modelCatalog.defaultModel(),
-      context,
-    );
+    const catalog = await ConversationCatalog.load(opened.harness, workspaces, context);
     cleanups.push(async () => catalog.dispose());
 
     const server = await startServer({

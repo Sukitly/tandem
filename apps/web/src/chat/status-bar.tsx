@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Conversation, ModelRef, ModelSummary } from "@tandem/contracts";
+import type { ModelRef, ModelSummary } from "@tandem/contracts";
 import { CheckIcon, ChevronDownIcon, KeyRoundIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -33,15 +33,18 @@ export interface AgentChoice {
   thinkingLevel?: string;
 }
 
-/** Under the message box: the model and thinking level, what the conversation cost, and how full its context is. */
+/**
+ * Under the message box: the model and thinking level, what the conversation cost, and how full its context is.
+ * `onConfigure` applies a new choice: to the conversation, or to a new one before it exists.
+ */
 export function StatusBar({
-  conversation,
   agent,
   usage,
+  onConfigure,
 }: {
-  conversation: Conversation;
   agent: AgentChoice | undefined;
   usage: ContextUsage;
+  onConfigure: (change: AgentChoice) => Promise<void>;
 }) {
   const { models } = useConnected();
   const state = useReplicatedState(models.state);
@@ -55,7 +58,7 @@ export function StatusBar({
   return (
     <div className="grid gap-1.5">
       <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-        <ModelPicker conversation={conversation} agent={agent} current={current} />
+        <ModelPicker agent={agent} current={current} onConfigure={onConfigure} />
         {current !== undefined && current.thinkingLevels.length > 1 && (
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
@@ -67,9 +70,7 @@ export function StatusBar({
                 <DropdownMenuLabel>Thinking</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={agent?.thinkingLevel ?? "off"}
-                  onValueChange={(thinkingLevel: string) =>
-                    conversation.configure({ thinkingLevel }, BACKGROUND_CONTEXT).catch(report)
-                  }
+                  onValueChange={(thinkingLevel: string) => onConfigure({ thinkingLevel }).catch(report)}
                 >
                   {current.thinkingLevels.map((level) => (
                     <DropdownMenuRadioItem key={level} value={level} closeOnClick>
@@ -92,13 +93,13 @@ export function StatusBar({
 }
 
 function ModelPicker({
-  conversation,
   agent,
   current,
+  onConfigure,
 }: {
-  conversation: Conversation;
   agent: AgentChoice | undefined;
   current: ModelSummary | undefined;
+  onConfigure: (change: AgentChoice) => Promise<void>;
 }) {
   const { models } = useConnected();
   const state = useReplicatedState(models.state);
@@ -119,7 +120,7 @@ function ModelPicker({
   const choose = (model: ModelSummary): void => {
     setOpen(false);
     const ref = { provider: model.provider, modelId: model.modelId };
-    conversation.configure({ model: ref }, BACKGROUND_CONTEXT).catch(report);
+    onConfigure({ model: ref }).catch(report);
     // The last choice is what new conversations start with.
     models.setDefaultModel(ref, BACKGROUND_CONTEXT).catch(report);
   };

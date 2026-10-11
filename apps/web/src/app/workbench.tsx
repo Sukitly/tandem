@@ -15,9 +15,12 @@ interface Workbench {
   /** The open conversation, kept in the URL hash so that reloads and links keep it. */
   selected: number | null;
   select(id: number | null): void;
-  /** A conversation is being created; until it exists, no conversation is shown, so typing cannot reach the old one. */
-  starting: boolean;
-  startConversation(workspaceId: number): void;
+  /**
+   * The project of the new conversation being written, if one is. Nothing exists on the server until its first
+   * message is sent, so it has no ID and is not in the URL.
+   */
+  draft: number | null;
+  newConversation(workspaceId: number): void;
   /** The project a conversation was last started in, or the last one added. It may have been removed since. */
   lastWorkspaceId: number | undefined;
   addProject(): void;
@@ -39,20 +42,26 @@ export function useWorkbench(): Workbench {
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const { workspaces, conversations } = useConnected();
   const [selected, setSelected] = useState(selectedInHash);
-  const [starting, setStarting] = useState(false);
+  const [draft, setDraft] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [lastWorkspaceId, setLastWorkspaceId] = useState(storedWorkspaceId);
 
   useEffect(() => {
-    const onChange = (): void => setSelected(selectedInHash());
+    const onChange = (): void => {
+      const id = selectedInHash();
+      setSelected(id);
+      // Following a link to a conversation leaves the new one. Clearing the hash for a new one must not.
+      if (id !== null) setDraft(null);
+    };
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
 
-  // The state changes along with the hash, so the new conversation shows in the same render that ends `starting`.
+  // The state changes along with the hash, so a started conversation replaces the new one in a single render.
   const select = (id: number | null): void => {
     setSelected(id);
+    setDraft(null);
     window.location.hash = id === null ? "" : String(id);
   };
   const remember = (workspaceId: number): void => {
@@ -63,22 +72,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const workbench: Workbench = {
     selected,
     select,
-    starting,
-    startConversation(workspaceId) {
-      if (starting) return;
-      setStarting(true);
-      setFailure(null);
-      conversations.create({ workspaceId }, BACKGROUND_CONTEXT).then(
-        (id) => {
-          remember(workspaceId);
-          select(id);
-          setStarting(false);
-        },
-        (error: unknown) => {
-          setFailure({ title: "Could not start a conversation", message: messageOf(error) });
-          setStarting(false);
-        },
-      );
+    draft,
+    newConversation(workspaceId) {
+      select(null);
+      setDraft(workspaceId);
+      remember(workspaceId);
     },
     lastWorkspaceId,
     addProject: () => setAdding(true),
@@ -86,7 +84,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       const open = conversations.state.value?.conversations.find((summary) => summary.id === selected);
       workspaces.remove(workspaceId, BACKGROUND_CONTEXT).then(
         () => {
-          if (open?.workspaceId === workspaceId) select(null);
+          if (open?.workspaceId === workspaceId || draft === workspaceId) select(null);
         },
         (error: unknown) => setFailure({ title: "Could not remove the project", message: messageOf(error) }),
       );

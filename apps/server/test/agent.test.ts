@@ -51,25 +51,25 @@ async function start(respond: (messages: readonly Message[]) => ReturnType<typeo
   const conversations = connection.services.use(Conversations);
   await connection.services.ready(context);
   const open = new OpenConversations(connection);
-  const create = async (cwd: string) => {
+  /** Start a conversation in `cwd` with its first message. */
+  const start = async (cwd: string, text: string) => {
     const workspaceId = await connection.services.use(Workspaces).add({ path: cwd }, context);
-    const id = await conversations.create({ workspaceId }, context);
+    const id = await conversations.start({ workspaceId, text }, context);
     open.hold(id);
     await waitFor(() => open.get(id)?.view.value !== undefined);
     return { conversation: open.get(id) as Conversation, view: () => open.get(id)?.view.value as ConversationView };
   };
-  return { create };
+  return { start };
 }
 
 test("the agent gets Tandem's prompt with the project's instructions, and its tool calls run in the cwd", async () => {
   const requests: (readonly Message[])[] = [];
-  const { create } = await start((messages) => {
+  const app = await start((messages) => {
     requests.push(messages);
     return demoResponse(messages);
   });
   const cwd = await repository();
-  const { conversation, view } = await create(cwd);
-  await conversation.submit({ text: "hello", whenBusy: "followUp" }, context);
+  const { view } = await app.start(cwd, "hello");
   await waitFor(() => view().entries.filter((entry) => entry.kind === "pi.assistant").length === 2);
 
   const prompt = JSON.stringify(requests[0]?.filter((message) => message.role === "system"));
