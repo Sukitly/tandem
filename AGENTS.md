@@ -6,7 +6,7 @@ Guidance for coding agents working in this repository. Humans should start with 
 
 Tandem is a local-first agent product built on [pi-durable](https://github.com/earendil-works/pi/tree/main/packages/durable). The first use case is interactive coding in the browser: the user works with an agent on Git repositories on their own machine, and conversations survive page reloads, disconnects, and backend restarts.
 
-The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The project is early: the server serves conversations over WebSocket, answered by a local faux model, and the web app is a minimal chat on them.
+The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The project is early: the server serves conversations over WebSocket with real model providers, and the web app is a minimal chat on them.
 
 ## Repository layout
 
@@ -48,6 +48,8 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 | `app.sqlite` | The Harness database: every conversation of every workspace |
 | `server.json` | Server identity and session token, mode `0600`. Kept across restarts so that open pages reconnect by themselves |
 | `server.lock` | Held while a server runs: pi-durable allows one process per database |
+| `auth.json` | Model credentials (OAuth tokens, API keys), mode `0600`. Never sent to clients. Tandem does not share pi's `~/.pi/agent/auth.json`: OAuth refresh tokens rotate, so sharing one would sign the other program out |
+| `settings.json` | Preferences such as the default model, and the installation's device ID |
 
 ## Code style
 
@@ -65,6 +67,13 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 - `src/components/ui/` and `src/components/ai-elements/` are generated. Compose and style them from the outside rather than editing them, so they can be updated. `src/components/ui/` is excluded from linting.
 - `src/rpc/` connects to the server and exposes replicated state to React (`useReplicatedState`, `useConversation`). Components read state there and never keep their own copy of server state.
 - A page opens conversations through `OpenConversations` (`packages/client`), which opens them again after a reconnect.
+
+## Models
+
+- Providers are pi-ai's built-in ones (`apps/server/src/models.ts`). API keys in the server's environment work without signing in.
+- Logins run on the server (`apps/server/src/services/models.ts`): the browser shows the flow's events and answers its prompts through the `Models` service, and never receives a credential.
+- `configureModelHttp()` (`apps/server/src/http-setup.ts`) must run before any model request, as pi's coding agent does; without it some providers' streams break off.
+- `TANDEM_FAUX=1` adds a local faux model that needs no credentials. Tests pass the faux provider only, never the built-in ones.
 
 ## Services
 

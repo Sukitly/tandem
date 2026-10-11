@@ -1,16 +1,22 @@
+import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { Provider } from "@earendil-works/pi-ai";
+import { FileCredentialStore } from "./credentials.ts";
 import { openHarness } from "./harness.ts";
-import { type AppModels, createFauxModels } from "./models.ts";
+import { createAppModels, defaultProviders } from "./models.ts";
 import { type StartServerOptions, startServer, type TandemServer } from "./server.ts";
 import { createConnectionServices } from "./services/connection.ts";
+import { NoticeBoard } from "./services/conversation.ts";
 import { ConversationCatalog } from "./services/conversations.ts";
+import { ModelCatalog } from "./services/models.ts";
+import { Settings } from "./settings.ts";
 import { openStateDir } from "./state-dir.ts";
 
 export interface StartAppOptions extends Pick<StartServerOptions, "hostname" | "port" | "allowedOrigins"> {
   /** Default: `$TANDEM_HOME`, or `~/.tandem`. */
   stateDir?: string;
-  /** Default: the faux model. */
-  models?: AppModels;
+  /** Model providers. Default: every provider pi-ai ships. Tests pass the faux provider only. */
+  providers?: readonly Provider[];
   onError?: (error: Error) => void;
 }
 
@@ -25,18 +31,23 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
   };
 
   try {
-    const { models, defaultModel } = options.models ?? createFauxModels();
+    const settings = await Settings.load(join(stateDir.path, "settings.json"));
+    const credentials = new FileCredentialStore(join(stateDir.path, "auth.json"));
+    const models = createAppModels(credentials, options.providers ?? defaultProviders());
+    const modelCatalog = await ModelCatalog.load(models, credentials, settings);
     const opened = await openHarness(
       { databasePath: stateDir.databasePath, models, onReport: (error) => onError(toError(error)) },
       context,
     );
     cleanups.push(() => opened.close(context));
-    const catalog = await ConversationCatalog.load(opened.harness, defaultModel, context);
+    const notices = new NoticeBoard();
+    const catalog = await ConversationCatalog.load(opened.harness, () => modelCatalog.defaultModel(), context);
 
     const server = await startServer({
       ...pick(options, ["hostname", "port", "allowedOrigins"]),
       ...stateDir.identity,
-      createConnectionServices: () => createConnectionServices({ harness: opened.harness, catalog }),
+      createConnectionServices: () =>
+        createConnectionServices({ harness: opened.harness, catalog, models: modelCatalog, notices }),
       onError,
     });
     cleanups.push(() => server.stop());

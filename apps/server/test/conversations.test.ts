@@ -8,7 +8,7 @@ import { connect, OpenConversations, type TandemConnection } from "@tandem/clien
 import { Conversation, Conversations, type ConversationView } from "@tandem/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { type StartAppOptions, startApp } from "../src/app.ts";
-import { createFauxModels } from "../src/models.ts";
+import { createFauxProvider } from "../src/models.ts";
 import type { TandemServer } from "../src/server.ts";
 import { openStateDir } from "../src/state-dir.ts";
 
@@ -23,7 +23,7 @@ afterEach(async () => {
 
 async function start(options: StartAppOptions = {}) {
   const stateDir = options.stateDir ?? (await mkdtemp(join(tmpdir(), "tandem-test-")));
-  const server = await startApp({ port: 0, ...options, stateDir });
+  const server = await startApp({ port: 0, providers: [createFauxProvider()], ...options, stateDir });
   servers.add(server);
   return { server, stateDir };
 }
@@ -163,7 +163,7 @@ describe("conversations", () => {
 
   test("an answer interrupted by a restart completes, and the open client picks it up", async () => {
     const reply = (text: string) => `${text}: ${"word ".repeat(200).trim()}`;
-    const slow = await start({ models: createFauxModels({ tokensPerSecond: 50, reply }) });
+    const slow = await start({ providers: [createFauxProvider({ tokensPerSecond: 50, reply })] });
     const user = await client(slow.server);
     const id = await user.conversations.create({ cwd: tmpdir() }, context);
     const held = new OpenConversations(user.connection);
@@ -178,7 +178,11 @@ describe("conversations", () => {
     await waitFor(() => user.connection.status.value?.status === "disconnected" && held.get(id) === undefined);
 
     // Same directory and port: the identity and token are read back, so the client reconnects by itself.
-    await start({ stateDir: slow.stateDir, port: Number(slow.server.url.port), models: createFauxModels({ reply }) });
+    await start({
+      stateDir: slow.stateDir,
+      port: Number(slow.server.url.port),
+      providers: [createFauxProvider({ reply })],
+    });
     await waitFor(() => user.connection.status.value?.status === "connected", 5_000);
     expect(user.conversations.state.value?.conversations.map((summary) => summary.title)).toEqual(["long"]);
 

@@ -7,13 +7,16 @@ import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./app/sidebar.tsx";
 import { ChatView } from "./chat/chat-view.tsx";
+import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 
 export function App() {
   return (
     <TooltipProvider>
       <ConnectionProvider fallback={(state) => <ConnectionScreen state={state} />}>
-        <Workbench />
+        <ProvidersDialogProvider>
+          <Workbench />
+        </ProvidersDialogProvider>
       </ConnectionProvider>
     </TooltipProvider>
   );

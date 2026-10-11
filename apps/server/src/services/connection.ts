@@ -1,15 +1,18 @@
 import { RemoteServiceProvider } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId, Harness } from "@earendil-works/pi-durable";
-import { Conversation, Conversations } from "@tandem/contracts";
+import { Conversation, Conversations, Models } from "@tandem/contracts";
 import type { ConnectionServices } from "../rpc-host.ts";
-import { createConversationService } from "./conversation.ts";
+import { createConversationService, type NoticeBoard } from "./conversation.ts";
 import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
+import type { ModelCatalog } from "./models.ts";
 
 export interface AppServices {
   readonly harness: Harness;
   readonly catalog: ConversationCatalog;
+  readonly models: ModelCatalog;
+  readonly notices: NoticeBoard;
 }
 
 /** An open conversation on one connection. */
@@ -18,8 +21,8 @@ interface OpenConversation {
 }
 
 /** The services of one client connection: the shared conversation list, and the conversations it opened. */
-export function createConnectionServices({ harness, catalog }: AppServices): ConnectionServices {
-  const provider = new RemoteServiceProvider([Conversations, { service: Conversation, mode: "keyed" }]);
+export function createConnectionServices({ harness, catalog, models, notices }: AppServices): ConnectionServices {
+  const provider = new RemoteServiceProvider([Models, Conversations, { service: Conversation, mode: "keyed" }]);
   const opened = new Map<number, Promise<OpenConversation>>();
   let disposed = false;
 
@@ -33,7 +36,13 @@ export function createConnectionServices({ harness, catalog }: AppServices): Con
       const withdraw = provider.spawn(
         Conversation,
         String(id),
-        createConversationService(conversation, view, (text, context) => catalog.noteMessage(id, text, context)),
+        createConversationService({
+          conversation,
+          view,
+          notices,
+          models,
+          onSubmitted: (text, context) => catalog.noteMessage(id, text, context),
+        }),
       );
       return {
         close() {
@@ -46,6 +55,33 @@ export function createConnectionServices({ harness, catalog }: AppServices): Con
       throw error;
     }
   };
+
+  provider.provide(Models, {
+    state: models.state,
+    async login(input) {
+      const { providerId, type } = (input ?? {}) as { providerId?: unknown; type?: unknown };
+      if (typeof providerId !== "string") throw invalidInput("providerId must be a string");
+      if (type !== "oauth" && type !== "api_key") throw invalidInput('type must be "oauth" or "api_key"');
+      return models.login(providerId, type);
+    },
+    async answerLogin(input) {
+      const { promptId, value } = (input ?? {}) as { promptId?: unknown; value?: unknown };
+      if (typeof promptId !== "number" || typeof value !== "string") throw invalidInput("Invalid answer");
+      models.answerLogin(promptId, value);
+    },
+    async cancelLogin() {
+      models.cancelLogin();
+    },
+    async logout(providerId) {
+      if (typeof providerId !== "string") throw invalidInput("providerId must be a string");
+      await models.logout(providerId);
+    },
+    async setDefaultModel(model) {
+      const { provider: providerId, modelId } = (model ?? {}) as { provider?: unknown; modelId?: unknown };
+      if (typeof providerId !== "string" || typeof modelId !== "string") throw invalidInput("Invalid model");
+      await models.setDefaultModel({ provider: providerId, modelId });
+    },
+  });
 
   provider.provide(Conversations, {
     state: catalog.state,
