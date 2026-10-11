@@ -7,6 +7,7 @@ import {
   KeyRoundIcon,
   MonitorIcon,
   MoonIcon,
+  PanelLeftIcon,
   SquarePenIcon,
   SunIcon,
 } from "lucide-react";
@@ -32,6 +33,7 @@ import {
   SidebarHeader,
   SidebarInput,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -58,14 +60,7 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
     // Collapsed, the sidebar keeps a column of icons; the conversation list and the directory field hide.
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Tandem" className="font-semibold">
-              <BikeIcon />
-              <span>Tandem</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <SidebarBrand />
         <NewConversation onCreated={onSelect} />
       </SidebarHeader>
       <SidebarContent>
@@ -115,6 +110,30 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+/** The name, and the button that folds the sidebar. Folded, the name's icon is what unfolds it. */
+function SidebarBrand() {
+  const { state, toggleSidebar } = useSidebar();
+  const collapsed = state === "collapsed";
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          tooltip={collapsed ? "Expand the sidebar" : undefined}
+          aria-label={collapsed ? "Expand the sidebar" : undefined}
+          onClick={collapsed ? toggleSidebar : undefined}
+          className="font-semibold"
+        >
+          <BikeIcon />
+          <span>Tandem</span>
+        </SidebarMenuButton>
+        <SidebarMenuAction onClick={toggleSidebar} aria-label="Collapse the sidebar" title="Collapse the sidebar">
+          <PanelLeftIcon />
+        </SidebarMenuAction>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }
 

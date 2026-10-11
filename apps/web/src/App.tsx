@@ -34,7 +34,7 @@ function Workbench() {
         <ConnectionAlert />
         {selected === null ? (
           <>
-            <header className="flex items-center gap-2 border-b px-3 py-2">
+            <header className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
               <SidebarTrigger />
             </header>
             <Empty>
