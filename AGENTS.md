@@ -6,7 +6,7 @@ Guidance for coding agents working in this repository. Humans should start with 
 
 Tandem is a local-first agent product built on [pi-durable](https://github.com/earendil-works/pi/tree/main/packages/durable). The first use case is interactive coding in the browser: the user works with an agent on Git repositories on their own machine, and conversations survive page reloads, disconnects, and backend restarts.
 
-The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The project is early: the server serves conversations over WebSocket, answered by a local faux model, and the web app only shows the server's status.
+The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The project is early: the server serves conversations over WebSocket, answered by a local faux model, and the web app is a minimal chat on them.
 
 ## Repository layout
 
@@ -28,8 +28,8 @@ The backend runs on **Node >= 22.19**, not Bun: pi-durable's SQLite storage need
 | Task | Command |
 |---|---|
 | Install dependencies | `bun install` |
-| Run the server in watch mode | `bun run dev:server` |
-| Run the web app (proxies `/health`, `/rpc`, `/pty` to the server) | `bun run dev:web` |
+| Run the server in watch mode; allows the web app's origin and prints the URL to open | `bun run dev:server` |
+| Run the web app on port 5173 (proxies the server's paths) | `bun run dev:web` |
 | Lint and format check, then typecheck | `bun run check` |
 | Apply formatting and safe lint fixes | `bunx biome check --write .` |
 | Run all tests | `bun run test` |
@@ -56,6 +56,13 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 - ES modules only. Import local files with their `.ts` / `.tsx` extension, as Node's type stripping requires.
 - Use `import type` for type-only imports (`verbatimModuleSyntax` is on). Only erasable TypeScript syntax: no `enum`, no `namespace`, no parameter properties.
 - `packages/contracts` and `packages/client` must stay runtime-neutral: no Node or Bun imports. `packages/client` may use the `WebSocket` and `fetch` globals, which browsers and Node 22+ both provide.
+
+## Web app
+
+- UI components come from shadcn/ui (`apps/web/components.json`) and AI Elements (registry `@ai-elements`). Add them with `bunx --bun shadcn@latest add <name>` or `bunx --bun shadcn@latest add @ai-elements/<name>` from `apps/web`.
+- `src/components/ui/` and `src/components/ai-elements/` are generated. Compose and style them from the outside rather than editing them, so they can be updated. `src/components/ui/` is excluded from linting.
+- `src/rpc/` connects to the server and exposes replicated state to React (`useReplicatedState`, `useConversation`). Components read state there and never keep their own copy of server state.
+- A page opens conversations through `OpenConversations` (`packages/client`), which opens them again after a reconnect.
 
 ## Services
 

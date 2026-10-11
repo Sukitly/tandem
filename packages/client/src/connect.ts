@@ -34,6 +34,7 @@ export interface ConnectOptions {
 export interface TandemConnection {
   /** Bound services. Handles stay valid across reconnects; their state rehydrates after each one. */
   readonly services: RemoteServices;
+  /** `connected` is reported once the services are bound and can be called. */
   readonly status: ReplicatedState<ConnectionStatus>;
   close(): Promise<void>;
 }
@@ -77,7 +78,7 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
   });
   const status = replicatedState<ConnectionStatus>({ status: "connecting" });
 
-  const reconnect = options.reconnect === false ? undefined : options.reconnect;
+  const reconnect = options.reconnect === false ? undefined : (options.reconnect ?? {});
   const initialDelayMs = reconnect?.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
   const maxDelayMs = reconnect?.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
   let delayMs = initialDelayMs;
@@ -110,11 +111,16 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
     }, wait);
   };
 
-  client.onConnectionStateChange(({ state, error }) => {
+  const stopListening = client.onConnectionStateChange(({ state, error }) => {
+    // Closing disconnects the client too; the binding is disposed by then.
+    if (closed) return;
     if (state === "connected") {
       delayMs = initialDelayMs;
-      status.replace(BACKGROUND_CONTEXT, { status: "connected" });
       rebind(true, BACKGROUND_CONTEXT);
+      // Reported once the services are bound, so that whoever reacts to it can call them.
+      transitions = transitions.then(() => {
+        if (client.connected) status.replace(BACKGROUND_CONTEXT, { status: "connected" });
+      });
     } else if (state === "disconnected") {
       rebind(false, BACKGROUND_CONTEXT);
       scheduleReconnect(error?.message ?? "Disconnected");
@@ -136,6 +142,7 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
     async close() {
       if (closed) return;
       closed = true;
+      stopListening();
       if (retryTimer !== undefined) clearTimeout(retryTimer);
       await transitions;
       await binding.dispose(BACKGROUND_CONTEXT);

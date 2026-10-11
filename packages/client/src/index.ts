@@ -6,4 +6,5 @@ export {
   type ReconnectOptions,
   type TandemConnection,
 } from "./connect.ts";
+export { OpenConversations } from "./open-conversations.ts";
 export { createWebSocketTransportFactory, type WebSocketTransportOptions } from "./websocket-transport.ts";

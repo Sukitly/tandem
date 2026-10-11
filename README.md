@@ -15,8 +15,10 @@ Requires [Bun](https://bun.com) for installing and running scripts, and [Node.js
 ```bash
 bun install
 bun run dev:server   # backend on http://127.0.0.1:4820
-bun run dev:web      # web app; proxies API calls to the backend
+bun run dev:web      # web app on http://127.0.0.1:5173; proxies API calls to the backend
 ```
+
+Open the URL the server prints: it carries the session token. Data is kept in `~/.tandem`; set `TANDEM_HOME` to use another directory.
 
 | Command | Purpose |
 |---|---|

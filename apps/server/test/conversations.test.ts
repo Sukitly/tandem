@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { LiveState } from "@earendil-works/pi-durable";
-import { connect, type TandemConnection } from "@tandem/client";
+import { connect, OpenConversations, type TandemConnection } from "@tandem/client";
 import { Conversation, Conversations, type ConversationView } from "@tandem/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { type StartAppOptions, startApp } from "../src/app.ts";
@@ -166,23 +166,26 @@ describe("conversations", () => {
     const slow = await start({ models: createFauxModels({ tokensPerSecond: 50, reply }) });
     const user = await client(slow.server);
     const id = await user.conversations.create({ cwd: tmpdir() }, context);
-    const { conversation } = await user.openConversation(id);
-    await conversation.submit({ text: "long", whenBusy: "followUp" }, context);
+    const held = new OpenConversations(user.connection);
+    held.hold(id);
+    await waitFor(() => held.get(id) !== undefined);
+    await held.get(id)?.submit({ text: "long", whenBusy: "followUp" }, context);
     // Stop while the answer is streaming.
-    await waitFor(() => (user.view(id)?.docs["pi.live"] as LiveState | undefined)?.generation?.message !== undefined);
+    await waitFor(
+      () => (held.get(id)?.view.value?.docs["pi.live"] as LiveState | undefined)?.generation?.message !== undefined,
+    );
     await stopApp(slow.server);
-    await waitFor(() => user.connection.status.value?.status === "disconnected" && !user.open.has(id));
+    await waitFor(() => user.connection.status.value?.status === "disconnected" && held.get(id) === undefined);
 
     // Same directory and port: the identity and token are read back, so the client reconnects by itself.
     await start({ stateDir: slow.stateDir, port: Number(slow.server.url.port), models: createFauxModels({ reply }) });
     await waitFor(() => user.connection.status.value?.status === "connected", 5_000);
     expect(user.conversations.state.value?.conversations.map((summary) => summary.title)).toEqual(["long"]);
 
-    // Instances belong to a connection, so a client reopens what it shows after reconnecting.
-    await user.openConversation(id);
-    await waitFor(() => answers(user.view(id)).includes(reply("long")) && !isBusy(user.view(id)));
+    // Instances belong to a connection: the conversation the client holds is opened again on the new one.
+    await waitFor(() => answers(held.get(id)?.view.value).includes(reply("long")) && !isBusy(held.get(id)?.view.value));
     // The interrupted attempt stays in the transcript as an aborted answer; a new attempt answers in full.
-    const [interrupted, completed] = replies(user.view(id));
+    const [interrupted, completed] = replies(held.get(id)?.view.value);
     expect(interrupted?.stopReason).toBe("aborted");
     expect(reply("long").startsWith(interrupted?.text ?? "")).toBe(true);
     expect(completed).toEqual({ text: reply("long"), stopReason: "stop" });
