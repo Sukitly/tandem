@@ -37,7 +37,6 @@ export function createConnectionServices({ harness, catalog, models, notices }: 
         Conversation,
         String(id),
         createConversationService({
-          harness,
           conversation,
           view,
           notices,

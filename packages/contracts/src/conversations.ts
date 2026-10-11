@@ -47,9 +47,6 @@ export interface SubmitInput {
 /** A message that got no answer, such as one sent without a model. Answers that fail are part of the view. */
 export interface ConversationNotice {
   id: number;
-  /** `error`: something the user asked for did not happen. */
-  tone: "info" | "error";
-  title: string;
   message: string;
 }
 
@@ -75,11 +72,6 @@ export interface Conversation {
    * lowered to the nearest one it does.
    */
   configure(input: { model?: ModelRef; thinkingLevel?: string }, context: Context): Promise<void>;
-  /**
-   * Summarize older messages so the model sees less. Resolves once the compaction is started; it shows in
-   * `pi.live.compactions` while it runs and ends as a `pi.compaction` entry.
-   */
-  compact(input: { instructions?: string }, context: Context): Promise<void>;
 }
 
 export const Conversation = defineService<Conversation>("tandem.conversation");

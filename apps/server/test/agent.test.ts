@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { connect, OpenConversations, type TandemConnection } from "@tandem/client";
 import { Conversation, Conversations, type ConversationView } from "@tandem/contracts";
 import { afterEach, expect, test } from "vitest";
@@ -86,24 +85,4 @@ test("the agent gets Tandem's prompt with the project's instructions, and its to
   expect(byTool.get("bash")?.isError).toBe(false);
   expect(JSON.stringify(byTool.get("bash")?.content)).toContain("README.md");
   expect(JSON.stringify(byTool.get("read")?.content)).toContain("# Demo app");
-});
-
-test("a manual compaction summarizes older messages, or says there is nothing to compact", async () => {
-  // Long answers, so that the first exchange falls outside the recent context a compaction keeps.
-  const { create } = await start(() => fauxAssistantMessage("word ".repeat(25_000)));
-  const { conversation, view } = await create(await repository());
-  const notices = () => conversation.notices.value?.notices ?? [];
-  const answers = () => view().entries.filter((entry) => entry.kind === "pi.assistant").length;
-
-  await conversation.submit({ text: "first", whenBusy: "followUp" }, context);
-  await waitFor(() => answers() === 1);
-  await conversation.compact({}, context);
-  await waitFor(() => notices().length === 1);
-  expect(notices()[0]).toMatchObject({ tone: "info", title: "Nothing to compact" });
-
-  await conversation.submit({ text: "second", whenBusy: "followUp" }, context);
-  await waitFor(() => answers() === 2);
-  await conversation.compact({ instructions: "Keep the file names" }, context);
-  await waitFor(() => view().entries.some((entry) => entry.kind === "pi.compaction"));
-  expect(notices()).toEqual([]);
 });

@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice } from "@tandem/contracts";
-import { AlertCircleIcon, ArrowDownIcon, InfoIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowDownIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -108,9 +108,9 @@ function ChatHeader({ conversationId }: { conversationId: number }) {
 
 function Notice({ notice }: { notice: ConversationNotice }) {
   return (
-    <Alert variant={notice.tone === "error" ? "destructive" : "default"}>
-      {notice.tone === "error" ? <AlertCircleIcon /> : <InfoIcon />}
-      <AlertTitle>{notice.title}</AlertTitle>
+    <Alert variant="destructive">
+      <AlertCircleIcon />
+      <AlertTitle>No answer</AlertTitle>
       <AlertDescription>{notice.message}</AlertDescription>
     </Alert>
   );
