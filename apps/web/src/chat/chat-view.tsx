@@ -1,8 +1,9 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Conversation, ConversationNotice } from "@tandem/contracts";
+import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
 import { AlertCircleIcon, ArrowDownIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
+import { useWorkbench } from "@/app/workbench.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -35,41 +36,92 @@ export function ChatView({ conversationId }: { conversationId: number }) {
   return <OpenChat key={conversationId} conversationId={conversationId} conversation={conversation} />;
 }
 
+/**
+ * A new conversation, before its first message. It exists only here: sending the first message creates it on the
+ * server with the model and thinking level chosen meanwhile, then it opens as any other.
+ */
+export function NewChat({ workspaceId }: { workspaceId: number }) {
+  const { workspaces, conversations, models } = useConnected();
+  const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
+  const available = useReplicatedState(models.state);
+  const { select } = useWorkbench();
+  const [chosen, setChosen] = useState<AgentChoice>({});
+  // What the server starts with when none is chosen: the default model, else the first available.
+  const first = available?.models[0];
+  const model =
+    chosen.model ??
+    available?.defaultModel ??
+    (first === undefined ? undefined : { provider: first.provider, modelId: first.modelId });
+  const agent: AgentChoice = { ...(model === undefined ? {} : { model }), ...pick(chosen, "thinkingLevel") };
+
+  const configure = async (change: AgentChoice): Promise<void> => {
+    setChosen((current) => {
+      const next = { ...current, ...change };
+      // Like the server, keep the thinking level only where the new model has it.
+      const levels = available?.models.find((candidate) => sameModel(candidate, next.model))?.thinkingLevels;
+      if (
+        change.model !== undefined &&
+        next.thinkingLevel !== undefined &&
+        levels?.includes(next.thinkingLevel) !== true
+      )
+        delete next.thinkingLevel;
+      return next;
+    });
+  };
+
+  return (
+    <ChatFrame cwd={project?.path} title="New conversation">
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>What are we working on?</EmptyTitle>
+        </EmptyHeader>
+      </Empty>
+      <ChatFooter>
+        <ChatComposer
+          busy={false}
+          queued={[]}
+          autoFocus
+          onSend={async (text) => {
+            const id = await conversations.start({ workspaceId, text, ...agent }, BACKGROUND_CONTEXT);
+            select(id);
+          }}
+          onStop={() => {}}
+          status={<StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />}
+        />
+      </ChatFooter>
+    </ChatFrame>
+  );
+}
+
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
+  const { conversations } = useConnected();
+  const summary = useReplicatedState(conversations.state)?.conversations.find(
+    (candidate) => candidate.id === conversationId,
+  );
   const view = useReplicatedState(conversation.view);
   const notices = useReplicatedState(conversation.notices)?.notices ?? [];
   const transcript = useMemo(() => (view === undefined ? undefined : toTranscript(view)), [view]);
   if (view === undefined || transcript === undefined) return null;
-  const empty = transcript.items.length === 0;
   const agent = view.docs["pi.agent"] as AgentChoice | undefined;
 
   return (
-    <section className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" aria-label="Conversation">
-      <ChatHeader conversationId={conversationId} />
-      {empty ? (
-        <Empty>
-          <EmptyHeader>
-            <EmptyTitle>What are we working on?</EmptyTitle>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <StickToBottom
-          className="relative min-h-0 flex-1 overflow-y-hidden"
-          initial="instant"
-          resize="smooth"
-          role="log"
-          aria-label="Transcript"
-        >
-          <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-            {transcript.items.map((item) => (
-              <TranscriptEntry key={item.key} item={item} />
-            ))}
-            <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
-          </StickToBottom.Content>
-          <ScrollToBottom />
-        </StickToBottom>
-      )}
-      <div className="mx-auto grid w-full max-w-3xl gap-3 px-4 pt-2 pb-4">
+    <ChatFrame cwd={summary?.cwd} title={summary?.title}>
+      <StickToBottom
+        className="relative min-h-0 flex-1 overflow-y-hidden"
+        initial="instant"
+        resize="smooth"
+        role="log"
+        aria-label="Transcript"
+      >
+        <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+          {transcript.items.map((item) => (
+            <TranscriptEntry key={item.key} item={item} />
+          ))}
+          <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
+        </StickToBottom.Content>
+        <ScrollToBottom />
+      </StickToBottom>
+      <ChatFooter>
         {notices.map((notice) => (
           <Notice key={notice.id} notice={notice} />
         ))}
@@ -81,29 +133,55 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           onStop={() => {
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}
-          status={<StatusBar conversation={conversation} agent={agent} usage={transcript.usage} />}
+          status={
+            <StatusBar
+              agent={agent}
+              usage={transcript.usage}
+              onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
+            />
+          }
         />
-      </div>
+      </ChatFooter>
+    </ChatFrame>
+  );
+}
+
+/** A conversation's page: the header with its directory and title, then the content. */
+function ChatFrame({
+  cwd,
+  title,
+  children,
+}: {
+  cwd: string | undefined;
+  title: string | undefined;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" aria-label="Conversation">
+      <header className="flex min-w-0 items-center gap-2 border-b px-3 py-2">
+        {/* On a narrow screen the sidebar is a drawer, out of sight, so the header opens it. */}
+        <SidebarTrigger className="md:hidden" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-mono text-xs text-muted-foreground">{cwd}</p>
+          <h1 className="truncate text-sm font-medium">{title}</h1>
+        </div>
+      </header>
+      {children}
     </section>
   );
 }
 
-/** The conversation's directory, and its title under it. */
-function ChatHeader({ conversationId }: { conversationId: number }) {
-  const { conversations } = useConnected();
-  const summary = useReplicatedState(conversations.state)?.conversations.find(
-    (candidate) => candidate.id === conversationId,
-  );
-  return (
-    <header className="flex min-w-0 items-center gap-2 border-b px-3 py-2">
-      {/* On a narrow screen the sidebar is a drawer, out of sight, so the header opens it. */}
-      <SidebarTrigger className="md:hidden" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-mono text-xs text-muted-foreground">{summary?.cwd}</p>
-        <h1 className="truncate text-sm font-medium">{summary?.title ?? "New conversation"}</h1>
-      </div>
-    </header>
-  );
+/** Under the transcript: notices and the message box. */
+function ChatFooter({ children }: { children: ReactNode }) {
+  return <div className="mx-auto grid w-full max-w-3xl gap-3 px-4 pt-2 pb-4">{children}</div>;
+}
+
+function sameModel(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
+  return a !== undefined && b !== undefined && a.provider === b.provider && a.modelId === b.modelId;
+}
+
+function pick<T extends object, K extends keyof T>(value: T, key: K): Partial<Pick<T, K>> {
+  return value[key] === undefined ? {} : ({ [key]: value[key] } as Partial<Pick<T, K>>);
 }
 
 function Notice({ notice }: { notice: ConversationNotice }) {

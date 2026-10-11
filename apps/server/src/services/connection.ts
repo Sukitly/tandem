@@ -1,16 +1,24 @@
 import { RemoteServiceProvider } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId, Harness } from "@earendil-works/pi-durable";
-import { Conversation, Conversations, Models } from "@tandem/contracts";
+import { Conversation, Conversations, Models, type StartInput, Workspaces } from "@tandem/contracts";
 import type { ConnectionServices } from "../rpc-host.ts";
-import { createConversationService, type NoticeBoard } from "./conversation.ts";
+import {
+  createConversationService,
+  initialAgent,
+  type NoticeBoard,
+  parseSubmitInput,
+  submitMessage,
+} from "./conversation.ts";
 import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
+import type { WorkspaceCatalog } from "./workspaces.ts";
 
 export interface AppServices {
   readonly harness: Harness;
   readonly catalog: ConversationCatalog;
+  readonly workspaces: WorkspaceCatalog;
   readonly models: ModelCatalog;
   readonly notices: NoticeBoard;
 }
@@ -20,9 +28,20 @@ interface OpenConversation {
   close(): void;
 }
 
-/** The services of one client connection: the shared conversation list, and the conversations it opened. */
-export function createConnectionServices({ harness, catalog, models, notices }: AppServices): ConnectionServices {
-  const provider = new RemoteServiceProvider([Models, Conversations, { service: Conversation, mode: "keyed" }]);
+/** The services of one client connection: the shared lists, and the conversations it opened. */
+export function createConnectionServices({
+  harness,
+  catalog,
+  workspaces,
+  models,
+  notices,
+}: AppServices): ConnectionServices {
+  const provider = new RemoteServiceProvider([
+    Models,
+    Workspaces,
+    Conversations,
+    { service: Conversation, mode: "keyed" },
+  ]);
   const opened = new Map<number, Promise<OpenConversation>>();
   let disposed = false;
 
@@ -41,7 +60,7 @@ export function createConnectionServices({ harness, catalog, models, notices }: 
           view,
           notices,
           models,
-          onSubmitted: (text, context) => catalog.noteMessage(id, text, context),
+          onSubmitted: (_text, context) => catalog.noteMessage(id, context),
         }),
       );
       return {
@@ -83,12 +102,33 @@ export function createConnectionServices({ harness, catalog, models, notices }: 
     },
   });
 
+  provider.provide(Workspaces, {
+    state: workspaces.state,
+    async add(input, context) {
+      const { path } = (input ?? {}) as { path?: unknown };
+      if (typeof path !== "string") throw invalidInput("path must be a string");
+      return workspaces.add(path, context);
+    },
+    async remove(id, context) {
+      parseId(id, "Project");
+      await workspaces.remove(id, context);
+    },
+  });
+
   provider.provide(Conversations, {
     state: catalog.state,
-    async create(input, context) {
-      const { cwd } = (input ?? {}) as { cwd?: unknown };
-      if (typeof cwd !== "string") throw invalidInput("cwd must be a string");
-      return (await catalog.create(cwd, context)).id;
+    async start(input, context) {
+      const { workspaceId, model, thinkingLevel } = (input ?? {}) as { [K in keyof StartInput]?: unknown };
+      parseId(workspaceId, "Project");
+      const { text } = parseSubmitInput({ ...(input ?? {}), whenBusy: "followUp" });
+      const conversation = await catalog.create(
+        workspaceId,
+        text,
+        initialAgent(models, { model, thinkingLevel }),
+        context,
+      );
+      await submitMessage(conversation, notices, { text, whenBusy: "followUp" }, context);
+      return conversation.id as number;
     },
     async open(id) {
       parseId(id);
@@ -126,7 +166,6 @@ export function createConnectionServices({ harness, catalog, models, notices }: 
   };
 }
 
-function parseId(id: unknown): asserts id is number {
-  if (!Number.isSafeInteger(id) || (id as number) < 0)
-    throw invalidInput("Conversation ID must be a non-negative integer");
+function parseId(id: unknown, what = "Conversation"): asserts id is number {
+  if (!Number.isSafeInteger(id) || (id as number) < 0) throw invalidInput(`${what} ID must be a non-negative integer`);
 }

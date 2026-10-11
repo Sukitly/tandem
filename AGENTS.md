@@ -6,7 +6,7 @@ Guidance for coding agents working in this repository. Humans should start with 
 
 Tandem is a local-first agent product built on [pi-durable](https://github.com/earendil-works/pi/tree/main/packages/durable). The first use case is interactive coding in the browser: the user works with an agent on Git repositories on their own machine, and conversations survive page reloads, disconnects, and backend restarts.
 
-The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The project is early: the server serves conversations over WebSocket with real model providers, and the web app is a minimal chat on them.
+The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The project is early: the server serves projects and their conversations over WebSocket with real model providers, and the web app lists them and chats in them.
 
 ## Repository layout
 
@@ -45,7 +45,7 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 
 | File | Content |
 |---|---|
-| `app.sqlite` | The Harness database: every conversation of every workspace |
+| `app.sqlite` | The Harness database: every conversation of every workspace, and the workspace list |
 | `server.json` | Server identity and session token, mode `0600`. Kept across restarts so that open pages reconnect by themselves |
 | `server.lock` | Held while a server runs: pi-durable allows one process per database |
 | `auth.json` | Model credentials (OAuth tokens, API keys), mode `0600`. Never sent to clients. Tandem does not share pi's `~/.pi/agent/auth.json`: OAuth refresh tokens rotate, so sharing one would sign the other program out |
@@ -84,6 +84,9 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 - Reject bad client input with `invalidInput()` (`apps/server/src/services/errors.ts`), which throws a Chord `RemoteServiceError`. pi-server forwards only service and server errors; any other error reaches the client as "Internal server error" and goes to the server's `onError`.
 - Methods receive untrusted JSON. Validate every argument at runtime; the TypeScript types are not checked on the wire.
 - Resources that outlive a call, such as view states and spawned instances, are created with `BACKGROUND_CONTEXT`, not with the call's context.
+- Workspaces are called projects in the UI. The list is a Session document (`tandem.workspaces`, `apps/server/src/services/workspaces.ts`); each conversation records its workspace in `tandem.conversation` and works in the workspace's directory. Removing a workspace only marks it removed, so adding the directory again brings back its conversations.
+- A conversation exists from its first message: `Conversations.start` creates it and submits that message in one call, with the model and thinking level chosen beforehand. Until then, a new conversation lives only in the web app (`NewChat`). Conversations from before this that never got a message have no title and stay out of the list.
+- The conversation list carries what the sidebar needs without opening a conversation: the last activity, and whether the agent is running, which comes from the Harness's task graph.
 - Remote service handles accept any member name, including `then`. Never resolve a promise with a handle or `await` one: that calls `then` as a remote method. Wrap handles in an object instead.
 
 ## Language

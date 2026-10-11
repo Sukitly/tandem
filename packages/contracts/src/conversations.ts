@@ -8,16 +8,22 @@ export type { ConversationView };
 /** A conversation as listed in the sidebar. */
 export interface ConversationSummary {
   id: number;
-  /** Absolute path of the directory the agent works in. */
+  /** The project it belongs to. */
+  workspaceId: number;
+  /** Absolute path of the directory the agent works in: the project's. */
   cwd: string;
   /** Milliseconds since the Unix epoch. */
   createdAt: number;
-  /** From the first message; absent until one is sent. */
-  title?: string;
+  /** When the last message was sent. */
+  updatedAt: number;
+  /** From the first message. */
+  title: string;
+  /** The agent is working. */
+  running: boolean;
 }
 
 export interface ConversationsState {
-  /** Newest first. */
+  /** The conversations of the listed projects, most recently active first. */
   conversations: ConversationSummary[];
 }
 
@@ -28,8 +34,11 @@ export interface ConversationsState {
  */
 export interface Conversations {
   readonly state: ReplicatedState<ConversationsState>;
-  /** Create a conversation working in `cwd`, an absolute path to a directory. Returns its ID. */
-  create(input: { cwd: string }, context: Context): Promise<number>;
+  /**
+   * Start a conversation in a project with its first message, and the model and thinking level chosen before it was
+   * sent (the default model otherwise). A conversation exists only from its first message. Returns its ID.
+   */
+  start(input: StartInput, context: Context): Promise<number>;
   /** Provide the conversation as a `Conversation` instance on this connection. Opening it again does nothing. */
   open(id: number, context: Context): Promise<void>;
   /** Withdraw the conversation's `Conversation` instance from this connection. */
@@ -37,6 +46,13 @@ export interface Conversations {
 }
 
 export const Conversations = defineService<Conversations>("tandem.conversations");
+
+export interface StartInput {
+  workspaceId: number;
+  text: string;
+  model?: ModelRef;
+  thinkingLevel?: string;
+}
 
 export interface SubmitInput {
   text: string;

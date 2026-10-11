@@ -1,33 +1,46 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { ConversationSummary } from "@tandem/contracts";
+import type { ConversationSummary, WorkspaceSummary } from "@tandem/contracts";
 import {
   BikeIcon,
-  ChevronRightIcon,
+  EllipsisIcon,
   FolderIcon,
+  FolderMinusIcon,
+  FolderOpenIcon,
   KeyRoundIcon,
   MonitorIcon,
   MoonIcon,
   PanelLeftIcon,
+  PlusIcon,
   SquarePenIcon,
   SunIcon,
 } from "lucide-react";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { FieldError } from "@/components/ui/field";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -40,56 +53,80 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Spinner } from "@/components/ui/spinner";
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { type ThemeChoice, useTheme } from "@/theme.tsx";
-
-const LAST_CWD_KEY = "tandem.lastCwd";
+import { useWorkbench } from "./workbench.tsx";
 
 /**
- * The app's navigation: conversations grouped by their directory, which stands in for workspaces until those exist.
- * A conversation's link sets the URL hash, which is how the open conversation is chosen.
+ * The app's navigation, after the Codex app: projects with their conversations, then every conversation by recent
+ * activity. A conversation's link sets the URL hash, which is how the open conversation is chosen.
  */
-export function AppSidebar({ selected, onSelect }: { selected: number | null; onSelect: (id: number) => void }) {
-  const { conversations } = useConnected();
+export function AppSidebar() {
+  const { workspaces, conversations } = useConnected();
+  const projects = useReplicatedState(workspaces.state)?.workspaces ?? [];
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
+  const { selected, draft, addProject } = useWorkbench();
   const providers = useProvidersDialog();
+  const names = new Map(projects.map((project) => [project.id, project.name]));
   return (
-    // Collapsed, the sidebar keeps a column of icons; the directory tree hides.
+    // Collapsed, the sidebar keeps a column of icons; the lists hide.
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarBrand />
-        <NewConversation onCreated={onSelect} currentCwd={list.find((summary) => summary.id === selected)?.cwd} />
+        <NewConversation
+          projects={projects}
+          current={draft ?? list.find((summary) => summary.id === selected)?.workspaceId}
+        />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>Workspaces</SidebarGroupLabel>
+          <SidebarGroupLabel>Projects</SidebarGroupLabel>
+          <SidebarGroupAction title="Add project" aria-label="Add project" onClick={addProject}>
+            <PlusIcon />
+          </SidebarGroupAction>
           <SidebarGroupContent>
             <SidebarMenu>
-              {byDirectory(list).map(([cwd, group]) => (
-                <Collapsible key={cwd} defaultOpen className="group/directory" render={<SidebarMenuItem />}>
-                  <CollapsibleTrigger render={<SidebarMenuButton title={cwd} />}>
-                    <FolderIcon />
-                    <span className="truncate font-mono text-xs">{shortPath(cwd)}</span>
-                    <ChevronRightIcon className="ml-auto transition-transform group-data-[open]/directory:rotate-90" />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {group.map((summary) => (
-                        <SidebarMenuSubItem key={summary.id}>
-                          <SidebarMenuSubButton href={`#${summary.id}`} isActive={summary.id === selected}>
-                            <span className="truncate">{summary.title ?? "New conversation"}</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </Collapsible>
+              {projects.map((project) => (
+                <ProjectItem
+                  key={project.id}
+                  project={project}
+                  conversations={list.filter((summary) => summary.workspaceId === project.id)}
+                  selected={selected}
+                />
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {list.length > 0 && (
+          <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+            <SidebarGroupLabel>Recents</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {list.map((summary) => (
+                  <SidebarMenuItem key={summary.id}>
+                    <SidebarMenuButton
+                      render={<a href={`#${summary.id}`} />}
+                      isActive={summary.id === selected}
+                      title={summary.cwd}
+                    >
+                      <span className="truncate">{summary.title}</span>
+                      {summary.running ? (
+                        <Spinner aria-label="Running" className="ml-auto" />
+                      ) : (
+                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                          {names.get(summary.workspaceId)}
+                        </span>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
@@ -105,6 +142,94 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+/** A project that opens to show its conversations. On hover: start a conversation in it, or remove it. */
+function ProjectItem({
+  project,
+  conversations,
+  selected,
+}: {
+  project: WorkspaceSummary;
+  conversations: ConversationSummary[];
+  selected: number | null;
+}) {
+  const { newConversation, removeProject } = useWorkbench();
+  const [open, setOpen] = useState(true);
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
+      {/* Room for both actions, which sit side by side at the row's end. */}
+      <CollapsibleTrigger
+        render={
+          <SidebarMenuButton title={project.path} className="group-has-data-[sidebar=menu-action]/menu-item:pr-14" />
+        }
+      >
+        {open ? <FolderOpenIcon /> : <FolderIcon />}
+        <span>{project.name}</span>
+      </CollapsibleTrigger>
+      <SidebarMenuAction
+        showOnHover
+        className="right-7"
+        title={`New conversation in ${project.name}`}
+        aria-label={`New conversation in ${project.name}`}
+        onClick={() => newConversation(project.id)}
+      >
+        <PlusIcon />
+      </SidebarMenuAction>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<SidebarMenuAction showOnHover title="More" aria-label={`More for ${project.name}`} />}
+        >
+          <EllipsisIcon />
+        </DropdownMenuTrigger>
+        {/* The content takes the trigger's width by default; the trigger is an icon, as in shadcn's sidebar blocks. */}
+        <DropdownMenuContent side="right" align="start" className="w-48">
+          <DropdownMenuItem variant="destructive" onClick={() => setConfirming(true)}>
+            <FolderMinusIcon />
+            Remove project
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {project.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The project and its conversations leave the sidebar. Nothing is deleted: add the same directory again to
+              bring them back.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setConfirming(false);
+                removeProject(project.id);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {conversations.length > 0 && (
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {conversations.map((summary) => (
+              <SidebarMenuSubItem key={summary.id}>
+                <SidebarMenuSubButton href={`#${summary.id}`} isActive={summary.id === selected}>
+                  <span className="truncate">{summary.title}</span>
+                  {summary.running && <Spinner aria-label="Running" className="ml-auto" />}
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            ))}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      )}
+    </Collapsible>
   );
 }
 
@@ -167,62 +292,26 @@ function ThemeMenu() {
   );
 }
 
-/** Start a conversation in the open conversation's directory, or else in the last one a conversation started in. */
-function NewConversation({
-  onCreated,
-  currentCwd,
-}: {
-  onCreated: (id: number) => void;
-  currentCwd: string | undefined;
-}) {
-  const { conversations } = useConnected();
-  const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const cwd = currentCwd ?? localStorage.getItem(LAST_CWD_KEY) ?? undefined;
-
-  const create = async (): Promise<void> => {
-    if (cwd === undefined) return;
-    setCreating(true);
-    setError(null);
-    try {
-      const id = await conversations.create({ cwd }, BACKGROUND_CONTEXT);
-      localStorage.setItem(LAST_CWD_KEY, cwd);
-      onCreated(id);
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
-    } finally {
-      setCreating(false);
-    }
-  };
-
+/**
+ * Open a new conversation in the open conversation's project, else in the project one was last opened in, else in the
+ * first project.
+ */
+function NewConversation({ projects, current }: { projects: WorkspaceSummary[]; current: number | undefined }) {
+  const { newConversation, lastWorkspaceId } = useWorkbench();
+  const listed = (id: number | undefined) => projects.find((project) => project.id === id)?.id;
+  const target = listed(current) ?? listed(lastWorkspaceId) ?? projects[0]?.id;
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
           tooltip="New conversation"
-          disabled={creating || cwd === undefined}
-          onClick={() => void create()}
+          disabled={target === undefined}
+          onClick={() => target !== undefined && newConversation(target)}
         >
           <SquarePenIcon />
           <span>New conversation</span>
         </SidebarMenuButton>
-        {error !== null && <FieldError className="px-2 group-data-[collapsible=icon]:hidden">{error}</FieldError>}
       </SidebarMenuItem>
     </SidebarMenu>
   );
-}
-
-/** Conversations by directory, directories in the order of their newest conversation. */
-function byDirectory(list: readonly ConversationSummary[]): [string, ConversationSummary[]][] {
-  const groups = new Map<string, ConversationSummary[]>();
-  for (const summary of [...list].sort((a, b) => b.createdAt - a.createdAt)) {
-    groups.set(summary.cwd, [...(groups.get(summary.cwd) ?? []), summary]);
-  }
-  return [...groups];
-}
-
-/** The last two segments of a path: enough to tell repositories apart in a narrow sidebar. */
-function shortPath(path: string): string {
-  const segments = path.split("/").filter((segment) => segment !== "");
-  return segments.length <= 2 ? path : `…/${segments.slice(-2).join("/")}`;
 }

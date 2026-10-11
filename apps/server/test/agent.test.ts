@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
 import { connect, OpenConversations, type TandemConnection } from "@tandem/client";
-import { Conversation, Conversations, type ConversationView } from "@tandem/contracts";
+import { Conversation, Conversations, type ConversationView, Workspaces } from "@tandem/contracts";
 import { afterEach, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { createFauxProvider, demoResponse } from "../src/models.ts";
@@ -44,31 +44,32 @@ async function start(respond: (messages: readonly Message[]) => ReturnType<typeo
   const connection = await connect({
     baseUrl: server.url,
     token: server.token,
-    services: [Conversations, Conversation],
+    services: [Workspaces, Conversations, Conversation],
     reconnect: false,
   });
   connections.push(connection);
   const conversations = connection.services.use(Conversations);
   await connection.services.ready(context);
   const open = new OpenConversations(connection);
-  const create = async (cwd: string) => {
-    const id = await conversations.create({ cwd }, context);
+  /** Start a conversation in `cwd` with its first message. */
+  const start = async (cwd: string, text: string) => {
+    const workspaceId = await connection.services.use(Workspaces).add({ path: cwd }, context);
+    const id = await conversations.start({ workspaceId, text }, context);
     open.hold(id);
     await waitFor(() => open.get(id)?.view.value !== undefined);
     return { conversation: open.get(id) as Conversation, view: () => open.get(id)?.view.value as ConversationView };
   };
-  return { create };
+  return { start };
 }
 
 test("the agent gets Tandem's prompt with the project's instructions, and its tool calls run in the cwd", async () => {
   const requests: (readonly Message[])[] = [];
-  const { create } = await start((messages) => {
+  const app = await start((messages) => {
     requests.push(messages);
     return demoResponse(messages);
   });
   const cwd = await repository();
-  const { conversation, view } = await create(cwd);
-  await conversation.submit({ text: "hello", whenBusy: "followUp" }, context);
+  const { view } = await app.start(cwd, "hello");
   await waitFor(() => view().entries.filter((entry) => entry.kind === "pi.assistant").length === 2);
 
   const prompt = JSON.stringify(requests[0]?.filter((message) => message.role === "system"));

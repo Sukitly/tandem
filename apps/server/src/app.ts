@@ -9,6 +9,7 @@ import { createConnectionServices } from "./services/connection.ts";
 import { NoticeBoard } from "./services/conversation.ts";
 import { ConversationCatalog } from "./services/conversations.ts";
 import { ModelCatalog } from "./services/models.ts";
+import { WorkspaceCatalog } from "./services/workspaces.ts";
 import { Settings } from "./settings.ts";
 import { openStateDir } from "./state-dir.ts";
 
@@ -41,13 +42,15 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     );
     cleanups.push(() => opened.close(context));
     const notices = new NoticeBoard();
-    const catalog = await ConversationCatalog.load(opened.harness, () => modelCatalog.defaultModel(), context);
+    const workspaces = await WorkspaceCatalog.load(opened.harness, context);
+    const catalog = await ConversationCatalog.load(opened.harness, workspaces, context);
+    cleanups.push(async () => catalog.dispose());
 
     const server = await startServer({
       ...pick(options, ["hostname", "port", "allowedOrigins"]),
       ...stateDir.identity,
       createConnectionServices: () =>
-        createConnectionServices({ harness: opened.harness, catalog, models: modelCatalog, notices }),
+        createConnectionServices({ harness: opened.harness, catalog, workspaces, models: modelCatalog, notices }),
       onError,
     });
     cleanups.push(() => server.stop());

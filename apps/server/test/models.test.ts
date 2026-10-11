@@ -6,7 +6,7 @@ import type { Provider } from "@earendil-works/pi-ai";
 import { createProvider } from "@earendil-works/pi-ai/models";
 import { createFauxCore } from "@earendil-works/pi-ai/providers/faux";
 import { connect, OpenConversations, type TandemConnection } from "@tandem/client";
-import { Conversation, Conversations, Models } from "@tandem/contracts";
+import { Conversation, Conversations, Models, type StartInput, Workspaces } from "@tandem/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { FileCredentialStore } from "../src/credentials.ts";
@@ -52,14 +52,20 @@ async function start(providers: Provider[]) {
   const connection = await connect({
     baseUrl: server.url,
     token: server.token,
-    services: [Models, Conversations, Conversation],
+    services: [Models, Workspaces, Conversations, Conversation],
     reconnect: false,
   });
   connections.push(connection);
   const models = connection.services.use(Models);
   const conversations = connection.services.use(Conversations);
   await connection.services.ready(context);
-  return { stateDir, connection, models, conversations };
+  /** Start a conversation in a project of the system's temporary directory. */
+  const startIn = async (input: Omit<StartInput, "workspaceId">) =>
+    conversations.start(
+      { workspaceId: await connection.services.use(Workspaces).add({ path: tmpdir() }, context), ...input },
+      context,
+    );
+  return { stateDir, connection, models, conversations, startIn };
 }
 
 async function waitFor(check: () => boolean, timeoutMs = 3_000): Promise<void> {
@@ -132,8 +138,8 @@ describe("models", () => {
     expect(models.state.value?.providers.find((provider) => provider.id === "test")?.stored).toBe(false);
   });
 
-  test("new conversations start with the default model, and a conversation can switch", async () => {
-    const { models, conversations, connection } = await start([createFauxProvider(), loginProvider("other")]);
+  test("new conversations start with the default model or the chosen one, and a conversation can switch", async () => {
+    const { models, startIn, connection } = await start([createFauxProvider(), loginProvider("other")]);
     await models.login({ providerId: "other", type: "oauth" }, context);
     await waitFor(() => models.state.value?.login?.prompt !== undefined);
     await models.answerLogin({ promptId: models.state.value?.login?.prompt?.id ?? -1, value: "code" }, context);
@@ -142,11 +148,20 @@ describe("models", () => {
     await models.setDefaultModel({ provider: "other", modelId: "other-model" }, context);
     await waitFor(() => models.state.value?.defaultModel?.provider === "other");
     const open = new OpenConversations(connection);
-    const id = await conversations.create({ cwd: tmpdir() }, context);
+    const id = await startIn({ text: "hello" });
     open.hold(id);
     await waitFor(() => open.get(id)?.view.value !== undefined);
     const agent = () => open.get(id)?.view.value?.docs["pi.agent"] as { model?: { provider: string } } | undefined;
     expect(agent()?.model?.provider).toBe("other");
+
+    const chosen = await startIn({
+      text: "hello",
+      model: { provider: "faux", modelId: "faux-1" },
+      thinkingLevel: "high",
+    });
+    open.hold(chosen);
+    await waitFor(() => open.get(chosen)?.view.value !== undefined);
+    expect(open.get(chosen)?.view.value?.docs["pi.agent"]).toMatchObject({ model: { provider: "faux" } });
 
     await open.get(id)?.configure({ model: { provider: "faux", modelId: "faux-1" } }, context);
     await waitFor(() => agent()?.model?.provider === "faux");
@@ -156,12 +171,11 @@ describe("models", () => {
   });
 
   test("a message without a model gets a notice instead of an answer", async () => {
-    const { conversations, connection } = await start([loginProvider("test")]);
+    const { startIn, connection } = await start([loginProvider("test")]);
     const open = new OpenConversations(connection);
-    const id = await conversations.create({ cwd: tmpdir() }, context);
+    const id = await startIn({ text: "hello" });
     open.hold(id);
     await waitFor(() => open.get(id)?.view.value !== undefined);
-    await open.get(id)?.submit({ text: "hello", whenBusy: "followUp" }, context);
     await waitFor(() => (open.get(id)?.notices.value?.notices.length ?? 0) > 0);
     expect(open.get(id)?.notices.value?.notices[0]?.message).toContain("No model is selected");
   });

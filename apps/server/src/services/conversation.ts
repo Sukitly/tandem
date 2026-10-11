@@ -68,16 +68,7 @@ export function createConversationService({
     notices: notices.get(id),
     async submit(input, context) {
       const { text, whenBusy } = parseSubmitInput(input);
-      notices.clear(id);
-      const submission = await conversation.submit({ type: "input", content: text, whenBusy }, context);
-      // The answer arrives in the view; only a missing answer needs telling.
-      void submission.wait(BACKGROUND_CONTEXT).then(
-        (settled) => {
-          const message = unansweredMessage(settled);
-          if (message !== undefined) notices.add(id, message);
-        },
-        () => {},
-      );
+      await submitMessage(conversation, notices, { text, whenBusy }, context);
       await onSubmitted(text, context);
     },
     abort: (context) => conversation.abort(context),
@@ -110,6 +101,59 @@ export function createConversationService({
   };
 }
 
+/** Submit a message. The answer arrives in the view; a message that gets none leaves a notice saying why. */
+export async function submitMessage(
+  conversation: HarnessConversation,
+  notices: NoticeBoard,
+  { text, whenBusy }: SubmitInput,
+  context: Context,
+): Promise<void> {
+  const id = conversation.id as number;
+  notices.clear(id);
+  const submission = await conversation.submit({ type: "input", content: text, whenBusy }, context);
+  void submission.wait(BACKGROUND_CONTEXT).then(
+    (settled) => {
+      const message = unansweredMessage(settled);
+      if (message !== undefined) notices.add(id, message);
+    },
+    () => {},
+  );
+}
+
+/**
+ * The agent settings a new conversation starts with: the chosen model, or else the default one, and the chosen
+ * thinking level lowered to one the model supports.
+ */
+export function initialAgent(
+  models: ModelCatalog,
+  input: { model?: unknown; thinkingLevel?: unknown },
+): { model?: ModelRef; thinkingLevel?: ModelThinkingLevel } {
+  const { model: ref, thinkingLevel } = input;
+  let chosen: ModelRef | undefined;
+  if (ref !== undefined) {
+    const { provider, modelId } = (ref ?? {}) as Partial<ModelRef>;
+    if (typeof provider !== "string" || typeof modelId !== "string") throw invalidInput("Invalid model");
+    if (models.available({ provider, modelId }) === undefined)
+      throw invalidInput(`Model is not available: ${provider}/${modelId}`);
+    chosen = { provider, modelId };
+  }
+  const model = chosen ?? models.defaultModel();
+  if (thinkingLevel !== undefined && typeof thinkingLevel !== "string")
+    throw invalidInput("thinkingLevel must be a string");
+  const summary = model === undefined ? undefined : models.available(model);
+  return {
+    ...(model === undefined ? {} : { model }),
+    ...(thinkingLevel === undefined
+      ? {}
+      : {
+          thinkingLevel:
+            summary === undefined
+              ? (thinkingLevel as ModelThinkingLevel)
+              : clampThinkingLevel(summary, thinkingLevel as ModelThinkingLevel),
+        }),
+  };
+}
+
 function unansweredMessage(settled: SettledSubmissionRecord): string | undefined {
   if (settled.status !== "unanswered") return undefined;
   const { reason, detail } = settled as SettledSubmissionRecord & { reason?: string; detail?: unknown };
@@ -119,7 +163,7 @@ function unansweredMessage(settled: SettledSubmissionRecord): string | undefined
   return `The message got no answer (${reason}).`;
 }
 
-function parseSubmitInput(input: unknown): SubmitInput {
+export function parseSubmitInput(input: unknown): SubmitInput {
   const { text, whenBusy } = (input ?? {}) as Partial<SubmitInput>;
   if (typeof text !== "string" || text.trim() === "") throw invalidInput("text must be a non-empty string");
   if (whenBusy !== "steer" && whenBusy !== "followUp") throw invalidInput('whenBusy must be "steer" or "followUp"');
