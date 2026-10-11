@@ -1,60 +1,60 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { ConversationSummary } from "@tandem/contracts";
 import { PlusIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { Field, FieldError } from "@/components/ui/field";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInput,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 
 const LAST_CWD_KEY = "tandem.lastCwd";
 
-/** The conversation list, and a form to start one in a directory. Workspaces replace the directory field later. */
-export function Sidebar({ selected, onSelect }: { selected: number | null; onSelect: (id: number) => void }) {
+/** The conversation list, and a form to start one in a directory. Projects replace the directory field later. */
+export function AppSidebar({ selected, onSelect }: { selected: number | null; onSelect: (id: number) => void }) {
   const { conversations } = useConnected();
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
-      <div className="px-4 pt-4 pb-2 font-medium text-sm">Tandem</div>
-      <NewConversation onCreated={onSelect} />
-      <nav aria-label="Conversations" className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        <ul className="grid gap-0.5">
-          {list.map((summary) => (
-            <li key={summary.id}>
-              <ConversationLink summary={summary} active={summary.id === selected} onSelect={onSelect} />
-            </li>
-          ))}
-        </ul>
-      </nav>
-    </aside>
-  );
-}
-
-function ConversationLink({
-  summary,
-  active,
-  onSelect,
-}: {
-  summary: ConversationSummary;
-  active: boolean;
-  onSelect: (id: number) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-current={active ? "page" : undefined}
-      onClick={() => onSelect(summary.id)}
-      className={cn(
-        "grid w-full gap-0.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-sidebar-accent",
-        active && "bg-sidebar-accent text-sidebar-accent-foreground",
-      )}
-    >
-      <span className="truncate">{summary.title ?? "New conversation"}</span>
-      <span className="truncate text-muted-foreground text-xs" title={summary.cwd}>
-        {summary.cwd}
-      </span>
-    </button>
+    <Sidebar>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg">Tandem</SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <NewConversation onCreated={onSelect} />
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Conversations</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {list.map((summary) => (
+                <SidebarMenuItem key={summary.id}>
+                  <SidebarMenuButton
+                    isActive={summary.id === selected}
+                    onClick={() => onSelect(summary.id)}
+                    tooltip={summary.cwd}
+                  >
+                    <span>{summary.title ?? "New conversation"}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
   );
 }
 
@@ -80,23 +80,22 @@ function NewConversation({ onCreated }: { onCreated: (id: number) => void }) {
   };
 
   return (
-    <form onSubmit={create} className="grid gap-2 px-4 pb-3">
-      <Input
-        value={cwd}
-        onChange={(event) => setCwd(event.target.value)}
-        placeholder="/absolute/path/to/repository"
-        aria-label="Directory"
-        spellCheck={false}
-      />
-      <Button type="submit" size="sm" disabled={creating || cwd.trim() === ""}>
-        <PlusIcon />
-        New conversation
-      </Button>
-      {error !== null && (
-        <p role="alert" className="text-destructive text-xs">
-          {error}
-        </p>
-      )}
+    <form onSubmit={create}>
+      <Field data-invalid={error !== null} className="gap-2">
+        <SidebarInput
+          value={cwd}
+          onChange={(event) => setCwd(event.target.value)}
+          placeholder="/absolute/path/to/repository"
+          aria-label="Directory"
+          aria-invalid={error !== null}
+          spellCheck={false}
+        />
+        <Button type="submit" size="sm" disabled={creating || cwd.trim() === ""}>
+          <PlusIcon />
+          New conversation
+        </Button>
+        {error !== null && <FieldError>{error}</FieldError>}
+      </Field>
     </form>
   );
 }

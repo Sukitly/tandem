@@ -59,6 +59,8 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 
 ## Web app
 
+- **No hand-written UI.** Build every control, surface, list, status message, and empty state from shadcn/ui components (`src/components/ui/`) or AI Elements (`src/components/ai-elements/`). Plain HTML elements are only for layout (flex and grid containers) and forms. When no installed component fits, add one with the shadcn CLI instead of styling raw elements. Do not add custom CSS for components; use their props and variants, and `className` only for layout.
+- The style is square: the Lyra preset writes `rounded-none` into each shadcn component, and `--radius` is `0` so that AI Elements and Streamdown follow. Do not add rounded corners. The one style `className` allowed is `rounded-none` on a component that hard-codes a full radius, such as AI Elements' `ConversationScrollButton`.
 - UI components come from shadcn/ui (`apps/web/components.json`) and AI Elements (registry `@ai-elements`). Add them with `bunx --bun shadcn@latest add <name>` or `bunx --bun shadcn@latest add @ai-elements/<name>` from `apps/web`.
 - `src/components/ui/` and `src/components/ai-elements/` are generated. Compose and style them from the outside rather than editing them, so they can be updated. `src/components/ui/` is excluded from linting.
 - `src/rpc/` connects to the server and exposes replicated state to React (`useReplicatedState`, `useConversation`). Components read state there and never keep their own copy of server state.

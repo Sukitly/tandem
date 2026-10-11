@@ -1,7 +1,17 @@
 import type { ChatStatus } from "ai";
 import { ArrowUpIcon } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
-import { PromptInput, PromptInputSubmit, PromptInputTextarea } from "@/components/ai-elements/prompt-input";
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+} from "@/components/ai-elements/prompt-input";
+import { Badge } from "@/components/ui/badge";
+import { FieldError } from "@/components/ui/field";
+import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import type { QueuedMessage } from "./transcript.ts";
 
 export interface ChatComposerProps {
@@ -49,41 +59,37 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus }: ChatCo
   return (
     <div className="grid gap-2">
       {queued.length > 0 && (
-        <ul className="grid gap-1 px-2" aria-label="Queued messages">
+        <ItemGroup aria-label="Queued messages" className="gap-1">
           {queued.map((message) => (
-            <li key={message.id} className="truncate text-muted-foreground text-xs">
-              <span className="font-medium">{message.mode === "steer" ? "Steering" : "Follow-up"}:</span> {message.text}
-            </li>
+            <Item key={message.id} size="xs" variant="muted">
+              <Badge variant="outline">{message.mode === "steer" ? "Steering" : "Follow-up"}</Badge>
+              <ItemContent>
+                <ItemDescription className="truncate">{message.text}</ItemDescription>
+              </ItemContent>
+            </Item>
           ))}
-        </ul>
+        </ItemGroup>
       )}
-      <PromptInput className="chat-composer" onSubmit={() => send("steer")}>
-        <div className="flex w-full items-end gap-1">
+      <PromptInput onSubmit={() => send("steer")}>
+        <PromptInputBody>
           <PromptInputTextarea
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={onKeyDown}
-            className="chat-composer-textarea max-h-48 min-h-[42px] min-w-0 overflow-y-auto px-3 py-[9px] leading-6"
+            className="max-h-48"
             aria-label="Message"
             placeholder={busy ? "Steer the agent, or Alt+Enter to queue a follow-up" : "Ask the agent"}
-            rows={1}
             autoFocus={autoFocus}
           />
-          <PromptInputSubmit
-            className="size-10 shrink-0 rounded-full"
-            status={status}
-            onStop={onStop}
-            disabled={!busy && value.trim() === ""}
-          >
-            {status === "ready" ? <ArrowUpIcon className="size-5" /> : undefined}
+        </PromptInputBody>
+        <PromptInputFooter>
+          <PromptInputTools />
+          <PromptInputSubmit status={status} onStop={onStop} disabled={!busy && value.trim() === ""}>
+            {status === "ready" ? <ArrowUpIcon /> : undefined}
           </PromptInputSubmit>
-        </div>
+        </PromptInputFooter>
       </PromptInput>
-      {error !== null && (
-        <p role="alert" className="px-2 text-destructive text-xs">
-          {error}
-        </p>
-      )}
+      {error !== null && <FieldError>{error}</FieldError>}
     </div>
   );
 }

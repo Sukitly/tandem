@@ -1,7 +1,11 @@
+import { AlertCircleIcon, KeyRoundIcon, MessageSquareIcon, WifiOffIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Sidebar } from "./app/sidebar.tsx";
+import { AppSidebar } from "./app/sidebar.tsx";
 import { ChatView } from "./chat/chat-view.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 
@@ -18,48 +22,78 @@ export function App() {
 function Workbench() {
   const [selected, select] = useSelectedConversation();
   return (
-    <div className="flex h-dvh overflow-hidden">
-      <Sidebar selected={selected} onSelect={select} />
-      <main className="relative flex min-w-0 flex-1 flex-col">
-        <ConnectionBanner />
+    <SidebarProvider>
+      <AppSidebar selected={selected} onSelect={select} />
+      <SidebarInset className="h-dvh min-w-0">
+        <header className="flex items-center gap-2 p-2 md:hidden">
+          <SidebarTrigger />
+        </header>
+        <ConnectionAlert />
         {selected === null ? (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
-            Start a conversation in a directory on the left.
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <MessageSquareIcon />
+              </EmptyMedia>
+              <EmptyTitle>No conversation open</EmptyTitle>
+              <EmptyDescription>Start a conversation in a directory from the sidebar.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <ChatView conversationId={selected} />
         )}
-      </main>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
 /** Shown while the connection is down; the page reconnects by itself. */
-function ConnectionBanner() {
+function ConnectionAlert() {
   const { status } = useConnected();
   if (status === undefined || status.status === "connected") return null;
   return (
-    <div role="status" className="border-b bg-muted px-4 py-2 text-muted-foreground text-xs">
-      {status.status === "connecting" ? "Reconnecting…" : "Disconnected from the server. Retrying…"}
+    <div className="p-2">
+      <Alert>
+        <WifiOffIcon />
+        <AlertTitle>{status.status === "connecting" ? "Reconnecting…" : "Disconnected from the server"}</AlertTitle>
+        <AlertDescription>The page reconnects by itself. Nothing is lost.</AlertDescription>
+      </Alert>
     </div>
   );
 }
 
 function ConnectionScreen({ state }: { state: { kind: "connecting" | "unauthorized" | "failed"; message?: string } }) {
   return (
-    <div className="flex h-dvh items-center justify-center p-6 text-center text-sm">
-      {state.kind === "connecting" && <Spinner aria-label="Connecting to the server" />}
-      {state.kind === "unauthorized" && (
-        <p className="max-w-md text-muted-foreground">
-          This page needs the server's token. Open the URL the Tandem server printed when it started.
-        </p>
-      )}
-      {state.kind === "failed" && (
-        <p role="alert" className="max-w-md text-destructive">
-          Cannot reach the Tandem server: {state.message}
-        </p>
-      )}
-    </div>
+    <Empty className="h-dvh">
+      <EmptyHeader>
+        {state.kind === "connecting" && (
+          <>
+            <EmptyMedia>
+              <Spinner />
+            </EmptyMedia>
+            <EmptyTitle>Connecting to the server</EmptyTitle>
+          </>
+        )}
+        {state.kind === "unauthorized" && (
+          <>
+            <EmptyMedia variant="icon">
+              <KeyRoundIcon />
+            </EmptyMedia>
+            <EmptyTitle>This page needs the server's token</EmptyTitle>
+            <EmptyDescription>Open the URL the Tandem server printed when it started.</EmptyDescription>
+          </>
+        )}
+        {state.kind === "failed" && (
+          <>
+            <EmptyMedia variant="icon">
+              <AlertCircleIcon />
+            </EmptyMedia>
+            <EmptyTitle>Cannot reach the Tandem server</EmptyTitle>
+            <EmptyDescription>{state.message}</EmptyDescription>
+          </>
+        )}
+      </EmptyHeader>
+    </Empty>
   );
 }
 

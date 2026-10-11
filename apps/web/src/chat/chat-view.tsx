@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation as ConversationService } from "@tandem/contracts";
-import { CheckIcon, CopyIcon } from "lucide-react";
+import { AlertCircleIcon, CheckIcon, CopyIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   Conversation,
@@ -16,6 +16,9 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { Shimmer } from "@/components/ai-elements/shimmer";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { useConversation } from "@/rpc/use-conversation.ts";
@@ -28,9 +31,14 @@ export function ChatView({ conversationId }: { conversationId: number }) {
   const conversation = useConversation(conversationId);
   if (conversation === undefined) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <Spinner aria-label="Opening the conversation" />
-      </div>
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia>
+            <Spinner />
+          </EmptyMedia>
+          <EmptyTitle>Opening the conversation</EmptyTitle>
+        </EmptyHeader>
+      </Empty>
     );
   }
   // Keyed, so a reopened instance starts from its own state.
@@ -60,28 +68,22 @@ function OpenChat({ conversation }: { conversation: ConversationService }) {
       {!empty && (
         <Conversation className="flex-1">
           <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-6">
-            {transcript.items.map((item, index) => (
-              <TranscriptMessage key={item.key} item={item} last={index === transcript.items.length - 1} />
+            {transcript.items.map((item) => (
+              <TranscriptMessage key={item.key} item={item} />
             ))}
           </ConversationContent>
-          <ConversationScrollButton aria-label="Scroll to the latest message" />
+          <ConversationScrollButton aria-label="Scroll to the latest message" className="rounded-none" />
         </Conversation>
       )}
       <div className={cn("mx-auto w-full max-w-3xl px-4", empty ? "my-auto py-6" : "pt-3 pb-6")}>
-        {empty && (
-          <ConversationEmptyState
-            className="mb-8 h-auto p-0 [&_h3]:font-normal [&_h3]:text-[28px] [&_h3]:leading-tight"
-            title="What are we working on?"
-            description=""
-          />
-        )}
+        {empty && <ConversationEmptyState className="mb-6 h-auto p-0" title="What are we working on?" description="" />}
         {composer}
       </div>
     </section>
   );
 }
 
-function TranscriptMessage({ item, last }: { item: TranscriptItem; last: boolean }) {
+function TranscriptMessage({ item }: { item: TranscriptItem }) {
   if (item.kind === "user") {
     return (
       <Message from="user">
@@ -107,14 +109,16 @@ function TranscriptMessage({ item, last }: { item: TranscriptItem; last: boolean
           <ChatMarkdown text={item.text} />
         </MessageContent>
       )}
-      {item.ending === "interrupted" && <p className="text-muted-foreground text-xs">Interrupted</p>}
+      {item.ending === "interrupted" && <Badge variant="outline">Interrupted</Badge>}
       {item.ending === "failed" && (
-        <p role="alert" className="text-destructive text-xs">
-          Failed{item.error === undefined ? "" : `: ${item.error}`}
-        </p>
+        <Alert variant="destructive">
+          <AlertCircleIcon />
+          <AlertTitle>The answer failed</AlertTitle>
+          {item.error !== undefined && <AlertDescription>{item.error}</AlertDescription>}
+        </Alert>
       )}
       {item.ending === "complete" && item.text !== "" && (
-        <MessageActions className={cn(!last && "opacity-0 transition-opacity group-hover:opacity-100")}>
+        <MessageActions>
           <CopyAction text={item.text} />
         </MessageActions>
       )}
@@ -122,16 +126,8 @@ function TranscriptMessage({ item, last }: { item: TranscriptItem; last: boolean
   );
 }
 
-/** Message text with a reading rhythm Streamdown's defaults do not give. */
 function ChatMarkdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
-  return (
-    <MessageResponse
-      isAnimating={streaming}
-      className="leading-7 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_li]:py-0.5 [&_ol]:list-outside [&_ol]:pl-6 [&_ul]:list-outside [&_ul]:pl-6"
-    >
-      {text}
-    </MessageResponse>
-  );
+  return <MessageResponse isAnimating={streaming}>{text}</MessageResponse>;
 }
 
 function CopyAction({ text }: { text: string }) {
@@ -146,7 +142,7 @@ function CopyAction({ text }: { text: string }) {
         });
       }}
     >
-      {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+      {copied ? <CheckIcon /> : <CopyIcon />}
     </MessageAction>
   );
 }
