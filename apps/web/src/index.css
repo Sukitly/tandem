@@ -81,7 +81,8 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  /* The Lyra style is square. Components outside src/components/ui (AI Elements, Streamdown) read this. */
+  --radius: 0;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -136,22 +137,4 @@
   html {
     @apply font-sans;
   }
-}
-
-/* The message box: rounder and lifted off the page, growing with its text. The textarea sits in a row with the send
-   button, so the input group's own height rule for a direct textarea child no longer applies. */
-.chat-composer [data-slot="input-group"] {
-  @apply h-auto min-h-14 rounded-[28px] bg-background p-1.5;
-}
-
-.chat-composer [data-slot="input-group"]:not(:has([aria-invalid="true"])) {
-  @apply border-border/60;
-  box-shadow:
-    0 2px 6px rgb(0 0 0 / 2%),
-    0 8px 32px rgb(0 0 0 / 4%);
-}
-
-/* 16px also keeps iOS Safari from zooming in on focus. */
-.chat-composer-textarea {
-  font-size: 16px;
 }
