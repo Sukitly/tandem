@@ -1,8 +1,16 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationSummary } from "@tandem/contracts";
-import { ChevronRightIcon, FolderIcon, KeyRoundIcon, MonitorIcon, MoonIcon, PlusIcon, SunIcon } from "lucide-react";
-import { type FormEvent, useState } from "react";
-import { Button } from "@/components/ui/button";
+import {
+  BikeIcon,
+  ChevronRightIcon,
+  FolderIcon,
+  KeyRoundIcon,
+  MonitorIcon,
+  MoonIcon,
+  SquarePenIcon,
+  SunIcon,
+} from "lucide-react";
+import { type FormEvent, useRef, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
@@ -29,6 +37,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
@@ -46,19 +55,21 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
   const providers = useProvidersDialog();
   return (
-    <Sidebar>
+    // Collapsed, the sidebar keeps a column of icons; the conversation list and the directory field hide.
+    <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="font-semibold">
-              Tandem
+            <SidebarMenuButton tooltip="Tandem" className="font-semibold">
+              <BikeIcon />
+              <span>Tandem</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
         <NewConversation onCreated={onSelect} />
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>Conversations</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -93,7 +104,7 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={() => providers.open()}>
+            <SidebarMenuButton tooltip="Model providers" onClick={() => providers.open()}>
               <KeyRoundIcon />
               <span>Model providers</span>
             </SidebarMenuButton>
@@ -119,7 +130,7 @@ function ThemeMenu() {
   const Icon = current?.icon ?? MonitorIcon;
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<SidebarMenuButton />}>
+      <DropdownMenuTrigger render={<SidebarMenuButton tooltip={`Theme: ${current?.label}`} />}>
         <Icon />
         <span>Theme: {current?.label}</span>
       </DropdownMenuTrigger>
@@ -140,14 +151,30 @@ function ThemeMenu() {
   );
 }
 
+/**
+ * Start a conversation in a directory. Collapsed, the button opens the sidebar instead, where the directory is
+ * entered.
+ */
 function NewConversation({ onCreated }: { onCreated: (id: number) => void }) {
   const { conversations } = useConnected();
+  const { state, setOpen } = useSidebar();
+  const field = useRef<HTMLInputElement>(null);
   const [cwd, setCwd] = useState(() => localStorage.getItem(LAST_CWD_KEY) ?? "");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const create = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
+    if (state === "collapsed") {
+      setOpen(true);
+      // After the sidebar has rendered expanded, where the field shows again.
+      requestAnimationFrame(() => field.current?.focus());
+      return;
+    }
+    if (cwd.trim() === "") {
+      field.current?.focus();
+      return;
+    }
     setCreating(true);
     setError(null);
     try {
@@ -163,8 +190,17 @@ function NewConversation({ onCreated }: { onCreated: (id: number) => void }) {
 
   return (
     <form onSubmit={create}>
-      <Field data-invalid={error !== null} className="gap-2">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton type="submit" tooltip="New conversation" disabled={creating}>
+            <SquarePenIcon />
+            <span>New conversation</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      <Field data-invalid={error !== null} className="mt-2 gap-2 group-data-[collapsible=icon]:hidden">
         <SidebarInput
+          ref={field}
           value={cwd}
           onChange={(event) => setCwd(event.target.value)}
           placeholder="/absolute/path/to/repository"
@@ -173,10 +209,6 @@ function NewConversation({ onCreated }: { onCreated: (id: number) => void }) {
           spellCheck={false}
           className="font-mono"
         />
-        <Button type="submit" size="sm" disabled={creating || cwd.trim() === ""}>
-          <PlusIcon />
-          New conversation
-        </Button>
         {error !== null && <FieldError>{error}</FieldError>}
       </Field>
     </form>
