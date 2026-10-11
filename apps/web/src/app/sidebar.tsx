@@ -11,7 +11,7 @@ import {
   SquarePenIcon,
   SunIcon,
 } from "lucide-react";
-import { type FormEvent, useRef, useState } from "react";
+import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
@@ -22,7 +22,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Field, FieldError } from "@/components/ui/field";
+import { FieldError } from "@/components/ui/field";
 import {
   Sidebar,
   SidebarContent,
@@ -31,7 +31,6 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -61,7 +60,7 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarBrand />
-        <NewConversation onCreated={onSelect} />
+        <NewConversation onCreated={onSelect} currentCwd={list.find((summary) => summary.id === selected)?.cwd} />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -170,35 +169,26 @@ function ThemeMenu() {
   );
 }
 
-/**
- * Start a conversation in a directory. Collapsed, the button opens the sidebar instead, where the directory is
- * entered.
- */
-function NewConversation({ onCreated }: { onCreated: (id: number) => void }) {
+/** Start a conversation in the open conversation's directory, or else in the last one a conversation started in. */
+function NewConversation({
+  onCreated,
+  currentCwd,
+}: {
+  onCreated: (id: number) => void;
+  currentCwd: string | undefined;
+}) {
   const { conversations } = useConnected();
-  const { state, setOpen } = useSidebar();
-  const field = useRef<HTMLInputElement>(null);
-  const [cwd, setCwd] = useState(() => localStorage.getItem(LAST_CWD_KEY) ?? "");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const cwd = currentCwd ?? localStorage.getItem(LAST_CWD_KEY) ?? undefined;
 
-  const create = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    if (state === "collapsed") {
-      setOpen(true);
-      // After the sidebar has rendered expanded, where the field shows again.
-      requestAnimationFrame(() => field.current?.focus());
-      return;
-    }
-    if (cwd.trim() === "") {
-      field.current?.focus();
-      return;
-    }
+  const create = async (): Promise<void> => {
+    if (cwd === undefined) return;
     setCreating(true);
     setError(null);
     try {
-      const id = await conversations.create({ cwd: cwd.trim() }, BACKGROUND_CONTEXT);
-      localStorage.setItem(LAST_CWD_KEY, cwd.trim());
+      const id = await conversations.create({ cwd }, BACKGROUND_CONTEXT);
+      localStorage.setItem(LAST_CWD_KEY, cwd);
       onCreated(id);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -208,29 +198,19 @@ function NewConversation({ onCreated }: { onCreated: (id: number) => void }) {
   };
 
   return (
-    <form onSubmit={create}>
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton type="submit" tooltip="New conversation" disabled={creating}>
-            <SquarePenIcon />
-            <span>New conversation</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-      <Field data-invalid={error !== null} className="mt-2 gap-2 group-data-[collapsible=icon]:hidden">
-        <SidebarInput
-          ref={field}
-          value={cwd}
-          onChange={(event) => setCwd(event.target.value)}
-          placeholder="/absolute/path/to/repository"
-          aria-label="Directory"
-          aria-invalid={error !== null}
-          spellCheck={false}
-          className="font-mono"
-        />
-        {error !== null && <FieldError>{error}</FieldError>}
-      </Field>
-    </form>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          tooltip="New conversation"
+          disabled={creating || cwd === undefined}
+          onClick={() => void create()}
+        >
+          <SquarePenIcon />
+          <span>New conversation</span>
+        </SidebarMenuButton>
+        {error !== null && <FieldError className="px-2 group-data-[collapsible=icon]:hidden">{error}</FieldError>}
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }
 

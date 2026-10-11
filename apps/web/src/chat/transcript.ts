@@ -36,8 +36,8 @@ export type TranscriptItem =
     }
   /** Older messages were summarized from here on; the model sees the summary instead. */
   | { kind: "compaction"; key: string }
-  /** The agent is at work but has nothing to show yet, or is summarizing the conversation. */
-  | { kind: "working"; key: string; label: string };
+  /** A summary of the conversation is being made. */
+  | { kind: "compacting"; key: string };
 
 export interface QueuedMessage {
   id: number;
@@ -56,6 +56,10 @@ export interface TranscriptState {
   items: TranscriptItem[];
   /** The agent is working: a new message steers it or waits for it, and Stop is offered. */
   busy: boolean;
+  /** Busy with nothing on screen moving: no words arriving, no tool running, no summary being made. */
+  silent: boolean;
+  /** The current turn has shown something since the last user message. */
+  turnHasContent: boolean;
   /** Messages sent while the agent was busy, waiting for their turn. */
   queued: QueuedMessage[];
   usage: ContextUsage;
@@ -132,12 +136,14 @@ export function toTranscript(view: ConversationView): TranscriptState {
       parts: partsOf(partial, tool),
       ending: "streaming",
     });
-  } else if (busy && !(live?.tools ?? []).some((slot) => slot.status !== "done")) {
-    items.push({ kind: "working", key: "working", label: "Working" });
   }
-  if ((live?.compactions ?? []).length > 0) {
-    items.push({ kind: "working", key: "compacting", label: "Compacting the conversation" });
-  }
+  const compacting = (live?.compactions ?? []).length > 0;
+  if (compacting) items.push({ kind: "compacting", key: "compacting" });
+  const streaming = items.at(-1)?.kind === "assistant" && (items.at(-1) as { ending: string }).ending === "streaming";
+  const toolsRunning = (live?.tools ?? []).some((slot) => slot.status !== "done");
+  const silent = busy && !streaming && !toolsRunning && !compacting;
+  const lastUser = items.findLastIndex((item) => item.kind === "user");
+  const turnHasContent = items.slice(lastUser + 1).length > 0;
 
   const inbox = view.docs["pi.inbox"] as InboxDoc | undefined;
   const queued = (inbox?.items ?? []).flatMap((item): QueuedMessage[] =>
@@ -152,7 +158,7 @@ export function toTranscript(view: ConversationView): TranscriptState {
     0,
   );
 
-  return { items, busy, queued, usage: { tokens, cost } };
+  return { items, busy, silent, turnHasContent, queued, usage: { tokens, cost } };
 }
 
 function partsOf(

@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice } from "@tandem/contracts";
 import { AlertCircleIcon, ArrowDownIcon, EllipsisIcon, FoldVerticalIcon, InfoIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer } from "./chat-composer.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
 import { toTranscript } from "./transcript.ts";
-import { TranscriptEntry } from "./transcript-items.tsx";
+import { TranscriptEntry, WaitingDots } from "./transcript-items.tsx";
 
 /** One conversation: its header, transcript, and the message box. */
 export function ChatView({ conversationId }: { conversationId: number }) {
@@ -74,6 +74,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           {transcript.items.map((item) => (
             <TranscriptEntry key={item.key} item={item} />
           ))}
+          <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
         </StickToBottom.Content>
         <ScrollToBottom />
       </StickToBottom>
@@ -138,6 +139,27 @@ function Notice({ notice }: { notice: ConversationNotice }) {
       <AlertDescription>{notice.message}</AlertDescription>
     </Alert>
   );
+}
+
+/**
+ * How long the agent may be silent between two visible steps before the dots show, so that the short hand-offs
+ * between a tool and the next answer do not flash them. Before the turn has shown anything, they show at once.
+ */
+const SILENT_GAP_MS = 2000;
+
+/** The waiting dots at the end of the transcript, while the agent works and nothing on screen moves. */
+function SilentGap({ silent, turnHasContent }: { silent: boolean; turnHasContent: boolean }) {
+  const [sustained, setSustained] = useState(false);
+  useEffect(() => {
+    if (!silent) {
+      setSustained(false);
+      return;
+    }
+    const timer = setTimeout(() => setSustained(true), SILENT_GAP_MS);
+    return () => clearTimeout(timer);
+  }, [silent]);
+  if (!silent || (turnHasContent && !sustained)) return null;
+  return <WaitingDots />;
 }
 
 function ScrollToBottom() {

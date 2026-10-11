@@ -37,6 +37,8 @@ describe("toTranscript", () => {
         { kind: "assistant", key: "3:0", parts: [{ kind: "text", text: "hello" }], ending: "complete" },
       ],
       busy: false,
+      silent: false,
+      turnHasContent: true,
       queued: [],
       usage: { tokens: 0, cost: 0 },
     });
@@ -111,7 +113,7 @@ describe("toTranscript", () => {
         { kind: "tool", callId: "d", status: "pending", output: "" },
       ],
     });
-    // Tools are running, so nothing else shows that the agent works.
+    // Tools are running, so the agent is not silent.
     expect(items).toHaveLength(1);
   });
 
@@ -138,14 +140,23 @@ describe("toTranscript", () => {
     ]);
   });
 
-  test("shows that the agent works before its first words, and while it compacts", () => {
-    const { items } = toTranscript(
-      view([], { "pi.live": { ...busy, generation: { attempt: 1 }, compactions: [{ taskId: 3 }] } }),
+  test("tells when the agent is silent, and whether the turn has shown anything yet", () => {
+    const user = { id: 1, kind: "pi.user", model: [{ role: "user", content: "go" }] };
+    const before = toTranscript(view([user], { "pi.live": { ...busy, generation: { attempt: 1 } } }));
+    expect(before).toMatchObject({ silent: true, turnHasContent: false });
+
+    const answered = { id: 2, kind: "pi.assistant", model: [assistant("step one", "toolUse")] };
+    const between = toTranscript(view([user, answered], { "pi.live": busy }));
+    expect(between).toMatchObject({ silent: true, turnHasContent: true });
+
+    const streaming = toTranscript(
+      view([user], { "pi.live": { ...busy, generation: { attempt: 1, message: assistant("hi") } } }),
     );
-    expect(items.map((item) => item.kind === "working" && item.label)).toEqual([
-      "Working",
-      "Compacting the conversation",
-    ]);
+    expect(streaming.silent).toBe(false);
+
+    const compacting = toTranscript(view([user, answered], { "pi.live": { compactions: [{ taskId: 3 }] } }));
+    expect(compacting).toMatchObject({ silent: false });
+    expect(compacting.items.at(-1)).toEqual({ kind: "compacting", key: "compacting" });
   });
 
   test("counts the context the last answer used, the spend, and starts over after a compaction", () => {
