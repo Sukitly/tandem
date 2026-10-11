@@ -64,7 +64,7 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>Conversations</SidebarGroupLabel>
+          <SidebarGroupLabel>Workspaces</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {byDirectory(list).map(([cwd, group]) => (
