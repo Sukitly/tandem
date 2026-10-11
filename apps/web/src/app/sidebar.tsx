@@ -1,8 +1,9 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationSummary } from "@tandem/contracts";
-import { FolderIcon, KeyRoundIcon, MonitorIcon, MoonIcon, PlusIcon, SunIcon } from "lucide-react";
+import { ChevronRightIcon, FolderIcon, KeyRoundIcon, MonitorIcon, MoonIcon, PlusIcon, SunIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +26,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
@@ -54,25 +58,37 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
         <NewConversation onCreated={onSelect} />
       </SidebarHeader>
       <SidebarContent>
-        {byDirectory(list).map(([cwd, group]) => (
-          <SidebarGroup key={cwd}>
-            <SidebarGroupLabel title={cwd} className="font-mono">
-              <FolderIcon />
-              <span className="truncate">{shortPath(cwd)}</span>
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {group.map((summary) => (
-                  <SidebarMenuItem key={summary.id}>
-                    <SidebarMenuButton isActive={summary.id === selected} onClick={() => onSelect(summary.id)}>
-                      <span className="truncate">{summary.title ?? "New conversation"}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        <SidebarGroup>
+          <SidebarGroupLabel>Conversations</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {byDirectory(list).map(([cwd, group]) => (
+                <Collapsible key={cwd} defaultOpen className="group/directory" render={<SidebarMenuItem />}>
+                  <CollapsibleTrigger render={<SidebarMenuButton title={cwd} />}>
+                    <FolderIcon />
+                    <span className="truncate font-mono text-xs">{shortPath(cwd)}</span>
+                    <ChevronRightIcon className="ml-auto transition-transform group-data-[open]/directory:rotate-90" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {group.map((summary) => (
+                        <SidebarMenuSubItem key={summary.id}>
+                          <SidebarMenuSubButton
+                            isActive={summary.id === selected}
+                            onClick={() => onSelect(summary.id)}
+                            render={<button type="button" className="w-full" />}
+                          >
+                            <span className="truncate">{summary.title ?? "New conversation"}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

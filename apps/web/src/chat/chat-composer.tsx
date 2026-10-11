@@ -2,13 +2,7 @@ import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { FieldError } from "@/components/ui/field";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupText,
-  InputGroupTextarea,
-} from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import type { QueuedMessage } from "./transcript.ts";
 
@@ -80,15 +74,15 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, status }
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={onKeyDown}
-            className="max-h-60 min-h-16"
+            rows={1}
+            className="max-h-60 min-h-0 py-2.5"
             aria-label="Message"
             placeholder={busy ? "Steer the agent, or Alt+Enter to queue a follow-up" : "Ask the agent"}
             autoFocus={autoFocus}
           />
-          <InputGroupAddon align="block-end">
-            {busy && !empty && <InputGroupText>Enter steers · Alt+Enter queues</InputGroupText>}
+          <InputGroupAddon align="inline-end" className="self-end pb-1.5">
             {busy && empty ? (
-              <InputGroupButton type="submit" variant="default" size="icon-sm" className="ml-auto" aria-label="Stop">
+              <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label="Stop">
                 <SquareIcon />
               </InputGroupButton>
             ) : (
@@ -96,7 +90,6 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, status }
                 type="submit"
                 variant="default"
                 size="icon-sm"
-                className="ml-auto"
                 aria-label="Send"
                 disabled={empty || sending}
               >

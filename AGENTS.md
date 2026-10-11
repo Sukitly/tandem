@@ -65,6 +65,7 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 - **General controls come from shadcn/ui**: buttons, inputs, dialogs, menus, popovers, lists, alerts, empty states. Do not rebuild them from raw elements or restyle them; use their props and variants, and `className` for layout.
 - **Chat components are Tandem's own**, in `src/chat/`: messages, thoughts, tool calls, the message box, and the status bar. They are built from shadcn/ui parts and Tailwind, and may style themselves. Markdown renders with Streamdown (`src/chat/markdown.tsx`); the transcript scrolls with `use-stick-to-bottom`. Do not add AI Elements back: its tool and message components are built around the AI SDK's data, not pi's.
 - The theme follows the system, and the user can choose light or dark (`src/theme.tsx`; `index.html` applies it before the first paint). Every color comes from the theme's CSS variables or has a `dark:` variant.
+- Text fields have no focus ring and keep their border when focused (`src/index.css`, by `data-slot`); invalid fields keep their red ring.
 - `src/components/ui/` is generated. Compose and style it from the outside rather than editing it, so it can be updated. It is excluded from linting.
 - `src/rpc/` connects to the server and exposes replicated state to React (`useReplicatedState`, `useConversation`). Components read state there and never keep their own copy of server state.
 - A page opens conversations through `OpenConversations` (`packages/client`), which opens them again after a reconnect.
