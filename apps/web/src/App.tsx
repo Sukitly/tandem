@@ -52,11 +52,13 @@ function ConnectionAlert() {
   const { status } = useConnected();
   if (status === undefined || status.status === "connected") return null;
   return (
-    <Alert className="border-x-0 border-t-0">
-      <WifiOffIcon />
-      <AlertTitle>{status.status === "connecting" ? "Reconnecting…" : "Disconnected from the server"}</AlertTitle>
-      <AlertDescription>The page reconnects by itself. Nothing is lost.</AlertDescription>
-    </Alert>
+    <div className="p-2">
+      <Alert>
+        <WifiOffIcon />
+        <AlertTitle>{status.status === "connecting" ? "Reconnecting…" : "Disconnected from the server"}</AlertTitle>
+        <AlertDescription>The page reconnects by itself. Nothing is lost.</AlertDescription>
+      </Alert>
+    </div>
   );
 }
 

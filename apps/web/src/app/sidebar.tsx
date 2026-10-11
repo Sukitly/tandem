@@ -29,9 +29,7 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="font-medium">
-              Tandem
-            </SidebarMenuButton>
+            <SidebarMenuButton size="lg">Tandem</SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
         <NewConversation onCreated={onSelect} />

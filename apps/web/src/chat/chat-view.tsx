@@ -68,8 +68,8 @@ function OpenChat({ conversation }: { conversation: ConversationService }) {
       {!empty && (
         <Conversation className="flex-1">
           <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-6">
-            {transcript.items.map((item, index) => (
-              <TranscriptMessage key={item.key} item={item} last={index === transcript.items.length - 1} />
+            {transcript.items.map((item) => (
+              <TranscriptMessage key={item.key} item={item} />
             ))}
           </ConversationContent>
           <ConversationScrollButton aria-label="Scroll to the latest message" className="rounded-none" />
@@ -83,7 +83,7 @@ function OpenChat({ conversation }: { conversation: ConversationService }) {
   );
 }
 
-function TranscriptMessage({ item, last }: { item: TranscriptItem; last: boolean }) {
+function TranscriptMessage({ item }: { item: TranscriptItem }) {
   if (item.kind === "user") {
     return (
       <Message from="user">
@@ -118,7 +118,7 @@ function TranscriptMessage({ item, last }: { item: TranscriptItem; last: boolean
         </Alert>
       )}
       {item.ending === "complete" && item.text !== "" && (
-        <MessageActions className={cn(!last && "opacity-0 transition-opacity group-hover:opacity-100")}>
+        <MessageActions>
           <CopyAction text={item.text} />
         </MessageActions>
       )}
@@ -126,16 +126,8 @@ function TranscriptMessage({ item, last }: { item: TranscriptItem; last: boolean
   );
 }
 
-/** Message text with a reading rhythm Streamdown's defaults do not give. */
 function ChatMarkdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
-  return (
-    <MessageResponse
-      isAnimating={streaming}
-      className="leading-7 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_li]:py-0.5 [&_ol]:list-outside [&_ol]:pl-6 [&_ul]:list-outside [&_ul]:pl-6"
-    >
-      {text}
-    </MessageResponse>
-  );
+  return <MessageResponse isAnimating={streaming}>{text}</MessageResponse>;
 }
 
 function CopyAction({ text }: { text: string }) {
@@ -150,7 +142,7 @@ function CopyAction({ text }: { text: string }) {
         });
       }}
     >
-      {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+      {copied ? <CheckIcon /> : <CopyIcon />}
     </MessageAction>
   );
 }
