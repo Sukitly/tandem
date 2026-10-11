@@ -88,7 +88,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   );
 }
 
-/** The conversation's title and directory. */
+/** The conversation's directory, and its title under it. */
 function ChatHeader({ conversationId }: { conversationId: number }) {
   const { conversations } = useConnected();
   const summary = useReplicatedState(conversations.state)?.conversations.find(
@@ -99,8 +99,8 @@ function ChatHeader({ conversationId }: { conversationId: number }) {
       {/* On a narrow screen the sidebar is a drawer, out of sight, so the header opens it. */}
       <SidebarTrigger className="md:hidden" />
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-sm font-medium">{summary?.title ?? "New conversation"}</h1>
         <p className="truncate font-mono text-xs text-muted-foreground">{summary?.cwd}</p>
+        <h1 className="truncate text-sm font-medium">{summary?.title ?? "New conversation"}</h1>
       </div>
     </header>
   );
