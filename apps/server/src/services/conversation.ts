@@ -9,10 +9,11 @@ import { clampThinkingLevel, type ModelThinkingLevel } from "@earendil-works/pi-
 import type {
   AgentChange,
   ConversationView,
+  Harness,
   Conversation as HarnessConversation,
   SettledSubmissionRecord,
 } from "@earendil-works/pi-durable";
-import type { Conversation, ConversationNotices, ModelRef, SubmitInput } from "@tandem/contracts";
+import type { Conversation, ConversationNotice, ConversationNotices, ModelRef, SubmitInput } from "@tandem/contracts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
 
@@ -38,15 +39,16 @@ export class NoticeBoard {
     if (board !== undefined && board.value.notices.length > 0) board.replace(BACKGROUND_CONTEXT, { notices: [] });
   }
 
-  add(conversationId: number, message: string): void {
+  add(conversationId: number, notice: Omit<ConversationNotice, "id">): void {
     const id = this.#nextId++;
     this.get(conversationId).change(BACKGROUND_CONTEXT, (draft) => {
-      draft.notices.push({ id, message });
+      draft.notices.push({ id, ...notice });
     });
   }
 }
 
 export interface ConversationServiceOptions {
+  harness: Harness;
   conversation: HarnessConversation;
   view: AttachedReplicatedState<ConversationView>;
   notices: NoticeBoard;
@@ -56,6 +58,7 @@ export interface ConversationServiceOptions {
 
 /** The `Conversation` instance one connection receives for one open conversation. */
 export function createConversationService({
+  harness,
   conversation,
   view,
   notices,
@@ -74,7 +77,7 @@ export function createConversationService({
       void submission.wait(BACKGROUND_CONTEXT).then(
         (settled) => {
           const message = unansweredMessage(settled);
-          if (message !== undefined) notices.add(id, message);
+          if (message !== undefined) notices.add(id, { tone: "error", title: "No answer", message });
         },
         () => {},
       );
@@ -106,6 +109,33 @@ export function createConversationService({
         change.thinkingLevel = clampThinkingLevel(model, current);
       }
       await conversation.configure(change, context);
+    },
+    async compact(input, context) {
+      const { instructions } = (input ?? {}) as { instructions?: unknown };
+      if (instructions !== undefined && typeof instructions !== "string") {
+        throw invalidInput("instructions must be a string");
+      }
+      if ((await conversation.agent(context)).model === undefined) throw invalidInput("No model is selected");
+      notices.clear(id);
+      const task = await conversation.compact(
+        instructions === undefined || instructions === "" ? undefined : instructions,
+        context,
+      );
+      // The compaction runs on; report how it ended when it adds nothing to the transcript.
+      void harness.waitForTask(task, BACKGROUND_CONTEXT).then(
+        ({ state: { outcome } }) => {
+          if (outcome.status === "completed" && outcome.result.entryId === undefined) {
+            notices.add(id, {
+              tone: "info",
+              title: "Nothing to compact",
+              message: "The conversation is still short enough to keep in full.",
+            });
+          } else if (outcome.status === "failed") {
+            notices.add(id, { tone: "error", title: "Compaction failed", message: outcome.error.message });
+          }
+        },
+        () => {},
+      );
     },
   };
 }

@@ -1,7 +1,17 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { KeyRoundIcon, PlusIcon } from "lucide-react";
+import type { ConversationSummary } from "@tandem/contracts";
+import { FolderIcon, KeyRoundIcon, MonitorIcon, MoonIcon, PlusIcon, SunIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldError } from "@/components/ui/field";
 import {
   Sidebar,
@@ -19,10 +29,14 @@ import {
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
+import { type ThemeChoice, useTheme } from "@/theme.tsx";
 
 const LAST_CWD_KEY = "tandem.lastCwd";
 
-/** The conversation list, and a form to start one in a directory. Projects replace the directory field later. */
+/**
+ * Conversations grouped by directory, and a form to start one in a directory. Projects replace the directory field
+ * later.
+ */
 export function AppSidebar({ selected, onSelect }: { selected: number | null; onSelect: (id: number) => void }) {
   const { conversations } = useConnected();
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
@@ -32,30 +46,33 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg">Tandem</SidebarMenuButton>
+            <SidebarMenuButton size="lg" className="font-semibold">
+              Tandem
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
         <NewConversation onCreated={onSelect} />
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Conversations</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {list.map((summary) => (
-                <SidebarMenuItem key={summary.id}>
-                  <SidebarMenuButton
-                    isActive={summary.id === selected}
-                    onClick={() => onSelect(summary.id)}
-                    tooltip={summary.cwd}
-                  >
-                    <span>{summary.title ?? "New conversation"}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {byDirectory(list).map(([cwd, group]) => (
+          <SidebarGroup key={cwd}>
+            <SidebarGroupLabel title={cwd} className="font-mono">
+              <FolderIcon />
+              <span className="truncate">{shortPath(cwd)}</span>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.map((summary) => (
+                  <SidebarMenuItem key={summary.id}>
+                    <SidebarMenuButton isActive={summary.id === selected} onClick={() => onSelect(summary.id)}>
+                      <span className="truncate">{summary.title ?? "New conversation"}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
@@ -65,9 +82,45 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
               <span>Model providers</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarMenuItem>
+            <ThemeMenu />
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+const THEMES: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
+  { value: "system", label: "System", icon: MonitorIcon },
+  { value: "light", label: "Light", icon: SunIcon },
+  { value: "dark", label: "Dark", icon: MoonIcon },
+];
+
+function ThemeMenu() {
+  const { choice, setChoice } = useTheme();
+  const current = THEMES.find((theme) => theme.value === choice) ?? THEMES[0];
+  const Icon = current?.icon ?? MonitorIcon;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<SidebarMenuButton />}>
+        <Icon />
+        <span>Theme: {current?.label}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Theme</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={choice} onValueChange={(value: ThemeChoice) => setChoice(value)}>
+            {THEMES.map((theme) => (
+              <DropdownMenuRadioItem key={theme.value} value={theme.value} closeOnClick>
+                <theme.icon />
+                {theme.label}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -102,6 +155,7 @@ function NewConversation({ onCreated }: { onCreated: (id: number) => void }) {
           aria-label="Directory"
           aria-invalid={error !== null}
           spellCheck={false}
+          className="font-mono"
         />
         <Button type="submit" size="sm" disabled={creating || cwd.trim() === ""}>
           <PlusIcon />
@@ -111,4 +165,19 @@ function NewConversation({ onCreated }: { onCreated: (id: number) => void }) {
       </Field>
     </form>
   );
+}
+
+/** Conversations by directory, directories in the order of their newest conversation. */
+function byDirectory(list: readonly ConversationSummary[]): [string, ConversationSummary[]][] {
+  const groups = new Map<string, ConversationSummary[]>();
+  for (const summary of [...list].sort((a, b) => b.createdAt - a.createdAt)) {
+    groups.set(summary.cwd, [...(groups.get(summary.cwd) ?? []), summary]);
+  }
+  return [...groups];
+}
+
+/** The last two segments of a path: enough to tell repositories apart in a narrow sidebar. */
+function shortPath(path: string): string {
+  const segments = path.split("/").filter((segment) => segment !== "");
+  return segments.length <= 2 ? path : `…/${segments.slice(-2).join("/")}`;
 }

@@ -61,10 +61,11 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 
 ## Web app
 
-- **No hand-written UI.** Build every control, surface, list, status message, and empty state from shadcn/ui components (`src/components/ui/`) or AI Elements (`src/components/ai-elements/`). Plain HTML elements are only for layout (flex and grid containers) and forms. When no installed component fits, add one with the shadcn CLI instead of styling raw elements. Do not add custom CSS for components; use their props and variants, and `className` only for layout.
-- The style is square: the Lyra preset writes `rounded-none` into each shadcn component, and `--radius` is `0` so that AI Elements and Streamdown follow. Do not add rounded corners. The one style `className` allowed is `rounded-none` on a component that hard-codes a full radius, such as AI Elements' `ConversationScrollButton`.
-- UI components come from shadcn/ui (`apps/web/components.json`) and AI Elements (registry `@ai-elements`). Add them with `bunx --bun shadcn@latest add <name>` or `bunx --bun shadcn@latest add @ai-elements/<name>` from `apps/web`.
-- `src/components/ui/` and `src/components/ai-elements/` are generated. Compose and style them from the outside rather than editing them, so they can be updated. `src/components/ui/` is excluded from linting.
+- The UI is shadcn/ui, style `base-nova` on Base UI (`apps/web/components.json`), initialized with `bunx --bun shadcn@latest init --preset b0 --template vite --pointer`. Add components with `bunx --bun shadcn@latest add <name>` from `apps/web`. Base UI composes with the `render` prop, not Radix's `asChild`; a link styled as a button is an `<a>` with `buttonVariants()`.
+- **General controls come from shadcn/ui**: buttons, inputs, dialogs, menus, popovers, lists, alerts, empty states. Do not rebuild them from raw elements or restyle them; use their props and variants, and `className` for layout.
+- **Chat components are Tandem's own**, in `src/chat/`: messages, thoughts, tool calls, the message box, and the status bar. They are built from shadcn/ui parts and Tailwind, and may style themselves. Markdown renders with Streamdown (`src/chat/markdown.tsx`); the transcript scrolls with `use-stick-to-bottom`. Do not add AI Elements back: its tool and message components are built around the AI SDK's data, not pi's.
+- The theme follows the system, and the user can choose light or dark (`src/theme.tsx`; `index.html` applies it before the first paint). Every color comes from the theme's CSS variables or has a `dark:` variant.
+- `src/components/ui/` is generated. Compose and style it from the outside rather than editing it, so it can be updated. It is excluded from linting.
 - `src/rpc/` connects to the server and exposes replicated state to React (`useReplicatedState`, `useConversation`). Components read state there and never keep their own copy of server state.
 - A page opens conversations through `OpenConversations` (`packages/client`), which opens them again after a reconnect.
 
@@ -73,7 +74,8 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 - Providers are pi-ai's built-in ones (`apps/server/src/models.ts`). API keys in the server's environment work without signing in.
 - Logins run on the server (`apps/server/src/services/models.ts`): the browser shows the flow's events and answers its prompts through the `Models` service, and never receives a credential.
 - `configureModelHttp()` (`apps/server/src/http-setup.ts`) must run before any model request, as pi's coding agent does; without it some providers' streams break off.
-- `TANDEM_FAUX=1` adds a local faux model that needs no credentials. Tests pass the faux provider only, never the built-in ones.
+- `TANDEM_FAUX=1` adds a local faux model that needs no credentials. It runs a scripted turn (`demoResponse`): it thinks, lists the directory and reads the README, then answers, so every part of the transcript shows. Tests pass the faux provider only, never the built-in ones.
+- The agent's system prompt is Tandem's own (`apps/server/src/prompt.ts`, extension `tandem.prompt`), in the shape of pi's coding agent, whose prompt code is internal: role, tools, rules, the project's `AGENTS.md` or `CLAUDE.md` from the working directory up to the root, and the working directory.
 
 ## Services
 

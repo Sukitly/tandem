@@ -4,6 +4,7 @@ import { createRegistry, type EnvTarget, Harness } from "@earendil-works/pi-dura
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { TandemPrompt } from "./prompt.ts";
 
 export interface OpenedHarness {
   readonly harness: Harness;
@@ -24,6 +25,7 @@ export async function openHarness(options: OpenHarnessOptions, context: Context)
   const envs = new ExecutionEnvs();
   const registry = createRegistry();
   registry.install(CodingTools);
+  registry.install(TandemPrompt);
   const harness = await Harness.open(
     await openNodeSqliteStorage(options.databasePath),
     {

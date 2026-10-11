@@ -1,7 +1,14 @@
-import type { CredentialStore, Message, MutableModels, Provider } from "@earendil-works/pi-ai";
+import type { AssistantMessage, CredentialStore, Message, MutableModels, Provider } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
-import { type FauxResponseFactory, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+import {
+  type FauxResponseFactory,
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxText,
+  fauxThinking,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
 
 /** Every provider pi-ai ships. */
 export function defaultProviders(): Provider[] {
@@ -20,6 +27,8 @@ export interface FauxOptions {
   tokensPerSecond?: number;
   /** The answer to the last user message. Default: echo it back. */
   reply?: (text: string) => string;
+  /** Answer with a scripted response instead, which may call tools; see `demoResponse`. Overrides `reply`. */
+  respond?: (messages: readonly Message[]) => AssistantMessage;
 }
 
 /** A model that answers locally without a network or credentials, for tests and for trying the UI. */
@@ -31,6 +40,7 @@ export function createFauxProvider(options: FauxOptions = {}): Provider {
   // Every response step is used once, so each answer queues the next one.
   const answer: FauxResponseFactory = (context) => {
     faux.appendResponses([answer]);
+    if (options.respond !== undefined) return options.respond(context.messages);
     return fauxAssistantMessage(reply(lastUserText(context.messages)));
   };
   faux.setResponses([answer]);
@@ -53,6 +63,27 @@ export function demoReply(text: string): string {
     "console.log(greeting);",
     "```",
   ].join("\n");
+}
+
+/**
+ * A scripted turn for trying the UI: to a user message, it thinks, says what it will do, and lists the directory and
+ * reads the README; once the tool results are in, it answers with `demoReply`.
+ */
+export function demoResponse(messages: readonly Message[]): AssistantMessage {
+  const last = messages.at(-1);
+  if (last?.role === "toolResult") return fauxAssistantMessage(demoReply(lastUserText(messages)));
+  const text = lastUserText(messages);
+  return fauxAssistantMessage(
+    [
+      fauxThinking(
+        `The user wrote "${text}". I should look at the project before answering: list the files and read the README.`,
+      ),
+      fauxText("Let me look at the project first."),
+      fauxToolCall("bash", { command: "ls -la" }),
+      fauxToolCall("read", { path: "README.md" }),
+    ],
+    { stopReason: "toolUse" },
+  );
 }
 
 function lastUserText(messages: readonly Message[]): string {
