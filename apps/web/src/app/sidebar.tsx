@@ -1,11 +1,12 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { PlusIcon } from "lucide-react";
+import { KeyRoundIcon, PlusIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -15,6 +16,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 
@@ -24,6 +26,7 @@ const LAST_CWD_KEY = "tandem.lastCwd";
 export function AppSidebar({ selected, onSelect }: { selected: number | null; onSelect: (id: number) => void }) {
   const { conversations } = useConnected();
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
+  const providers = useProvidersDialog();
   return (
     <Sidebar>
       <SidebarHeader>
@@ -54,6 +57,16 @@ export function AppSidebar({ selected, onSelect }: { selected: number | null; on
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => providers.open()}>
+              <KeyRoundIcon />
+              <span>Model providers</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }

@@ -1,6 +1,6 @@
 import type { ChatStatus } from "ai";
 import { ArrowUpIcon } from "lucide-react";
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 import {
   PromptInput,
   PromptInputBody,
@@ -21,13 +21,15 @@ export interface ChatComposerProps {
   onSend: (text: string, whenBusy: "steer" | "followUp") => Promise<void>;
   onStop: () => void;
   autoFocus?: boolean;
+  /** Controls shown in the footer, such as the model picker. */
+  tools?: ReactNode;
 }
 
 /**
  * The message box. While the agent works, Enter steers it (the message is read at its next step) and Alt+Enter queues
  * a follow-up for when it is done, as in pi's terminal UI.
  */
-export function ChatComposer({ busy, queued, onSend, onStop, autoFocus }: ChatComposerProps) {
+export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, tools }: ChatComposerProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +85,7 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus }: ChatCo
           />
         </PromptInputBody>
         <PromptInputFooter>
-          <PromptInputTools />
+          <PromptInputTools>{tools}</PromptInputTools>
           <PromptInputSubmit status={status} onStop={onStop} disabled={!busy && value.trim() === ""}>
             {status === "ready" ? <ArrowUpIcon /> : undefined}
           </PromptInputSubmit>

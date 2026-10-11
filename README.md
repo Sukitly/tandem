@@ -18,7 +18,9 @@ bun run dev:server   # backend on http://127.0.0.1:4820
 bun run dev:web      # web app on http://127.0.0.1:5173; proxies API calls to the backend
 ```
 
-Open the URL the server prints: it carries the session token. Data is kept in `~/.tandem`; set `TANDEM_HOME` to use another directory.
+Open the URL the server prints: it carries the session token. Sign in to a model provider from **Model providers** in the sidebar; API keys in the server's environment (such as `ANTHROPIC_API_KEY`) work without signing in. To try the UI without any provider, start the server with `TANDEM_FAUX=1` for a local fake model.
+
+Data is kept in `~/.tandem`; set `TANDEM_HOME` to use another directory.
 
 | Command | Purpose |
 |---|---|

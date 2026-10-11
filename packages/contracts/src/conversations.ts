@@ -1,6 +1,7 @@
 import { type Context, defineService, type ReplicatedState } from "@earendil-works/chord";
 // Types only: the pi-durable runtime must not reach clients.
 import type { ConversationView } from "@earendil-works/pi-durable";
+import type { ModelRef } from "./models.ts";
 
 export type { ConversationView };
 
@@ -43,16 +44,34 @@ export interface SubmitInput {
   whenBusy: "steer" | "followUp";
 }
 
+/** A message that got no answer, such as one sent without a model. Answers that fail are part of the view. */
+export interface ConversationNotice {
+  id: number;
+  message: string;
+}
+
+export interface ConversationNotices {
+  /** Cleared when the next message is sent. */
+  notices: ConversationNotice[];
+}
+
 /**
  * One open conversation. A keyed service: observe it to receive the instances this connection opened, and tell them
  * apart by `view.conversation.id`.
  */
 export interface Conversation {
   readonly view: ReplicatedState<ConversationView>;
+  /** Shared by every client showing the conversation; kept in memory only. */
+  readonly notices: ReplicatedState<ConversationNotices>;
   /** Resolves once the message is durably admitted, not when the agent answers. */
   submit(input: SubmitInput, context: Context): Promise<void>;
   /** Stop the agent. Resolves once the conversation is idle. */
   abort(context: Context): Promise<void>;
+  /**
+   * Change the model or the thinking level for the next answers. A thinking level the model does not support is
+   * lowered to the nearest one it does.
+   */
+  configure(input: { model?: ModelRef; thinkingLevel?: string }, context: Context): Promise<void>;
 }
 
 export const Conversation = defineService<Conversation>("tandem.conversation");

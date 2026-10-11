@@ -33,11 +33,16 @@ const TITLE_LENGTH = 80;
  */
 export class ConversationCatalog {
   readonly #harness: Harness;
-  readonly #defaultModel: ModelRef;
+  readonly #defaultModel: () => ModelRef | undefined;
   readonly #now: () => number;
   readonly #state: MutableReplicatedState<ConversationsState>;
 
-  private constructor(harness: Harness, defaultModel: ModelRef, now: () => number, initial: ConversationSummary[]) {
+  private constructor(
+    harness: Harness,
+    defaultModel: () => ModelRef | undefined,
+    now: () => number,
+    initial: ConversationSummary[],
+  ) {
     this.#harness = harness;
     this.#defaultModel = defaultModel;
     this.#now = now;
@@ -47,7 +52,7 @@ export class ConversationCatalog {
   /** Lists the conversations users created. Conversations that tasks own, such as subagents', are not listed. */
   static async load(
     harness: Harness,
-    defaultModel: ModelRef,
+    defaultModel: () => ModelRef | undefined,
     context: Context,
     now: () => number = Date.now,
   ): Promise<ConversationCatalog> {
@@ -77,10 +82,12 @@ export class ConversationCatalog {
   async create(cwdInput: string, context: Context): Promise<ConversationSummary> {
     const cwd = await validateDirectory(cwdInput);
     const createdAt = this.#now();
+    const model = this.#defaultModel();
     const conversation = await this.#harness.createConversation(
       {
         ownership: { kind: "ownerless" },
-        agent: { cwd, model: this.#defaultModel },
+        // Without a model, the first message reports that none is selected.
+        agent: { cwd, ...(model === undefined ? {} : { model }) },
         init: async (tx, id) => {
           const meta = await tx.doc(ConversationMetaDoc, id);
           meta.createdAt = createdAt;

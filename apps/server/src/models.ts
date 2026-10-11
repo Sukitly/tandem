@@ -1,23 +1,29 @@
-import type { Message, Models } from "@earendil-works/pi-ai";
+import type { CredentialStore, Message, MutableModels, Provider } from "@earendil-works/pi-ai";
 import { createModels } from "@earendil-works/pi-ai/models";
+import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import { type FauxResponseFactory, fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/providers/faux";
-import type { ModelRef } from "@earendil-works/pi-durable";
 
-export interface AppModels {
-  readonly models: Models;
-  /** The model new conversations start with. */
-  readonly defaultModel: ModelRef;
+/** Every provider pi-ai ships. */
+export function defaultProviders(): Provider[] {
+  return builtinProviders();
 }
 
-export interface FauxModelsOptions {
+/** Models over `providers`, with credentials from `credentials` and the environment. */
+export function createAppModels(credentials: CredentialStore, providers: readonly Provider[]): MutableModels {
+  const models = createModels({ credentials });
+  for (const provider of providers) models.setProvider(provider);
+  return models;
+}
+
+export interface FauxOptions {
   /** Streaming speed of answers; unlimited when absent. */
   tokensPerSecond?: number;
   /** The answer to the last user message. Default: echo it back. */
   reply?: (text: string) => string;
 }
 
-/** A local model that answers without a network. Real providers replace it in M1. */
-export function createFauxModels(options: FauxModelsOptions = {}): AppModels {
+/** A model that answers locally without a network or credentials, for tests and for trying the UI. */
+export function createFauxProvider(options: FauxOptions = {}): Provider {
   const reply = options.reply ?? ((text) => `You said: ${text}`);
   const faux = fauxProvider({
     ...(options.tokensPerSecond === undefined ? {} : { tokensPerSecond: options.tokensPerSecond }),
@@ -28,10 +34,7 @@ export function createFauxModels(options: FauxModelsOptions = {}): AppModels {
     return fauxAssistantMessage(reply(lastUserText(context.messages)));
   };
   faux.setResponses([answer]);
-  const models = createModels();
-  models.setProvider(faux.provider);
-  const model = faux.getModel();
-  return { models, defaultModel: { provider: model.provider, modelId: model.id } };
+  return faux.provider;
 }
 
 /** A reply that exercises the transcript's rendering: Markdown, a list, and a code block. */
