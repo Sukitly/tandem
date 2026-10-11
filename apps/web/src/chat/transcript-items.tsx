@@ -21,6 +21,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { CodeBlock } from "./code-block.tsx";
 import { Markdown } from "./markdown.tsx";
 import type { AssistantPart, ToolStatus, TranscriptItem } from "./transcript.ts";
 
@@ -153,9 +154,7 @@ function ToolCall({ part }: { part: ToolPart }) {
       {part.diff !== undefined ? (
         <Diff diff={part.diff} />
       ) : body !== "" ? (
-        <pre className="max-h-80 overflow-auto rounded-md bg-muted p-3 font-mono text-xs whitespace-pre-wrap">
-          {body}
-        </pre>
+        <CodeBlock code={body} language={languageOf(part)} streaming={part.status === "running"} tall />
       ) : (
         <p className="text-sm text-muted-foreground">{part.status === "running" ? "Running…" : "No output"}</p>
       )}
@@ -197,6 +196,14 @@ function Diff({ diff }: { diff: string }) {
       ))}
     </pre>
   );
+}
+
+/** The language of what a file tool shows, from the file's extension; Shiki knows most extensions by name. */
+function languageOf(part: ToolPart): string | undefined {
+  if (part.name !== "read" && part.name !== "write") return undefined;
+  const path = typeof part.args.path === "string" ? part.args.path : "";
+  const extension = /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase();
+  return extension;
 }
 
 /** The icon and one-line summary of a tool call, as pi's terminal shows them. */
