@@ -171,7 +171,8 @@ function ProjectItem({
         >
           <EllipsisIcon />
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start">
+        {/* The content takes the trigger's width by default; the trigger is an icon, as in shadcn's sidebar blocks. */}
+        <DropdownMenuContent side="right" align="start" className="w-48">
           <DropdownMenuItem onClick={() => removeProject(project.id)}>
             <FolderMinusIcon />
             Remove project
