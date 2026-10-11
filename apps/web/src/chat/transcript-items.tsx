@@ -121,9 +121,12 @@ function Disclosure({
           />
         }
       >
+        {/* In the gutter left of the transcript on wider screens, so the tool icons line up with the text. */}
+        {status !== undefined && (
+          <span className="flex size-4 shrink-0 items-center justify-center sm:-ml-6">{status}</span>
+        )}
         {icon}
         <span className="min-w-0 truncate">{summary}</span>
-        {status}
         <ChevronRightIcon className="transition-transform group-data-[open]/disclosure:rotate-90" />
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-2 ml-2 border-l pl-4">{children}</CollapsibleContent>
