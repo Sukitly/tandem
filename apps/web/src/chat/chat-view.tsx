@@ -1,17 +1,10 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice } from "@tandem/contracts";
-import { AlertCircleIcon, ArrowDownIcon, EllipsisIcon, FoldVerticalIcon, InfoIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowDownIcon, InfoIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
@@ -45,7 +38,6 @@ export function ChatView({ conversationId }: { conversationId: number }) {
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
   const view = useReplicatedState(conversation.view);
   const notices = useReplicatedState(conversation.notices)?.notices ?? [];
-  const [failure, setFailure] = useState<string | null>(null);
   const transcript = useMemo(() => (view === undefined ? undefined : toTranscript(view)), [view]);
   if (view === undefined || transcript === undefined) return null;
   const empty = transcript.items.length === 0;
@@ -53,15 +45,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
 
   return (
     <section className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" aria-label="Conversation">
-      <ChatHeader
-        conversationId={conversationId}
-        onCompact={() => {
-          setFailure(null);
-          conversation
-            .compact({}, BACKGROUND_CONTEXT)
-            .catch((error: unknown) => setFailure(error instanceof Error ? error.message : String(error)));
-        }}
-      />
+      <ChatHeader conversationId={conversationId} />
       <StickToBottom
         className="relative min-h-0 flex-1 overflow-y-hidden"
         initial="instant"
@@ -82,9 +66,6 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
         {notices.map((notice) => (
           <Notice key={notice.id} notice={notice} />
         ))}
-        {failure !== null && (
-          <Notice notice={{ id: 0, tone: "error", title: "Could not compact the conversation", message: failure }} />
-        )}
         <ChatComposer
           busy={transcript.busy}
           queued={transcript.queued}
@@ -100,8 +81,8 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   );
 }
 
-/** The conversation's title and directory, and its actions. */
-function ChatHeader({ conversationId, onCompact }: { conversationId: number; onCompact: () => void }) {
+/** The conversation's title and directory. */
+function ChatHeader({ conversationId }: { conversationId: number }) {
   const { conversations } = useConnected();
   const summary = useReplicatedState(conversations.state)?.conversations.find(
     (candidate) => candidate.id === conversationId,
@@ -114,19 +95,6 @@ function ChatHeader({ conversationId, onCompact }: { conversationId: number; onC
         <h1 className="truncate text-sm font-medium">{summary?.title ?? "New conversation"}</h1>
         <p className="truncate font-mono text-xs text-muted-foreground">{summary?.cwd}</p>
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Conversation actions" />}>
-          <EllipsisIcon />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-60">
-          <DropdownMenuGroup>
-            <DropdownMenuItem onClick={onCompact}>
-              <FoldVerticalIcon />
-              Compact the conversation
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </header>
   );
 }

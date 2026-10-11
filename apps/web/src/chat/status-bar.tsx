@@ -62,7 +62,7 @@ export function StatusBar({
               {thinkingLabel(agent?.thinkingLevel ?? "off")}
               <ChevronDownIcon />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
+            <DropdownMenuContent align="start" className="w-40">
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Thinking</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
@@ -73,7 +73,7 @@ export function StatusBar({
                 >
                   {current.thinkingLevels.map((level) => (
                     <DropdownMenuRadioItem key={level} value={level} closeOnClick>
-                      {thinkingLabel(level)}
+                      {level === "off" ? "Off" : level[0]?.toUpperCase() + level.slice(1)}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
