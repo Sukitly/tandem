@@ -150,7 +150,7 @@ function ThemeMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger render={<SidebarMenuButton tooltip={`Theme: ${current?.label}`} />}>
         <Icon />
-        <span>Theme: {current?.label}</span>
+        <span>{current?.label}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start">
         <DropdownMenuGroup>

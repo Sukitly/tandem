@@ -121,10 +121,7 @@ function Disclosure({
           />
         }
       >
-        {/* In the gutter left of the transcript on wider screens, so the tool icons line up with the text. */}
-        {status !== undefined && (
-          <span className="flex size-4 shrink-0 items-center justify-center sm:-ml-6">{status}</span>
-        )}
+        {status}
         {icon}
         <span className="min-w-0 truncate">{summary}</span>
         <ChevronRightIcon className="transition-transform group-data-[open]/disclosure:rotate-90" />
