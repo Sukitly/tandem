@@ -8,16 +8,22 @@ export type { ConversationView };
 /** A conversation as listed in the sidebar. */
 export interface ConversationSummary {
   id: number;
-  /** Absolute path of the directory the agent works in. */
+  /** The project it belongs to. */
+  workspaceId: number;
+  /** Absolute path of the directory the agent works in: the project's. */
   cwd: string;
   /** Milliseconds since the Unix epoch. */
   createdAt: number;
+  /** When the last message was sent, or else when it was created. */
+  updatedAt: number;
   /** From the first message; absent until one is sent. */
   title?: string;
+  /** The agent is working. */
+  running: boolean;
 }
 
 export interface ConversationsState {
-  /** Newest first. */
+  /** The conversations of the listed projects, most recently active first. */
   conversations: ConversationSummary[];
 }
 
@@ -28,8 +34,8 @@ export interface ConversationsState {
  */
 export interface Conversations {
   readonly state: ReplicatedState<ConversationsState>;
-  /** Create a conversation working in `cwd`, an absolute path to a directory. Returns its ID. */
-  create(input: { cwd: string }, context: Context): Promise<number>;
+  /** Create a conversation in a project. Returns its ID. */
+  create(input: { workspaceId: number }, context: Context): Promise<number>;
   /** Provide the conversation as a `Conversation` instance on this connection. Opening it again does nothing. */
   open(id: number, context: Context): Promise<void>;
   /** Withdraw the conversation's `Conversation` instance from this connection. */

@@ -1,10 +1,12 @@
 import { BootstrapError, type ConnectionStatus, connect, OpenConversations } from "@tandem/client";
-import { Conversation, Conversations, Models } from "@tandem/contracts";
+import { Conversation, Conversations, Models, Workspaces } from "@tandem/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { readToken } from "./token.ts";
 import { useReplicatedState } from "./use-replicated-state.ts";
 
 export interface Connected {
+  /** The shared project list and its methods. */
+  workspaces: Workspaces;
   /** The shared conversation list and its methods. */
   conversations: Conversations;
   /** Providers, sign-in, and available models. */
@@ -43,7 +45,7 @@ export function ConnectionProvider({
     connect({
       baseUrl: window.location.origin,
       token,
-      services: [Models, Conversations, Conversation],
+      services: [Models, Workspaces, Conversations, Conversation],
       onError: (error) => console.error(error),
     }).then(
       (connection) => {
@@ -60,6 +62,7 @@ export function ConnectionProvider({
             value: {
               connection,
               open,
+              workspaces: connection.services.use(Workspaces),
               conversations: connection.services.use(Conversations),
               models: connection.services.use(Models),
             },
@@ -91,7 +94,13 @@ function Connected({
   const status = useReplicatedState(value.connection.status);
   return (
     <ConnectedContext.Provider
-      value={{ conversations: value.conversations, models: value.models, open: value.open, status }}
+      value={{
+        workspaces: value.workspaces,
+        conversations: value.conversations,
+        models: value.models,
+        open: value.open,
+        status,
+      }}
     >
       {children}
     </ConnectedContext.Provider>

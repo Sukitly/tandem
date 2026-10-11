@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Message } from "@earendil-works/pi-ai";
 import { connect, OpenConversations, type TandemConnection } from "@tandem/client";
-import { Conversation, Conversations, type ConversationView } from "@tandem/contracts";
+import { Conversation, Conversations, type ConversationView, Workspaces } from "@tandem/contracts";
 import { afterEach, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { createFauxProvider, demoResponse } from "../src/models.ts";
@@ -44,7 +44,7 @@ async function start(respond: (messages: readonly Message[]) => ReturnType<typeo
   const connection = await connect({
     baseUrl: server.url,
     token: server.token,
-    services: [Conversations, Conversation],
+    services: [Workspaces, Conversations, Conversation],
     reconnect: false,
   });
   connections.push(connection);
@@ -52,7 +52,8 @@ async function start(respond: (messages: readonly Message[]) => ReturnType<typeo
   await connection.services.ready(context);
   const open = new OpenConversations(connection);
   const create = async (cwd: string) => {
-    const id = await conversations.create({ cwd }, context);
+    const workspaceId = await connection.services.use(Workspaces).add({ path: cwd }, context);
+    const id = await conversations.create({ workspaceId }, context);
     open.hold(id);
     await waitFor(() => open.get(id)?.view.value !== undefined);
     return { conversation: open.get(id) as Conversation, view: () => open.get(id)?.view.value as ConversationView };

@@ -1,15 +1,18 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { LiveState } from "@earendil-works/pi-durable";
 import { connect, OpenConversations, type TandemConnection } from "@tandem/client";
-import { Conversation, Conversations, type ConversationView } from "@tandem/contracts";
+import { Conversation, Conversations, type ConversationView, Workspaces } from "@tandem/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { type StartAppOptions, startApp } from "../src/app.ts";
-import { createFauxProvider } from "../src/models.ts";
+import { FileCredentialStore } from "../src/credentials.ts";
+import { openHarness } from "../src/harness.ts";
+import { createAppModels, createFauxProvider } from "../src/models.ts";
 import type { TandemServer } from "../src/server.ts";
+import { ConversationMetaDoc } from "../src/services/conversations.ts";
 import { openStateDir } from "../src/state-dir.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -38,11 +41,14 @@ async function client(server: TandemServer) {
   const connection = await connect({
     baseUrl: server.url,
     token: server.token,
-    services: [Conversations, Conversation],
+    services: [Workspaces, Conversations, Conversation],
     reconnect: { initialDelayMs: 20, maxDelayMs: 100 },
   });
   connections.push(connection);
+  const workspaces = connection.services.use(Workspaces);
   const conversations = connection.services.use(Conversations);
+  /** Add a directory as a project; the system's temporary directory by default. */
+  const project = (path: string = tmpdir()) => workspaces.add({ path }, context);
   const open = new Map<number, Conversation>();
   const observed: number[] = [];
   connection.services.observe(Conversation, async (instance, instanceContext: Context) => {
@@ -65,7 +71,7 @@ async function client(server: TandemServer) {
     return { conversation: open.get(id) as Conversation };
   };
   const view = (id: number) => open.get(id)?.view.value;
-  return { connection, conversations, open, observed, openConversation, view };
+  return { connection, workspaces, conversations, project, open, observed, openConversation, view };
 }
 
 async function waitFor(check: () => boolean, timeoutMs = 3_000): Promise<void> {
@@ -103,9 +109,9 @@ function isBusy(view: ConversationView | undefined): boolean {
 describe("conversations", () => {
   test("a submitted message is answered in the conversation's view", async () => {
     const { server } = await start();
-    const { conversations, openConversation, view } = await client(server);
+    const { conversations, project, openConversation, view } = await client(server);
 
-    const id = await conversations.create({ cwd: tmpdir() }, context);
+    const id = await conversations.create({ workspaceId: await project() }, context);
     await waitFor(() => conversations.state.value?.conversations[0]?.id === id);
     const { conversation } = await openConversation(id);
 
@@ -119,7 +125,7 @@ describe("conversations", () => {
     const first = await client(server);
     const second = await client(server);
 
-    const id = await first.conversations.create({ cwd: tmpdir() }, context);
+    const id = await first.conversations.create({ workspaceId: await first.project() }, context);
     await waitFor(() => second.conversations.state.value?.conversations.some((summary) => summary.id === id) ?? false);
     await first.openConversation(id);
     const { conversation } = await second.openConversation(id);
@@ -134,8 +140,9 @@ describe("conversations", () => {
     const { server } = await start();
     const first = await client(server);
     const second = await client(server);
-    const a = await first.conversations.create({ cwd: tmpdir() }, context);
-    const b = await first.conversations.create({ cwd: tmpdir() }, context);
+    const workspaceId = await first.project();
+    const a = await first.conversations.create({ workspaceId }, context);
+    const b = await first.conversations.create({ workspaceId }, context);
 
     await first.openConversation(a);
     const { conversation } = await second.openConversation(b);
@@ -150,14 +157,18 @@ describe("conversations", () => {
 
   test("rejects invalid input", async () => {
     const { server } = await start();
-    const { conversations, openConversation } = await client(server);
-    await expect(conversations.create({ cwd: "relative/path" }, context)).rejects.toThrow("absolute");
-    await expect(conversations.create({ cwd: join(tmpdir(), "does-not-exist-tandem") }, context)).rejects.toThrow(
+    const { workspaces, conversations, project, openConversation } = await client(server);
+    await expect(workspaces.add({ path: "relative/path" }, context)).rejects.toThrow("absolute");
+    await expect(workspaces.add({ path: join(tmpdir(), "does-not-exist-tandem") }, context)).rejects.toThrow(
       "Not a directory",
     );
+    await expect(workspaces.remove(999, context)).rejects.toThrow("does not exist");
+    await expect(conversations.create({ workspaceId: 999 }, context)).rejects.toThrow("does not exist");
     await expect(conversations.open(999, context)).rejects.toThrow("does not exist");
 
-    const { conversation } = await openConversation(await conversations.create({ cwd: tmpdir() }, context));
+    const { conversation } = await openConversation(
+      await conversations.create({ workspaceId: await project() }, context),
+    );
     await expect(conversation.submit({ text: " ", whenBusy: "followUp" }, context)).rejects.toThrow("non-empty");
   });
 
@@ -165,7 +176,7 @@ describe("conversations", () => {
     const reply = (text: string) => `${text}: ${"word ".repeat(200).trim()}`;
     const slow = await start({ providers: [createFauxProvider({ tokensPerSecond: 50, reply })] });
     const user = await client(slow.server);
-    const id = await user.conversations.create({ cwd: tmpdir() }, context);
+    const id = await user.conversations.create({ workspaceId: await user.project() }, context);
     const held = new OpenConversations(user.connection);
     held.hold(id);
     await waitFor(() => held.get(id) !== undefined);
@@ -193,6 +204,92 @@ describe("conversations", () => {
     expect(interrupted?.stopReason).toBe("aborted");
     expect(reply("long").startsWith(interrupted?.text ?? "")).toBe(true);
     expect(completed).toEqual({ text: reply("long"), stopReason: "stop" });
+  });
+
+  test("projects are added, listed, and removed; removing hides their conversations until added again", async () => {
+    const { server } = await start();
+    const { workspaces, conversations, project } = await client(server);
+    const pathA = await mkdtemp(join(tmpdir(), "tandem-a-"));
+    const pathB = await mkdtemp(join(tmpdir(), "tandem-b-"));
+    const a = await project(pathA);
+    expect(await project(`${pathA}/`)).toBe(a);
+    const b = await project(pathB);
+    expect(workspaces.state.value?.workspaces).toEqual([
+      { id: a, path: pathA, name: basename(pathA) },
+      { id: b, path: pathB, name: basename(pathB) },
+    ]);
+
+    const inA = await conversations.create({ workspaceId: a }, context);
+    const inB = await conversations.create({ workspaceId: b }, context);
+    expect(conversations.state.value?.conversations.find((summary) => summary.id === inA)).toMatchObject({
+      workspaceId: a,
+      cwd: pathA,
+      running: false,
+    });
+
+    await workspaces.remove(a, context);
+    await waitFor(() => workspaces.state.value?.workspaces.length === 1);
+    expect(conversations.state.value?.conversations.map((summary) => summary.id)).toEqual([inB]);
+    await expect(conversations.open(inA, context)).rejects.toThrow("does not exist");
+    await expect(conversations.create({ workspaceId: a }, context)).rejects.toThrow("does not exist");
+
+    expect(await project(pathA)).toBe(a);
+    await waitFor(() => conversations.state.value?.conversations.length === 2);
+  });
+
+  test("the list is ordered by the last message, and shows which conversations are running", async () => {
+    const slow = { providers: [createFauxProvider({ tokensPerSecond: 50, reply: () => "word ".repeat(40) })] };
+    const { server } = await start(slow);
+    const { conversations, project, openConversation } = await client(server);
+    const workspaceId = await project();
+    const first = await conversations.create({ workspaceId }, context);
+    const second = await conversations.create({ workspaceId }, context);
+    const ids = () => conversations.state.value?.conversations.map((summary) => summary.id);
+    const running = () => conversations.state.value?.conversations.find((summary) => summary.id === first)?.running;
+    expect(ids()).toEqual([second, first]);
+
+    const { conversation } = await openConversation(first);
+    await conversation.submit({ text: "go", whenBusy: "followUp" }, context);
+    await waitFor(() => ids()?.[0] === first && running() === true);
+    await waitFor(() => running() === false, 5_000);
+  });
+
+  test("conversations created before projects existed get a project per directory", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "tandem-test-"));
+    const pathA = await mkdtemp(join(tmpdir(), "tandem-a-"));
+    const pathB = await mkdtemp(join(tmpdir(), "tandem-b-"));
+    const models = createAppModels(new FileCredentialStore(join(stateDir, "auth.json")), [createFauxProvider()]);
+    const opened = await openHarness({ databasePath: join(stateDir, "app.sqlite"), models }, context);
+    for (const [cwd, createdAt] of [
+      [pathA, 1],
+      [pathB, 2],
+      [pathA, 3],
+    ] as const) {
+      await opened.harness.createConversation(
+        {
+          ownership: { kind: "ownerless" },
+          agent: { cwd },
+          init: async (tx, id) => {
+            (await tx.doc(ConversationMetaDoc, id)).createdAt = createdAt;
+          },
+        },
+        context,
+      );
+    }
+    await opened.close(context);
+
+    const { server } = await start({ stateDir });
+    const { workspaces, conversations } = await client(server);
+    const listed = workspaces.state.value?.workspaces ?? [];
+    expect(listed.map((workspace) => workspace.path).sort()).toEqual([pathA, pathB].sort());
+    const workspaceOf = (path: string) => listed.find((workspace) => workspace.path === path)?.id;
+    expect(conversations.state.value?.conversations.map((summary) => [summary.updatedAt, summary.workspaceId])).toEqual(
+      [
+        [3, workspaceOf(pathA)],
+        [2, workspaceOf(pathB)],
+        [1, workspaceOf(pathA)],
+      ],
+    );
   });
 
   test("one server per state directory", async () => {

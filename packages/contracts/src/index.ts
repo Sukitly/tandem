@@ -25,6 +25,7 @@ export {
   type ModelsState,
   type ProviderSummary,
 } from "./models.ts";
+export { type WorkspaceSummary, Workspaces, type WorkspacesState } from "./workspaces.ts";
 
 /** The server only listens on the loopback interface. */
 export const DEFAULT_HOST = "127.0.0.1";

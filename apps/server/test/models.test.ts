@@ -6,7 +6,7 @@ import type { Provider } from "@earendil-works/pi-ai";
 import { createProvider } from "@earendil-works/pi-ai/models";
 import { createFauxCore } from "@earendil-works/pi-ai/providers/faux";
 import { connect, OpenConversations, type TandemConnection } from "@tandem/client";
-import { Conversation, Conversations, Models } from "@tandem/contracts";
+import { Conversation, Conversations, Models, Workspaces } from "@tandem/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { FileCredentialStore } from "../src/credentials.ts";
@@ -52,14 +52,20 @@ async function start(providers: Provider[]) {
   const connection = await connect({
     baseUrl: server.url,
     token: server.token,
-    services: [Models, Conversations, Conversation],
+    services: [Models, Workspaces, Conversations, Conversation],
     reconnect: false,
   });
   connections.push(connection);
   const models = connection.services.use(Models);
   const conversations = connection.services.use(Conversations);
   await connection.services.ready(context);
-  return { stateDir, connection, models, conversations };
+  /** A conversation in a project of the system's temporary directory. */
+  const create = async () =>
+    conversations.create(
+      { workspaceId: await connection.services.use(Workspaces).add({ path: tmpdir() }, context) },
+      context,
+    );
+  return { stateDir, connection, models, conversations, create };
 }
 
 async function waitFor(check: () => boolean, timeoutMs = 3_000): Promise<void> {
@@ -133,7 +139,7 @@ describe("models", () => {
   });
 
   test("new conversations start with the default model, and a conversation can switch", async () => {
-    const { models, conversations, connection } = await start([createFauxProvider(), loginProvider("other")]);
+    const { models, create, connection } = await start([createFauxProvider(), loginProvider("other")]);
     await models.login({ providerId: "other", type: "oauth" }, context);
     await waitFor(() => models.state.value?.login?.prompt !== undefined);
     await models.answerLogin({ promptId: models.state.value?.login?.prompt?.id ?? -1, value: "code" }, context);
@@ -142,7 +148,7 @@ describe("models", () => {
     await models.setDefaultModel({ provider: "other", modelId: "other-model" }, context);
     await waitFor(() => models.state.value?.defaultModel?.provider === "other");
     const open = new OpenConversations(connection);
-    const id = await conversations.create({ cwd: tmpdir() }, context);
+    const id = await create();
     open.hold(id);
     await waitFor(() => open.get(id)?.view.value !== undefined);
     const agent = () => open.get(id)?.view.value?.docs["pi.agent"] as { model?: { provider: string } } | undefined;
@@ -156,9 +162,9 @@ describe("models", () => {
   });
 
   test("a message without a model gets a notice instead of an answer", async () => {
-    const { conversations, connection } = await start([loginProvider("test")]);
+    const { create, connection } = await start([loginProvider("test")]);
     const open = new OpenConversations(connection);
-    const id = await conversations.create({ cwd: tmpdir() }, context);
+    const id = await create();
     open.hold(id);
     await waitFor(() => open.get(id)?.view.value !== undefined);
     await open.get(id)?.submit({ text: "hello", whenBusy: "followUp" }, context);

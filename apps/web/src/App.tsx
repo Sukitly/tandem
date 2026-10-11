@@ -1,14 +1,16 @@
-import { AlertCircleIcon, KeyRoundIcon, MessageSquareIcon, WifiOffIcon } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { AlertCircleIcon, FolderPlusIcon, KeyRoundIcon, MessageSquareIcon, WifiOffIcon, XIcon } from "lucide-react";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./app/sidebar.tsx";
+import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
 import { ChatView } from "./chat/chat-view.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
+import { useReplicatedState } from "./rpc/use-replicated-state.ts";
 import { ThemeProvider } from "./theme.tsx";
 
 export function App() {
@@ -26,32 +28,87 @@ export function App() {
 }
 
 function Workbench() {
-  const [selected, select] = useSelectedConversation();
   return (
-    <SidebarProvider>
-      <AppSidebar selected={selected} onSelect={select} />
-      <SidebarInset className="h-dvh min-w-0">
-        <ConnectionAlert />
-        {selected === null ? (
-          <>
-            <header className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
-              <SidebarTrigger />
-            </header>
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <MessageSquareIcon />
-                </EmptyMedia>
-                <EmptyTitle>No conversation open</EmptyTitle>
-                <EmptyDescription>Choose a conversation in the sidebar, or start a new one.</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </>
-        ) : (
-          <ChatView conversationId={selected} />
-        )}
-      </SidebarInset>
-    </SidebarProvider>
+    <WorkbenchProvider>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset className="h-dvh min-w-0">
+          <ConnectionAlert />
+          <FailureAlert />
+          <Main />
+        </SidebarInset>
+      </SidebarProvider>
+    </WorkbenchProvider>
+  );
+}
+
+function Main() {
+  const { workspaces } = useConnected();
+  const listed = useReplicatedState(workspaces.state)?.workspaces;
+  const { selected, starting, addProject } = useWorkbench();
+  if (starting) {
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia>
+            <Spinner />
+          </EmptyMedia>
+          <EmptyTitle>Starting a conversation</EmptyTitle>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+  if (selected !== null) return <ChatView conversationId={selected} />;
+  return (
+    <>
+      <header className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
+        <SidebarTrigger />
+      </header>
+      {listed?.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <FolderPlusIcon />
+            </EmptyMedia>
+            <EmptyTitle>Add a project</EmptyTitle>
+            <EmptyDescription>A project is a directory on this machine. Its conversations work in it.</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button onClick={addProject}>Add project</Button>
+          </EmptyContent>
+        </Empty>
+      ) : (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <MessageSquareIcon />
+            </EmptyMedia>
+            <EmptyTitle>No conversation open</EmptyTitle>
+            <EmptyDescription>Choose a conversation in the sidebar, or start a new one.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+    </>
+  );
+}
+
+/** Something the user asked for in the sidebar that did not happen. */
+function FailureAlert() {
+  const { failure, dismissFailure } = useWorkbench();
+  if (failure === null) return null;
+  return (
+    <div className="p-2">
+      <Alert variant="destructive">
+        <AlertCircleIcon />
+        <AlertTitle>{failure.title}</AlertTitle>
+        <AlertDescription>{failure.message}</AlertDescription>
+        <AlertAction>
+          <Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={dismissFailure}>
+            <XIcon />
+          </Button>
+        </AlertAction>
+      </Alert>
+    </div>
   );
 }
 
@@ -103,26 +160,4 @@ function ConnectionScreen({ state }: { state: { kind: "connecting" | "unauthoriz
       </EmptyHeader>
     </Empty>
   );
-}
-
-/** The open conversation, kept in the URL hash so that reloads and links keep it. */
-function useSelectedConversation(): [number | null, (id: number) => void] {
-  const [selected, setSelected] = useState(selectedInHash);
-  useEffect(() => {
-    const onChange = (): void => setSelected(selectedInHash());
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
-  }, []);
-  return [
-    selected,
-    (id) => {
-      window.location.hash = String(id);
-    },
-  ];
-}
-
-function selectedInHash(): number | null {
-  const hash = window.location.hash.slice(1);
-  const id = Number(hash);
-  return hash !== "" && Number.isSafeInteger(id) && id >= 0 ? id : null;
 }
