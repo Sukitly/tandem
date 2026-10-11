@@ -31,8 +31,9 @@ export function TranscriptEntry({ item }: { item: TranscriptItem }) {
   switch (item.kind) {
     case "user":
       return (
-        <div className="ml-auto max-w-[85%] rounded-lg bg-muted px-4 py-2.5 break-words whitespace-pre-wrap">
-          {item.text}
+        <div className="group/message flex flex-col items-end gap-1">
+          <div className="max-w-[85%] rounded-lg bg-muted px-4 py-2.5 break-words whitespace-pre-wrap">{item.text}</div>
+          <CopyButton text={item.text} />
         </div>
       );
     case "assistant":
@@ -72,7 +73,7 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
   // A message that calls tools is a step on the way; copying is for answers.
   const answer = !item.parts.some((part) => part.kind === "tool");
   return (
-    <div className="flex flex-col gap-3">
+    <div className="group/message flex flex-col gap-3">
       {item.parts.map((part, index) => {
         const last = index === item.parts.length - 1;
         if (part.kind === "tool") return <ToolCall key={part.callId} part={part} />;
@@ -95,7 +96,7 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
           {item.error !== undefined && <AlertDescription>{item.error}</AlertDescription>}
         </Alert>
       )}
-      {item.ending === "complete" && answer && text !== "" && <CopyButton text={text} />}
+      {item.ending === "complete" && answer && text !== "" && <CopyButton text={text} className="self-start" />}
     </div>
   );
 }
@@ -230,13 +231,14 @@ function describeTool(part: ToolPart): { icon: ReactNode; summary: string } {
   }
 }
 
-function CopyButton({ text }: { text: string }) {
+/** Copies a message. Shows while the pointer is over the message, or when it has keyboard focus. */
+function CopyButton({ text, className }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <Button
       variant="ghost"
       size="icon-xs"
-      className="self-start"
+      className={cn("opacity-0 group-hover/message:opacity-100 focus-visible:opacity-100", className)}
       aria-label={copied ? "Copied" : "Copy"}
       onClick={() => {
         void navigator.clipboard.writeText(text).then(() => {
