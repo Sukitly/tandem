@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:," />
     <title>Tandem</title>
+    <script>
+      // Apply the theme before the first paint; src/theme.tsx keeps it in sync afterwards.
+      (() => {
+        const choice = localStorage.getItem("tandem.theme");
+        const dark = choice === "dark" || (choice !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

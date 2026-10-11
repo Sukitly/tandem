@@ -1,16 +1,8 @@
-import type { ChatStatus } from "ai";
-import { ArrowUpIcon } from "lucide-react";
-import { type KeyboardEvent, type ReactNode, useState } from "react";
-import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputTools,
-} from "@/components/ai-elements/prompt-input";
+import { ArrowUpIcon, SquareIcon } from "lucide-react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { FieldError } from "@/components/ui/field";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import type { QueuedMessage } from "./transcript.ts";
 
@@ -21,18 +13,19 @@ export interface ChatComposerProps {
   onSend: (text: string, whenBusy: "steer" | "followUp") => Promise<void>;
   onStop: () => void;
   autoFocus?: boolean;
-  /** Controls shown in the footer, such as the model picker. */
-  tools?: ReactNode;
+  /** Shown under the box: the model, the thinking level, and how full the context is. */
+  status?: ReactNode;
 }
 
 /**
  * The message box. While the agent works, Enter steers it (the message is read at its next step) and Alt+Enter queues
- * a follow-up for when it is done, as in pi's terminal UI.
+ * a follow-up for when it is done, as in pi's terminal UI. Shift+Enter starts a new line.
  */
-export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, tools }: ChatComposerProps) {
+export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, status }: ChatComposerProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const empty = value.trim() === "";
 
   const send = async (whenBusy: "steer" | "followUp"): Promise<void> => {
     const text = value.trim();
@@ -50,13 +43,15 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, tools }:
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== "Enter" || !event.altKey || event.nativeEvent.isComposing) return;
-    // Handled here, so the box does not also submit it as a plain Enter.
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
-    void send("followUp");
+    void send(event.altKey ? "followUp" : "steer");
   };
 
-  const status: ChatStatus = busy ? "streaming" : sending ? "submitted" : "ready";
+  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    void send("steer");
+  };
 
   return (
     <div className="grid gap-2">
@@ -72,25 +67,38 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, tools }:
           ))}
         </ItemGroup>
       )}
-      <PromptInput onSubmit={() => send("steer")}>
-        <PromptInputBody>
-          <PromptInputTextarea
+      <form onSubmit={onSubmit}>
+        <InputGroup>
+          <InputGroupTextarea
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={onKeyDown}
-            className="max-h-48"
+            rows={1}
+            className="max-h-60 min-h-0 py-2.5"
             aria-label="Message"
             placeholder={busy ? "Steer the agent, or Alt+Enter to queue a follow-up" : "Ask the agent"}
             autoFocus={autoFocus}
           />
-        </PromptInputBody>
-        <PromptInputFooter>
-          <PromptInputTools>{tools}</PromptInputTools>
-          <PromptInputSubmit status={status} onStop={onStop} disabled={!busy && value.trim() === ""}>
-            {status === "ready" ? <ArrowUpIcon /> : undefined}
-          </PromptInputSubmit>
-        </PromptInputFooter>
-      </PromptInput>
+          <InputGroupAddon align="inline-end" className="self-end pb-1.5">
+            {busy && empty ? (
+              <InputGroupButton type="button" variant="default" size="icon-sm" aria-label="Stop" onClick={onStop}>
+                <SquareIcon />
+              </InputGroupButton>
+            ) : (
+              <InputGroupButton
+                type="submit"
+                variant="default"
+                size="icon-sm"
+                aria-label="Send"
+                disabled={empty || sending}
+              >
+                <ArrowUpIcon />
+              </InputGroupButton>
+            )}
+          </InputGroupAddon>
+        </InputGroup>
+      </form>
+      {status}
       {error !== null && <FieldError>{error}</FieldError>}
     </div>
   );

@@ -14,6 +14,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  /* The waiting dots (src/chat/transcript-items.tsx): each rises once per cycle, in turn. From pmgg. */
+  --animate-typing-bounce: typing-bounce 2.1s ease-in-out infinite;
+  @keyframes typing-bounce {
+    0%,
+    30%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.5;
+    }
+    15% {
+      transform: translateY(-4px);
+      opacity: 1;
+    }
+  }
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Inter Variable", sans-serif;
@@ -81,8 +98,7 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  /* The Lyra style is square. Components outside src/components/ui (AI Elements, Streamdown) read this. */
-  --radius: 0;
+  --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -137,4 +153,18 @@
   html {
     @apply font-sans;
   }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/*
+ * Text fields show no focus ring and keep their border when focused: the caret already marks where typing goes.
+ * Invalid fields keep their red ring. Unlayered, so it wins over the components' utility classes.
+ */
+:is([data-slot="input"], [data-slot="sidebar-input"], [data-slot="textarea"]):focus-visible:not([aria-invalid="true"]),
+[data-slot="input-group"]:has([data-slot="input-group-control"]:focus-visible):not(:has([aria-invalid="true"])) {
+  border-color: var(--input);
+  box-shadow: none;
 }

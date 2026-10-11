@@ -1,33 +1,22 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Conversation as ConversationService } from "@tandem/contracts";
-import { AlertCircleIcon, CheckIcon, CopyIcon } from "lucide-react";
-import { useMemo, useState } from "react";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import {
-  Message,
-  MessageAction,
-  MessageActions,
-  MessageContent,
-  MessageResponse,
-} from "@/components/ai-elements/message";
-import { Shimmer } from "@/components/ai-elements/shimmer";
+import type { Conversation, ConversationNotice } from "@tandem/contracts";
+import { AlertCircleIcon, ArrowDownIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
+import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer } from "./chat-composer.tsx";
-import { ModelPicker } from "./model-picker.tsx";
-import { type TranscriptItem, toTranscript } from "./transcript.ts";
+import { type AgentChoice, StatusBar } from "./status-bar.tsx";
+import { toTranscript } from "./transcript.ts";
+import { TranscriptEntry, WaitingDots } from "./transcript-items.tsx";
 
-/** One conversation: its transcript and the message box. */
+/** One conversation: its header, transcript, and the message box. */
 export function ChatView({ conversationId }: { conversationId: number }) {
   const conversation = useConversation(conversationId);
   if (conversation === undefined) {
@@ -43,121 +32,123 @@ export function ChatView({ conversationId }: { conversationId: number }) {
     );
   }
   // Keyed, so a reopened instance starts from its own state.
-  return <OpenChat key={conversationId} conversation={conversation} />;
+  return <OpenChat key={conversationId} conversationId={conversationId} conversation={conversation} />;
 }
 
-function OpenChat({ conversation }: { conversation: ConversationService }) {
+function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
   const view = useReplicatedState(conversation.view);
   const notices = useReplicatedState(conversation.notices)?.notices ?? [];
   const transcript = useMemo(() => (view === undefined ? undefined : toTranscript(view)), [view]);
-  if (transcript === undefined) return null;
+  if (view === undefined || transcript === undefined) return null;
   const empty = transcript.items.length === 0;
-
-  const composer = (
-    <ChatComposer
-      busy={transcript.busy}
-      queued={transcript.queued}
-      autoFocus
-      tools={
-        <ModelPicker
-          conversation={conversation}
-          agent={view?.docs["pi.agent"] as { model?: { provider: string; modelId: string }; thinkingLevel?: string }}
-        />
-      }
-      onSend={(text, whenBusy) => conversation.submit({ text, whenBusy }, BACKGROUND_CONTEXT)}
-      onStop={() => {
-        conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
-      }}
-    />
-  );
+  const agent = view.docs["pi.agent"] as AgentChoice | undefined;
 
   return (
-    <section className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden" aria-label="Conversation">
-      {!empty && (
-        <Conversation className="flex-1">
-          <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-6">
+    <section className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" aria-label="Conversation">
+      <ChatHeader conversationId={conversationId} />
+      {empty ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>What are we working on?</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <StickToBottom
+          className="relative min-h-0 flex-1 overflow-y-hidden"
+          initial="instant"
+          resize="smooth"
+          role="log"
+          aria-label="Transcript"
+        >
+          <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
             {transcript.items.map((item) => (
-              <TranscriptMessage key={item.key} item={item} />
+              <TranscriptEntry key={item.key} item={item} />
             ))}
-          </ConversationContent>
-          <ConversationScrollButton aria-label="Scroll to the latest message" className="rounded-none" />
-        </Conversation>
+            <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
+          </StickToBottom.Content>
+          <ScrollToBottom />
+        </StickToBottom>
       )}
-      <div className={cn("mx-auto w-full max-w-3xl px-4", empty ? "my-auto py-6" : "pt-3 pb-6")}>
-        {empty && <ConversationEmptyState className="mb-6 h-auto p-0" title="What are we working on?" description="" />}
+      <div className="mx-auto grid w-full max-w-3xl gap-3 px-4 pt-2 pb-4">
         {notices.map((notice) => (
-          <Alert key={notice.id} variant="destructive" className="mb-3">
-            <AlertCircleIcon />
-            <AlertTitle>No answer</AlertTitle>
-            <AlertDescription>{notice.message}</AlertDescription>
-          </Alert>
+          <Notice key={notice.id} notice={notice} />
         ))}
-        {composer}
+        <ChatComposer
+          busy={transcript.busy}
+          queued={transcript.queued}
+          autoFocus
+          onSend={(text, whenBusy) => conversation.submit({ text, whenBusy }, BACKGROUND_CONTEXT)}
+          onStop={() => {
+            conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
+          }}
+          status={<StatusBar conversation={conversation} agent={agent} usage={transcript.usage} />}
+        />
       </div>
     </section>
   );
 }
 
-function TranscriptMessage({ item }: { item: TranscriptItem }) {
-  if (item.kind === "user") {
-    return (
-      <Message from="user">
-        <MessageContent>
-          <ChatMarkdown text={item.text} />
-        </MessageContent>
-      </Message>
-    );
-  }
-  if (item.kind === "streaming") {
-    return (
-      <Message from="assistant">
-        <MessageContent>
-          {item.text === "" ? <Shimmer duration={1}>Thinking…</Shimmer> : <ChatMarkdown text={item.text} streaming />}
-        </MessageContent>
-      </Message>
-    );
-  }
+/** The conversation's directory, and its title under it. */
+function ChatHeader({ conversationId }: { conversationId: number }) {
+  const { conversations } = useConnected();
+  const summary = useReplicatedState(conversations.state)?.conversations.find(
+    (candidate) => candidate.id === conversationId,
+  );
   return (
-    <Message from="assistant">
-      {item.text !== "" && (
-        <MessageContent>
-          <ChatMarkdown text={item.text} />
-        </MessageContent>
-      )}
-      {item.ending === "interrupted" && <Badge variant="outline">Interrupted</Badge>}
-      {item.ending === "failed" && (
-        <Alert variant="destructive">
-          <AlertCircleIcon />
-          <AlertTitle>The answer failed</AlertTitle>
-          {item.error !== undefined && <AlertDescription>{item.error}</AlertDescription>}
-        </Alert>
-      )}
-      {item.ending === "complete" && item.text !== "" && (
-        <MessageActions>
-          <CopyAction text={item.text} />
-        </MessageActions>
-      )}
-    </Message>
+    <header className="flex min-w-0 items-center gap-2 border-b px-3 py-2">
+      {/* On a narrow screen the sidebar is a drawer, out of sight, so the header opens it. */}
+      <SidebarTrigger className="md:hidden" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-mono text-xs text-muted-foreground">{summary?.cwd}</p>
+        <h1 className="truncate text-sm font-medium">{summary?.title ?? "New conversation"}</h1>
+      </div>
+    </header>
   );
 }
 
-function ChatMarkdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
-  return <MessageResponse isAnimating={streaming}>{text}</MessageResponse>;
+function Notice({ notice }: { notice: ConversationNotice }) {
+  return (
+    <Alert variant="destructive">
+      <AlertCircleIcon />
+      <AlertTitle>No answer</AlertTitle>
+      <AlertDescription>{notice.message}</AlertDescription>
+    </Alert>
+  );
 }
 
-function CopyAction({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+/**
+ * How long the agent may be silent between two visible steps before the dots show, so that the short hand-offs
+ * between a tool and the next answer do not flash them. Before the turn has shown anything, they show at once.
+ */
+const SILENT_GAP_MS = 2000;
+
+/** The waiting dots at the end of the transcript, while the agent works and nothing on screen moves. */
+function SilentGap({ silent, turnHasContent }: { silent: boolean; turnHasContent: boolean }) {
+  const [sustained, setSustained] = useState(false);
+  useEffect(() => {
+    if (!silent) {
+      setSustained(false);
+      return;
+    }
+    const timer = setTimeout(() => setSustained(true), SILENT_GAP_MS);
+    return () => clearTimeout(timer);
+  }, [silent]);
+  if (!silent || (turnHasContent && !sustained)) return null;
+  return <WaitingDots />;
+}
+
+function ScrollToBottom() {
+  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  if (isAtBottom) return null;
   return (
-    <MessageAction
-      label={copied ? "Copied" : "Copy"}
-      onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        });
-      }}
+    <Button
+      variant="outline"
+      size="icon-sm"
+      className="absolute bottom-3 left-1/2 -translate-x-1/2"
+      aria-label="Scroll to the latest message"
+      onClick={() => void scrollToBottom()}
     >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </MessageAction>
+      <ArrowDownIcon />
+    </Button>
   );
 }

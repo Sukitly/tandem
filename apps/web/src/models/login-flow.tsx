@@ -3,7 +3,7 @@ import type { LoginEvent, LoginPrompt, LoginState } from "@tandem/contracts";
 import { AlertCircleIcon, CheckCircle2Icon, ExternalLinkIcon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
@@ -59,12 +59,10 @@ function LoginEventItem({ event }: { event: LoginEvent }) {
             <ItemDescription>{event.instructions ?? "Open the sign-in page and approve access."}</ItemDescription>
           </ItemContent>
           <ItemActions>
-            <Button size="sm" asChild>
-              <a href={event.url} target="_blank" rel="noreferrer">
-                Open
-                <ExternalLinkIcon />
-              </a>
-            </Button>
+            <a href={event.url} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>
+              Open
+              <ExternalLinkIcon />
+            </a>
           </ItemActions>
         </Item>
       );
@@ -76,12 +74,10 @@ function LoginEventItem({ event }: { event: LoginEvent }) {
             <ItemDescription>Enter this code on the verification page.</ItemDescription>
           </ItemContent>
           <ItemActions>
-            <Button size="sm" asChild>
-              <a href={event.verificationUri} target="_blank" rel="noreferrer">
-                Open
-                <ExternalLinkIcon />
-              </a>
-            </Button>
+            <a href={event.verificationUri} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>
+              Open
+              <ExternalLinkIcon />
+            </a>
           </ItemActions>
         </Item>
       );
@@ -116,7 +112,11 @@ function LoginPromptForm({ prompt }: { prompt: LoginPrompt }) {
         <FieldLabel htmlFor="login-prompt">{prompt.message}</FieldLabel>
         <div className="flex gap-2">
           {prompt.type === "select" ? (
-            <Select value={value} onValueChange={setValue}>
+            <Select
+              value={value}
+              onValueChange={(next) => setValue(next ?? "")}
+              items={prompt.options.map((option) => ({ value: option.id, label: option.label }))}
+            >
               <SelectTrigger id="login-prompt" className="flex-1">
                 <SelectValue placeholder="Choose" />
               </SelectTrigger>

@@ -9,16 +9,19 @@ import { AppSidebar } from "./app/sidebar.tsx";
 import { ChatView } from "./chat/chat-view.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
+import { ThemeProvider } from "./theme.tsx";
 
 export function App() {
   return (
-    <TooltipProvider>
-      <ConnectionProvider fallback={(state) => <ConnectionScreen state={state} />}>
-        <ProvidersDialogProvider>
-          <Workbench />
-        </ProvidersDialogProvider>
-      </ConnectionProvider>
-    </TooltipProvider>
+    <ThemeProvider>
+      <TooltipProvider>
+        <ConnectionProvider fallback={(state) => <ConnectionScreen state={state} />}>
+          <ProvidersDialogProvider>
+            <Workbench />
+          </ProvidersDialogProvider>
+        </ConnectionProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   );
 }
 
@@ -28,20 +31,22 @@ function Workbench() {
     <SidebarProvider>
       <AppSidebar selected={selected} onSelect={select} />
       <SidebarInset className="h-dvh min-w-0">
-        <header className="flex items-center gap-2 p-2 md:hidden">
-          <SidebarTrigger />
-        </header>
         <ConnectionAlert />
         {selected === null ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <MessageSquareIcon />
-              </EmptyMedia>
-              <EmptyTitle>No conversation open</EmptyTitle>
-              <EmptyDescription>Start a conversation in a directory from the sidebar.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <>
+            <header className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
+              <SidebarTrigger />
+            </header>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <MessageSquareIcon />
+                </EmptyMedia>
+                <EmptyTitle>No conversation open</EmptyTitle>
+                <EmptyDescription>Choose a conversation in the sidebar, or start a new one.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </>
         ) : (
           <ChatView conversationId={selected} />
         )}
