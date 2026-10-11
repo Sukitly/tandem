@@ -131,13 +131,20 @@ describe("rpc over WebSocket", () => {
 
   test("reconnects and rehydrates state after the server restarts", async () => {
     const { server, state } = await startCounterServer();
-    const { connection, counter } = await connectTo(server);
+    // Default reconnect options: reconnecting is on unless disabled.
+    const connection = await connect({ baseUrl: server.url, token: server.token, services: [Counter] });
+    connections.push(connection);
+    const counter = connection.services.use(Counter);
+    await connection.services.ready(context);
     await counter.add(1, context);
     await waitFor(() => counter.state.value?.count === 1);
 
     await server.stop();
     servers.splice(servers.indexOf(server), 1);
     await waitFor(() => connection.status.value?.status === "disconnected");
+
+    // Down long enough for several reconnect attempts to fail.
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     // Same identity, token, and port; the state lives on in the test.
     state.replace(context, { count: 41 });

@@ -34,6 +34,24 @@ export function createFauxModels(options: FauxModelsOptions = {}): AppModels {
   return { models, defaultModel: { provider: model.provider, modelId: model.id } };
 }
 
+/** A reply that exercises the transcript's rendering: Markdown, a list, and a code block. */
+export function demoReply(text: string): string {
+  return [
+    `You said: **${text}**`,
+    "",
+    "This answer comes from the faux model, which runs without a network. It streams slowly on purpose, so you can watch it arrive and stop it halfway.",
+    "",
+    "- Reload the page: the conversation is still here.",
+    "- Open a second tab: both show the same answer as it streams.",
+    "- Restart the server while it streams: the answer completes after the restart.",
+    "",
+    "```ts",
+    'const greeting = "hello";',
+    "console.log(greeting);",
+    "```",
+  ].join("\n");
+}
+
 function lastUserText(messages: readonly Message[]): string {
   const message = messages.findLast((candidate) => candidate.role === "user");
   if (message === undefined || message.role !== "user") return "";
