@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Provider } from "@earendil-works/pi-ai";
+import { commentTools } from "./comment-tool.ts";
 import { FileCredentialStore } from "./credentials.ts";
 import { openHarness } from "./harness.ts";
 import { createAppModels, defaultProviders } from "./models.ts";
@@ -51,6 +52,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     cleanups.push(async () => catalog.dispose());
     const comments = await CommentBoard.load(opened.harness, workspaces, context, { onError });
     cleanups.push(async () => comments.dispose());
+    // Installed before any work resumes, so a conversation that continues after a restart has the tool too.
+    opened.registry.install(commentTools(comments, catalog));
     const paths = new ProjectPaths(workspaces, opened.env);
     const changes = new ChangeTrackers(paths, onError);
     cleanups.push(() => changes.dispose());

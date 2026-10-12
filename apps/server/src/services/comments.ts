@@ -1,6 +1,6 @@
 import { type Context, copyJson, type MutableReplicatedState, replicatedState } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { defineDoc, type Harness } from "@earendil-works/pi-durable";
+import { defineDoc, type Harness, type Tx } from "@earendil-works/pi-durable";
 import {
   COMMENT_CONTEXT_LINES,
   type CommentAnchor,
@@ -25,6 +25,9 @@ const CommentsDoc = defineDoc<StoredComments>({
 });
 
 const MAX_PATH_LENGTH = 4096;
+
+/** A commit on the Harness's Session line: the board's own, or a tool call's, which ends with the call. */
+type Commit = <T>(change: (tx: Tx) => T | Promise<T>, context: Context) => Promise<T>;
 
 export interface CommentBoardOptions {
   now?: () => number;
@@ -123,6 +126,44 @@ export class CommentBoard {
     });
   }
 
+  /**
+   * The agent's reply on a thread of the project its conversation works in, written with the tool call's commit. A
+   * reply is not sent anywhere: the agent wrote it. The returned text tells the agent why a reply was refused.
+   */
+  async replyAsAgent(
+    reply: { conversationId: number; workspaceId: number | undefined; threadId: number; text: string },
+    commit: Commit,
+    context: Context,
+  ): Promise<{ ok: true; messageId: number } | { ok: false; reason: string }> {
+    const text = reply.text.trim();
+    if (text === "") return { ok: false, reason: "The reply is empty." };
+    if (text.length > MAX_COMMENT_LENGTH)
+      return { ok: false, reason: `A reply is at most ${MAX_COMMENT_LENGTH} characters.` };
+    const createdAt = this.#now();
+    return this.#update(
+      context,
+      (doc) => {
+        const thread = doc.threads.find((candidate) => candidate.id === reply.threadId);
+        // A thread of another project is no more there than one that does not exist.
+        if (
+          thread === undefined ||
+          thread.workspaceId !== reply.workspaceId ||
+          !this.#workspaces.isListed(thread.workspaceId)
+        )
+          return { ok: false as const, reason: `There is no comment #${reply.threadId} in this project.` };
+        if (thread.messages.length >= MAX_THREAD_MESSAGES)
+          return {
+            ok: false as const,
+            reason: `Comment #${reply.threadId} holds ${MAX_THREAD_MESSAGES} messages, the most a thread can.`,
+          };
+        const id = doc.nextMessageId++;
+        thread.messages.push({ id, author: "agent", text, createdAt, conversationId: reply.conversationId });
+        return { ok: true as const, messageId: id };
+      },
+      commit,
+    );
+  }
+
   async edit(input: unknown, context: Context): Promise<void> {
     const { threadId, messageId, text } = (input ?? {}) as { threadId?: unknown; messageId?: unknown; text?: unknown };
     const note = parseText(text);
@@ -214,8 +255,12 @@ export class CommentBoard {
     return message;
   }
 
-  async #update<R>(context: Context, change: (doc: StoredComments) => R): Promise<R> {
-    const { result, stored } = await this.#harness.commit(async (tx) => {
+  async #update<R>(
+    context: Context,
+    change: (doc: StoredComments) => R,
+    commit: Commit = (write, writeContext) => this.#harness.commit(write, writeContext),
+  ): Promise<R> {
+    const { result, stored } = await commit(async (tx) => {
       const doc = await tx.doc(CommentsDoc);
       const result = change(doc);
       return { result, stored: copyJson(doc.threads) as CommentThread[] };

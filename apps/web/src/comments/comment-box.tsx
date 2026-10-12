@@ -2,6 +2,7 @@ import type { CommentMessage, CommentThread } from "@tandem/contracts";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { plainCommentRow } from "@/changes/diff-plain-annotations.ts";
+import { Markdown } from "@/chat/markdown.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -245,7 +246,14 @@ function ThreadMessage({
           </span>
         )}
       </div>
-      <p className="break-words whitespace-pre-wrap">{message.text}</p>
+      {/* The agent writes Markdown, and may repeat what a file told it: it renders as a message of the transcript does. */}
+      {message.author === "agent" ? (
+        <div className="text-sm">
+          <Markdown text={message.text} />
+        </div>
+      ) : (
+        <p className="break-words whitespace-pre-wrap">{message.text}</p>
+      )}
     </div>
   );
 }

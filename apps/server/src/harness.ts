@@ -1,6 +1,6 @@
 import type { Context } from "@earendil-works/chord";
 import type { Models } from "@earendil-works/pi-ai";
-import { createRegistry, type EnvTarget, Harness } from "@earendil-works/pi-durable";
+import { createRegistry, type EnvTarget, Harness, type Registry } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -9,6 +9,8 @@ import { TandemPrompt } from "./prompt.ts";
 
 export interface OpenedHarness {
   readonly harness: Harness;
+  /** Where extensions are installed that need the app's services, which are loaded after the Harness. */
+  readonly registry: Registry;
   /** The execution environment of a directory: the one its conversations' agents use, for reading its files too. */
   env(cwd: string): ExecutionEnv;
   close(context: Context): Promise<void>;
@@ -41,6 +43,7 @@ export async function openHarness(options: OpenHarnessOptions, context: Context)
   );
   return {
     harness,
+    registry,
     env: (cwd) => envs.of(cwd),
     async close(closeContext) {
       // Closing writes no outcome: running work continues after the next start.
