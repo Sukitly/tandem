@@ -312,6 +312,74 @@ describe("the agent's replies", () => {
   });
 });
 
+/** A model that does what a message asks in the form `Reply #N: "text"` (the text as JSON), and otherwise answers. */
+function askedModel(messages: readonly Message[]): AssistantMessage {
+  const last = messages.at(-1);
+  if (last?.role === "toolResult") {
+    const said = last.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
+    return fauxAssistantMessage(`Tool said: ${said}`);
+  }
+  const content = last?.role === "user" ? last.content : "";
+  const text =
+    typeof content === "string" ? content : content.map((block) => (block.type === "text" ? block.text : "")).join("");
+  const asked = /^Reply #(\d+): ("[\s\S]*")$/.exec(text);
+  if (asked === null) return fauxAssistantMessage("Done.");
+  const reply = JSON.parse(asked[2] ?? '""') as string;
+  return fauxAssistantMessage([fauxToolCall("reply_to_comment", { threadId: Number(asked[1]), text: reply })], {
+    stopReason: "toolUse",
+  });
+}
+
+describe("the agent's replies are refused", () => {
+  async function setUp() {
+    const { server } = await start(undefined, askedModel);
+    const app = await client(server);
+    const workspaceId = await app.workspaces.add({ path: tmpdir() }, context);
+    const threadId = await app.comments.start({ workspaceId, anchor, text: "Read it from the config." }, context);
+    await waitFor(() => app.threads().length === 1);
+    const id = await app.conversations.start({ workspaceId, text: "Hello." }, context);
+    const { conversation } = await app.openConversation(id);
+    await waitFor(() => assistantTexts(app.view(id)).includes("Done."));
+    /** Ask the agent for a reply, and return what the tool told it. The text goes as JSON: a message is trimmed. */
+    const ask = async (text: string): Promise<string> => {
+      const before = assistantTexts(app.view(id)).length;
+      await conversation.submit({ text: `Reply #${threadId}: ${JSON.stringify(text)}`, whenBusy: "followUp" }, context);
+      await waitFor(() =>
+        assistantTexts(app.view(id))
+          .slice(before)
+          .some((said) => said.startsWith("Tool said:")),
+      );
+      return (
+        assistantTexts(app.view(id))
+          .slice(before)
+          .find((said) => said.startsWith("Tool said:")) ?? ""
+      );
+    };
+    return { ...app, workspaceId, threadId, ask };
+  }
+
+  test("when empty or too long", async () => {
+    const { ask, threads } = await setUp();
+    expect(await ask("   ")).toBe("Tool said: The reply is empty.");
+    expect(await ask("x".repeat(10_001))).toBe("Tool said: A reply is at most 10000 characters.");
+    expect(threads()[0]?.messages).toHaveLength(1);
+  });
+
+  test("when the thread is full", async () => {
+    const { ask, comments, threads, threadId } = await setUp();
+    for (let index = 1; index < 100; index += 1) await comments.reply({ threadId, text: `Note ${index}.` }, context);
+    await waitFor(() => threads()[0]?.messages.length === 100);
+    expect(await ask("One more.")).toBe(`Tool said: Comment #${threadId} holds 100 messages, the most a thread can.`);
+    expect(threads()[0]?.messages).toHaveLength(100);
+  });
+
+  test("when the project was removed", async () => {
+    const { ask, workspaces, workspaceId, threadId } = await setUp();
+    await workspaces.remove(workspaceId, context);
+    expect(await ask("Still here?")).toBe(`Tool said: There is no comment #${threadId} in this project.`);
+  });
+});
+
 describe("what the agent reads of a thread", () => {
   const thread: CommentThread = {
     id: 3,

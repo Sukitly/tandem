@@ -248,9 +248,7 @@ function ThreadMessage({
       </div>
       {/* The agent writes Markdown, and may repeat what a file told it: it renders as a message of the transcript does. */}
       {message.author === "agent" ? (
-        <div className="text-sm">
-          <Markdown text={message.text} />
-        </div>
+        <Markdown text={message.text} />
       ) : (
         <p className="break-words whitespace-pre-wrap">{message.text}</p>
       )}

@@ -158,8 +158,11 @@ function ToolCall({ part }: { part: ToolPart }) {
     >
       {part.diff !== undefined ? (
         <Diff diff={part.diff} />
-      ) : part.name === "reply_to_comment" && part.status !== "failed" && typeof part.args.text === "string" ? (
-        // What the agent wrote on the thread, as the thread shows it; a refused reply shows why instead.
+      ) : part.name === "reply_to_comment" &&
+        (part.status === "running" || part.status === "done") &&
+        typeof part.args.text === "string" ? (
+        // What the agent wrote on the thread, as the thread shows it. A refused reply shows why instead, and a call
+        // that never ran shows nothing it did not write.
         <div className="text-sm">
           <Markdown text={part.args.text} streaming={part.status === "running"} />
         </div>
