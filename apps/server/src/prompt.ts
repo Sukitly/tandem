@@ -15,6 +15,7 @@ const TOOLS = [
   "- bash: Run a shell command in the working directory",
   "- edit: Replace exact text in a file",
   "- write: Create a file or overwrite it",
+  "- reply_to_comment: Reply to a review comment, in its thread beside the code",
 ].join("\n");
 
 const RULES = [

@@ -8,6 +8,7 @@ import {
   FilePenLineIcon,
   FilePlusIcon,
   FileTextIcon,
+  MessageSquareReplyIcon,
   SparklesIcon,
   SquareChevronRightIcon,
   WrenchIcon,
@@ -157,6 +158,14 @@ function ToolCall({ part }: { part: ToolPart }) {
     >
       {part.diff !== undefined ? (
         <Diff diff={part.diff} />
+      ) : part.name === "reply_to_comment" &&
+        (part.status === "running" || part.status === "done") &&
+        typeof part.args.text === "string" ? (
+        // What the agent wrote on the thread, as the thread shows it. A refused reply shows why instead, and a call
+        // that never ran shows nothing it did not write.
+        <div className="text-sm">
+          <Markdown text={part.args.text} streaming={part.status === "running"} />
+        </div>
       ) : body !== "" ? (
         <CodeBlock code={body} language={languageOf(part)} streaming={part.status === "running"} tall />
       ) : (
@@ -229,6 +238,8 @@ function describeTool(part: ToolPart): { icon: ReactNode; summary: string } {
       return { icon: <FilePenLineIcon />, summary: path };
     case "write":
       return { icon: <FilePlusIcon />, summary: path };
+    case "reply_to_comment":
+      return { icon: <MessageSquareReplyIcon />, summary: `Comment #${String(part.args.threadId ?? "")}` };
     default:
       return { icon: <WrenchIcon />, summary: `${part.name} ${JSON.stringify(part.args)}` };
   }
