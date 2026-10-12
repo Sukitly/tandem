@@ -2,6 +2,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
 import { AlertCircleIcon, Columns2Icon, Rows2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useWorkbench } from "@/app/workbench.tsx";
+import type { CommentDrafts } from "@/comments/comment-drafts.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
@@ -20,6 +22,7 @@ import {
   statusLabel,
   statusLetter,
 } from "./change-status.ts";
+import type { ChangeTarget } from "./change-target.ts";
 
 const DIFF_STYLE_KEY = "tandem.diffStyle";
 
@@ -36,22 +39,48 @@ interface LoadedPatch {
 export function ChangesView({
   changes,
   failure,
+  comments,
+  reveal,
 }: {
   changes: ProjectChanges | undefined;
   /** Why the project's changes are not there, if opening them failed. */
   failure: string | null;
+  /** Where the review's comments on these lines are written and kept. */
+  comments: CommentDrafts;
+  /** A place asked for—a comment of the review—to show as soon as the list holds its file. */
+  reveal?: ChangeTarget;
 }) {
+  const { openFile, forgetChangeTarget } = useWorkbench();
   const state = useReplicatedState(changes?.state);
   const [selected, setSelected] = useState<string | null>(null);
+  /** The place the diff is scrolling to, kept while this panel is shown. */
+  const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
   const [styled, setStyled] = useState<"split" | "unified">(storedDiffStyle);
   const [loaded, setLoaded] = useState<LoadedPatch | null>(null);
   const [readFailure, setReadFailure] = useState<string | null>(null);
 
-  // The selection follows the list: a file that leaves it takes the patch with it.
+  // A place was asked for—a comment of the review: show its file, which the diff then scrolls to the line of. A file
+  // the list does not hold (a comment on a file that did not change) has no diff to scroll, so it is opened where it
+  // is, in the files view. The request is settled either way: asking is not repeated as the list changes.
   useEffect(() => {
-    if (selected !== null && state?.files.some((file) => file.path === selected) === true) return;
-    setSelected(state?.files[0]?.path ?? null);
-  }, [state, selected]);
+    if (reveal === undefined || state === undefined) return;
+    if (state.status === "ready" && state.files.some((file) => file.path === reveal.path)) {
+      setSelected(reveal.path);
+      setRevealed(reveal);
+    } else {
+      openFile(reveal.path, reveal.line);
+    }
+    forgetChangeTarget();
+  }, [reveal, state, openFile, forgetChangeTarget]);
+
+  // The shown file follows the list: a file that leaves it takes the patch with it.
+  useEffect(() => {
+    setSelected((current) =>
+      current !== null && state?.files.some((file) => file.path === current) === true
+        ? current
+        : (state?.files[0]?.path ?? null),
+    );
+  }, [state]);
 
   // Read the patch again for every published change of the file, and for every other selection.
   useEffect(() => {
@@ -145,10 +174,12 @@ export function ChangesView({
             <ResizablePanel id="diff" defaultSize="70" minSize={120}>
               <ChangeView
                 file={selectedFile}
+                reveal={revealed ?? undefined}
                 patch={loaded?.path === selectedFile.path ? loaded.patch : null}
                 failure={readFailure}
                 styled={styled}
                 onStyled={setStyled}
+                comments={comments}
               />
             </ResizablePanel>
           </>
@@ -170,12 +201,16 @@ function ChangeView({
   failure,
   styled,
   onStyled,
+  comments,
+  reveal,
 }: {
   file: ChangedFile;
   patch: FilePatch | null;
   failure: string | null;
   styled: "split" | "unified";
   onStyled(style: "split" | "unified"): void;
+  comments: CommentDrafts;
+  reveal?: ChangeTarget;
 }) {
   const next = styled === "split" ? "unified" : "split";
   return (
@@ -221,7 +256,7 @@ function ChangeView({
             </EmptyHeader>
           </Empty>
         ) : (
-          <ChangeDiff path={file.path} patch={patch} style={styled} />
+          <ChangeDiff path={file.path} patch={patch} style={styled} comments={comments} reveal={reveal} />
         )}
       </div>
     </section>

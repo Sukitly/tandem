@@ -1,5 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import type { ChangeTarget } from "@/changes/change-target.ts";
+import { CommentDrafts } from "@/comments/comment-drafts.ts";
 import { ProjectFiles } from "@/files/project-files.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
@@ -7,6 +9,10 @@ import { AddProjectDialog } from "./add-project-dialog.tsx";
 
 const LAST_WORKSPACE_KEY = "tandem.lastWorkspace";
 const FILES_SHOWN_KEY = "tandem.filesShown";
+const PANEL_TAB_KEY = "tandem.panelTab";
+
+/** The view of the panel beside the conversation. */
+export type PanelTab = "files" | "changes";
 
 /** Something the user asked for that did not happen. */
 export interface Failure {
@@ -26,11 +32,22 @@ interface Workbench {
   newConversation(workspaceId: number): void;
   /** The project of the open conversation, or of the new one. */
   workspaceId: number | null;
-  /** The files panel is shown; the user's choice, kept across reloads. */
+  /** The panel beside the conversation is shown; the user's choice, kept across reloads. */
   filesShown: boolean;
   showFiles(shown: boolean): void;
+  /** Which view of the panel is shown, kept across reloads. Opening a file shows its own. */
+  panelTab: PanelTab;
+  showTab(tab: PanelTab): void;
+  /** Show a place of the project's changes in the panel: the file's diff, at the line. */
+  openChange(target: Omit<ChangeTarget, "workspaceId">): void;
+  /** What the changes panel was last asked to show. Each request is a new object, so asking again shows it again. */
+  changeTarget: ChangeTarget | null;
+  /** The request is settled: it was shown, or the changes had nothing to show it in. */
+  forgetChangeTarget(): void;
   /** What the files panel shows of a project, kept while the page is open. */
   projectFiles(workspaceId: number): ProjectFiles;
+  /** The review comments of a project, waiting to be sent with the next message. */
+  comments(workspaceId: number): CommentDrafts;
   /** Show a file of the current project in the files panel, at a line if one is given. */
   openFile(path: string, line?: number): void;
   /** The project a conversation was last started in, or the last one added. It may have been removed since. */
@@ -59,7 +76,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [failure, setFailure] = useState<Failure | null>(null);
   const [lastWorkspaceId, setLastWorkspaceId] = useState(storedWorkspaceId);
   const [filesShown, setFilesShown] = useState(() => localStorage.getItem(FILES_SHOWN_KEY) !== "false");
+  const [panelTab, setPanelTab] = useState<PanelTab>(() =>
+    localStorage.getItem(PANEL_TAB_KEY) === "changes" ? "changes" : "files",
+  );
+  const [changeTarget, setChangeTarget] = useState<ChangeTarget | null>(null);
   const [projects] = useState(() => new Map<number, ProjectFiles>());
+  const [comments] = useState(() => new Map<number, CommentDrafts>());
   const summaries = useReplicatedState(conversations.state)?.conversations;
   const workspaceId = draft ?? summaries?.find((summary) => summary.id === selected)?.workspaceId ?? null;
 
@@ -93,9 +115,21 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     }
     return project;
   };
+  const projectComments = (id: number): CommentDrafts => {
+    let drafts = comments.get(id);
+    if (drafts === undefined) {
+      drafts = new CommentDrafts(id);
+      comments.set(id, drafts);
+    }
+    return drafts;
+  };
   const showFiles = (shown: boolean): void => {
     localStorage.setItem(FILES_SHOWN_KEY, String(shown));
     setFilesShown(shown);
+  };
+  const showTab = (tab: PanelTab): void => {
+    localStorage.setItem(PANEL_TAB_KEY, tab);
+    setPanelTab(tab);
   };
 
   const workbench: Workbench = {
@@ -110,10 +144,23 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     workspaceId,
     filesShown,
     showFiles,
+    panelTab,
+    showTab,
+    changeTarget,
+    forgetChangeTarget: () => setChangeTarget(null),
+    openChange(target) {
+      if (workspaceId === null) return;
+      showFiles(true);
+      showTab("changes");
+      setChangeTarget({ workspaceId, ...target });
+    },
     projectFiles,
+    comments: projectComments,
     openFile(path, line) {
       if (workspaceId === null) return;
       showFiles(true);
+      // A file is shown in the files tab: opening it under another tab would show nothing.
+      showTab("files");
       projectFiles(workspaceId).open(path, line);
     },
     lastWorkspaceId,

@@ -1,5 +1,7 @@
 import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from "react";
+import { CommentList } from "@/comments/comment-list.tsx";
+import { commentMessage, type LineComment } from "@/comments/line-comment.ts";
 import { Badge } from "@/components/ui/badge";
 import { FieldError } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
@@ -9,8 +11,13 @@ import type { QueuedMessage } from "./transcript.ts";
 export interface ChatComposerProps {
   busy: boolean;
   queued: QueuedMessage[];
+  /** Review comments of the project waiting to be sent; they go with the message. */
+  comments?: LineComment[];
+  onRemoveComment?(id: string): void;
   /** Rejects when the server refuses the message; the text then stays in the box. */
   onSend: (text: string, whenBusy: "steer" | "followUp") => Promise<void>;
+  /** The message was taken: its comments are no longer waiting. */
+  onSent?(): void;
   onStop: () => void;
   autoFocus?: boolean;
   /** Shown under the box: the model, the thinking level, and how full the context is. */
@@ -21,20 +28,32 @@ export interface ChatComposerProps {
  * The message box. While the agent works, Enter steers it (the message is read at its next step) and Alt+Enter queues
  * a follow-up for when it is done, as in pi's terminal UI. Shift+Enter starts a new line.
  */
-export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, status }: ChatComposerProps) {
+export function ChatComposer({
+  busy,
+  queued,
+  comments = [],
+  onRemoveComment,
+  onSend,
+  onSent,
+  onStop,
+  autoFocus,
+  status,
+}: ChatComposerProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const empty = value.trim() === "";
+  const message = commentMessage(comments, value);
+  const empty = message.trim() === "";
 
   const send = async (whenBusy: "steer" | "followUp"): Promise<void> => {
-    const text = value.trim();
-    if (text === "" || sending) return;
+    if (message.trim() === "" || sending) return;
     setSending(true);
     setError(null);
     try {
-      await onSend(text, whenBusy);
+      await onSend(message, whenBusy);
       setValue("");
+      // Only what was taken is dropped: a refused message keeps its comments too.
+      onSent?.();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
@@ -55,6 +74,7 @@ export function ChatComposer({ busy, queued, onSend, onStop, autoFocus, status }
 
   return (
     <div className="grid gap-2">
+      <CommentList comments={comments} onRemove={(id) => onRemoveComment?.(id)} />
       {queued.length > 0 && (
         <ItemGroup aria-label="Queued messages" className="gap-1">
           {queued.map((message) => (

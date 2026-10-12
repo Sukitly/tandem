@@ -1,6 +1,8 @@
 import { AlertCircleIcon, FileIcon, XIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { HighlightedLine, languageOfFile, useHighlighted } from "@/chat/highlight.tsx";
+import { CommentDraft, CommentNote } from "@/comments/comment-box.tsx";
+import { type CommentDrafts, useCommentDrafts } from "@/comments/comment-drafts.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -13,7 +15,7 @@ import { type OpenedFile, type ProjectFiles, useProjectFiles } from "./project-f
 const MAX_HIGHLIGHTED_LINES = 3000;
 
 /** The opened file of the files panel, shown at its line if one was asked for. */
-export function FileView({ files }: { files: ProjectFiles }) {
+export function FileView({ files, comments }: { files: ProjectFiles; comments: CommentDrafts }) {
   const opened = useProjectFiles(files, (current) => current.opened);
   const content = useProjectFiles(files, (current) => current.content);
   if (opened === null) return null;
@@ -48,7 +50,7 @@ export function FileView({ files }: { files: ProjectFiles }) {
             </Alert>
           </div>
         ) : content.value.kind === "text" ? (
-          <FileText text={content.value.text} opened={opened} />
+          <FileText text={content.value.text} opened={opened} comments={comments} />
         ) : (
           <Empty>
             <EmptyHeader>
@@ -69,8 +71,11 @@ export function FileView({ files }: { files: ProjectFiles }) {
   );
 }
 
-/** The text with line numbers, highlighted unless it is long; the asked-for line is marked and scrolled to. */
-function FileText({ text, opened }: { text: string; opened: OpenedFile }) {
+/**
+ * The text with line numbers, highlighted unless it is long; the asked-for line is marked and scrolled to. A comment
+ * is written by clicking a line's number, and shown under the line it is about.
+ */
+function FileText({ text, opened, comments }: { text: string; opened: OpenedFile; comments: CommentDrafts }) {
   const { path, line } = opened;
   const body = text.endsWith("\n") ? text.slice(0, -1) : text;
   const lines = body.split("\n");
@@ -78,6 +83,8 @@ function FileText({ text, opened }: { text: string; opened: OpenedFile }) {
     lines.length <= MAX_HIGHLIGHTED_LINES ? languageOfFile(path.slice(path.lastIndexOf("/") + 1)) : undefined;
   const tokens = useHighlighted(body, language, false);
   const scroller = useRef<HTMLDivElement>(null);
+  const written = useCommentDrafts(comments).filter((comment) => comment.path === path);
+  const [draft, setDraft] = useState<{ line: number; quote: string } | null>(null);
 
   // Each request to show a place is a new `opened`, so asking again for the same line shows it again.
   useEffect(() => {
@@ -92,16 +99,49 @@ function FileText({ text, opened }: { text: string; opened: OpenedFile }) {
           {lines.map((content, index) => {
             const number = index + 1;
             return (
-              <div key={number} data-line={number} className={cn("flex", number === line && "bg-primary/10")}>
-                <span className="sticky left-0 w-12 shrink-0 bg-background pr-4 text-right text-muted-foreground select-none">
-                  {number}
-                </span>
-                {tokens?.[index] === undefined ? (
-                  <span className="pr-4">{content}</span>
-                ) : (
-                  <HighlightedLine tokens={tokens[index]} className="pr-4" />
+              <Fragment key={number}>
+                <div data-line={number} className={cn("group/line flex", number === line && "bg-primary/10")}>
+                  <button
+                    type="button"
+                    aria-label={`Comment on line ${number}`}
+                    title="Comment on this line"
+                    className="sticky left-0 w-12 shrink-0 cursor-pointer bg-background pr-4 text-right text-muted-foreground select-none"
+                    onClick={() => setDraft({ line: number, quote: content })}
+                  >
+                    <span className="group-hover/line:hidden">{number}</span>
+                    <span className="hidden group-hover/line:inline">+</span>
+                  </button>
+                  {tokens?.[index] === undefined ? (
+                    <span className="pr-4">{content}</span>
+                  ) : (
+                    <HighlightedLine tokens={tokens[index]} className="pr-4" />
+                  )}
+                </div>
+                {written
+                  .filter((comment) => comment.line === number)
+                  .map((comment) => (
+                    <CommentNote
+                      key={comment.id}
+                      comment={comment}
+                      view={scroller}
+                      className="ml-14"
+                      onSave={(text) => comments.update(comment.id, text)}
+                      onRemove={() => comments.remove(comment.id)}
+                    />
+                  ))}
+                {draft?.line === number && (
+                  <CommentDraft
+                    place={`${path}:${draft.line}`}
+                    view={scroller}
+                    className="ml-14"
+                    onSave={(text) => {
+                      comments.add({ path, line: draft.line, quote: draft.quote, text });
+                      setDraft(null);
+                    }}
+                    onCancel={() => setDraft(null)}
+                  />
                 )}
-              </div>
+              </Fragment>
             );
           })}
         </code>

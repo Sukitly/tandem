@@ -1,6 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { AlertCircleIcon, RotateCwIcon, XIcon } from "lucide-react";
-import { useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { ChangesView } from "@/changes/changes-view.tsx";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,28 +12,26 @@ import { FileView } from "@/files/file-view.tsx";
 import { useProjectFiles } from "@/files/project-files.ts";
 import { useProjectChanges, useProjectChangesFailure } from "@/rpc/use-project-changes.ts";
 
-const TAB_KEY = "tandem.panelTab";
-
 /**
  * The panel beside the conversation, with a tab per view of its project. Files: the tree, and under it the opened file,
  * both read from disk when they open and when the user refreshes. Changes: what differs from the project's integration
  * branch, followed as the files on disk change.
  */
 export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
-  const files = useWorkbench().projectFiles(workspaceId);
+  const workbench = useWorkbench();
+  const { panelTab, showTab, changeTarget } = workbench;
+  const files = workbench.projectFiles(workspaceId);
+  const comments = workbench.comments(workspaceId);
   const changes = useProjectChanges(workspaceId);
   const changesFailure = useProjectChangesFailure(workspaceId);
   const failure = useProjectFiles(files, (current) => current.failure);
   const opened = useProjectFiles(files, (current) => current.opened !== null);
-  const [tab, setTab] = useState(storedTab);
-
-  const select = (value: string): void => {
-    localStorage.setItem(TAB_KEY, value);
-    setTab(value);
-  };
-
   return (
-    <Tabs value={tab} onValueChange={select} className="h-full min-h-0 gap-0">
+    <Tabs
+      value={panelTab}
+      onValueChange={(value) => showTab(value === "changes" ? "changes" : "files")}
+      className="h-full min-h-0 gap-0"
+    >
       {/* As tall as the conversation's header beside it, so that their borders line up. */}
       <header className="flex h-13 shrink-0 items-center gap-1 border-b px-3">
         <TabsList variant="line">
@@ -49,7 +46,7 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
                 size="icon-xs"
                 aria-label="Refresh"
                 className="ml-auto"
-                onClick={() => (tab === "files" ? files.refresh() : changes?.refresh(BACKGROUND_CONTEXT))}
+                onClick={() => (panelTab === "files" ? files.refresh() : changes?.refresh(BACKGROUND_CONTEXT))}
               />
             }
           >
@@ -81,19 +78,20 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
             <>
               <ResizableHandle />
               <ResizablePanel id="file" defaultSize="60" minSize={120}>
-                <FileView files={files} />
+                <FileView files={files} comments={comments} />
               </ResizablePanel>
             </>
           )}
         </ResizablePanelGroup>
       </TabsContent>
       <TabsContent value="changes" className="flex min-h-0 flex-col">
-        <ChangesView changes={changes} failure={changesFailure} />
+        <ChangesView
+          changes={changes}
+          failure={changesFailure}
+          comments={comments}
+          reveal={changeTarget?.workspaceId === workspaceId ? changeTarget : undefined}
+        />
       </TabsContent>
     </Tabs>
   );
-}
-
-function storedTab(): string {
-  return localStorage.getItem(TAB_KEY) === "changes" ? "changes" : "files";
 }

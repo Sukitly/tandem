@@ -3,6 +3,7 @@ import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { Children, type ComponentProps, createElement, isValidElement, memo, type ReactNode } from "react";
+import remarkBreaks from "remark-breaks";
 import {
   type Components,
   defaultComponents,
@@ -18,7 +19,8 @@ import { texDelimiters } from "./tex-delimiters.ts";
 import { untrustedMarkdown } from "./untrusted-markdown.ts";
 
 const plugins = { cjk, code, math, mermaid };
-const remarkPlugins = [...Object.values(defaultRemarkPlugins), texDelimiters, untrustedMarkdown];
+// A single newline is a line break, as a person writing in a message box expects.
+const remarkPlugins = [...Object.values(defaultRemarkPlugins), remarkBreaks, texDelimiters, untrustedMarkdown];
 // Raw HTML is text by now, and links and images are checked by `untrustedMarkdown`; sanitizing stays.
 const sanitize = defaultRehypePlugins.sanitize;
 if (sanitize === undefined) throw new Error("Streamdown's sanitize plugin is missing");
