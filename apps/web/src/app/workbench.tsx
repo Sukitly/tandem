@@ -1,9 +1,20 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { useConnected } from "@/rpc/connection.tsx";
+import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
 
 const LAST_WORKSPACE_KEY = "tandem.lastWorkspace";
+const FILES_SHOWN_KEY = "tandem.filesShown";
+
+/** A file shown in the files panel, and the line to show, if any. */
+export interface OpenedFile {
+  workspaceId: number;
+  path: string;
+  line?: number;
+  /** Counts requests, so that opening the same place again shows it again. */
+  request: number;
+}
 
 /** Something the user asked for that did not happen. */
 export interface Failure {
@@ -21,6 +32,16 @@ interface Workbench {
    */
   draft: number | null;
   newConversation(workspaceId: number): void;
+  /** The project of the open conversation, or of the new one. */
+  workspaceId: number | null;
+  /** The files panel is shown; the user's choice, kept across reloads. */
+  filesShown: boolean;
+  showFiles(shown: boolean): void;
+  /** The file shown in the files panel. It may be of another project than the current one, and is then not shown. */
+  openedFile: OpenedFile | null;
+  /** Show a file of the current project in the files panel, at a line if one is given. */
+  openFile(path: string, line?: number): void;
+  closeFile(): void;
   /** The project a conversation was last started in, or the last one added. It may have been removed since. */
   lastWorkspaceId: number | undefined;
   addProject(): void;
@@ -46,6 +67,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [lastWorkspaceId, setLastWorkspaceId] = useState(storedWorkspaceId);
+  const [filesShown, setFilesShown] = useState(() => localStorage.getItem(FILES_SHOWN_KEY) !== "false");
+  const [openedFile, setOpenedFile] = useState<OpenedFile | null>(null);
+  const summaries = useReplicatedState(conversations.state)?.conversations;
+  const workspaceId = draft ?? summaries?.find((summary) => summary.id === selected)?.workspaceId ?? null;
 
   useEffect(() => {
     const onChange = (): void => {
@@ -69,22 +94,41 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setLastWorkspaceId(workspaceId);
   };
 
+  const showFiles = (shown: boolean): void => {
+    localStorage.setItem(FILES_SHOWN_KEY, String(shown));
+    setFilesShown(shown);
+  };
+
   const workbench: Workbench = {
     selected,
     select,
     draft,
-    newConversation(workspaceId) {
+    newConversation(id) {
       select(null);
-      setDraft(workspaceId);
-      remember(workspaceId);
+      setDraft(id);
+      remember(id);
     },
+    workspaceId,
+    filesShown,
+    showFiles,
+    openedFile,
+    openFile(path, line) {
+      if (workspaceId === null) return;
+      showFiles(true);
+      setOpenedFile((previous) => ({
+        workspaceId,
+        path,
+        ...(line === undefined ? {} : { line }),
+        request: (previous?.request ?? 0) + 1,
+      }));
+    },
+    closeFile: () => setOpenedFile(null),
     lastWorkspaceId,
     addProject: () => setAdding(true),
-    removeProject(workspaceId) {
-      const open = conversations.state.value?.conversations.find((summary) => summary.id === selected);
-      workspaces.remove(workspaceId, BACKGROUND_CONTEXT).then(
+    removeProject(id) {
+      workspaces.remove(id, BACKGROUND_CONTEXT).then(
         () => {
-          if (open?.workspaceId === workspaceId || draft === workspaceId) select(null);
+          if (workspaceId === id) select(null);
         },
         (error: unknown) => setFailure({ title: "Could not remove the project", message: messageOf(error) }),
       );

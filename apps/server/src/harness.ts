@@ -1,6 +1,7 @@
 import type { Context } from "@earendil-works/chord";
 import type { Models } from "@earendil-works/pi-ai";
 import { createRegistry, type EnvTarget, Harness } from "@earendil-works/pi-durable";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
@@ -8,6 +9,8 @@ import { TandemPrompt } from "./prompt.ts";
 
 export interface OpenedHarness {
   readonly harness: Harness;
+  /** The execution environment of a directory: the one its conversations' agents use, for reading its files too. */
+  env(cwd: string): ExecutionEnv;
   close(context: Context): Promise<void>;
 }
 
@@ -38,6 +41,7 @@ export async function openHarness(options: OpenHarnessOptions, context: Context)
   );
   return {
     harness,
+    env: (cwd) => envs.of(cwd),
     async close(closeContext) {
       // Closing writes no outcome: running work continues after the next start.
       await harness.close(closeContext);
@@ -50,15 +54,16 @@ export async function openHarness(options: OpenHarnessOptions, context: Context)
 class ExecutionEnvs {
   readonly #envs = new Map<string, NodeExecutionEnv>();
 
-  readonly env = ({ cwd }: EnvTarget): NodeExecutionEnv | undefined => {
-    if (cwd === undefined) return undefined;
+  readonly env = ({ cwd }: EnvTarget): NodeExecutionEnv | undefined => (cwd === undefined ? undefined : this.of(cwd));
+
+  of(cwd: string): NodeExecutionEnv {
     let env = this.#envs.get(cwd);
     if (env === undefined) {
       env = new NodeExecutionEnv({ cwd });
       this.#envs.set(cwd, env);
     }
     return env;
-  };
+  }
 
   async cleanup(context: Context): Promise<void> {
     const envs = [...this.#envs.values()];

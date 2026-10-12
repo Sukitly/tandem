@@ -15,6 +15,7 @@ export {
   type StartInput,
   type SubmitInput,
 } from "./conversations.ts";
+export { type FileContent, type FileEntry, type FileLocation, Files, MAX_FILE_VIEW_BYTES } from "./files.ts";
 export {
   type AuthType,
   type LoginEvent,

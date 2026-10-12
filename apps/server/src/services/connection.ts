@@ -1,7 +1,7 @@
 import { RemoteServiceProvider } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId, Harness } from "@earendil-works/pi-durable";
-import { Conversation, Conversations, Models, type StartInput, Workspaces } from "@tandem/contracts";
+import { Conversation, Conversations, Files, Models, type StartInput, Workspaces } from "@tandem/contracts";
 import type { ConnectionServices } from "../rpc-host.ts";
 import {
   createConversationService,
@@ -12,6 +12,7 @@ import {
 } from "./conversation.ts";
 import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
+import type { FileBrowser } from "./files.ts";
 import type { ModelCatalog } from "./models.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
@@ -19,6 +20,7 @@ export interface AppServices {
   readonly harness: Harness;
   readonly catalog: ConversationCatalog;
   readonly workspaces: WorkspaceCatalog;
+  readonly files: FileBrowser;
   readonly models: ModelCatalog;
   readonly notices: NoticeBoard;
 }
@@ -33,12 +35,14 @@ export function createConnectionServices({
   harness,
   catalog,
   workspaces,
+  files,
   models,
   notices,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
     Models,
     Workspaces,
+    Files,
     Conversations,
     { service: Conversation, mode: "keyed" },
   ]);
@@ -113,6 +117,11 @@ export function createConnectionServices({
       parseId(id, "Project");
       await workspaces.remove(id, context);
     },
+  });
+
+  provider.provide(Files, {
+    list: (location, context) => files.list(location, context),
+    read: (location, context) => files.read(location, context),
   });
 
   provider.provide(Conversations, {
