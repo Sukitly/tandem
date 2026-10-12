@@ -1,5 +1,4 @@
 import { AlertCircleIcon, RotateCwIcon, XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -7,8 +6,9 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { ancestors, FileTree } from "./file-tree.tsx";
+import { FileTree } from "./file-tree.tsx";
 import { FileView } from "./file-view.tsx";
+import { useProjectFiles } from "./project-files.ts";
 
 /**
  * The current project's files: the tree, and under it the opened file. Both are read from disk when they open and
@@ -17,17 +17,9 @@ import { FileView } from "./file-view.tsx";
 export function FilesPanel({ workspaceId }: { workspaceId: number }) {
   const { workspaces } = useConnected();
   const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
-  const { openedFile, openFile, closeFile } = useWorkbench();
-  const file = openedFile?.workspaceId === workspaceId ? openedFile : null;
-  const [expanded, setExpanded] = useState<string[]>([]);
-  const [refresh, setRefresh] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-
-  // A file opened from a message shows in the tree too: its directories open.
-  useEffect(() => {
-    if (file === null) return;
-    setExpanded((current) => [...new Set([...current, ...ancestors(file.path)])]);
-  }, [file]);
+  const files = useWorkbench().projectFiles(workspaceId);
+  const failure = useProjectFiles(files, (current) => current.failure);
+  const opened = useProjectFiles(files, (current) => current.opened !== null);
 
   return (
     <section className="flex h-full min-h-0 flex-col" aria-label="Files">
@@ -38,31 +30,21 @@ export function FilesPanel({ workspaceId }: { workspaceId: number }) {
         </h2>
         <Tooltip>
           <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Refresh"
-                onClick={() => {
-                  setError(null);
-                  setRefresh((count) => count + 1);
-                }}
-              />
-            }
+            render={<Button variant="ghost" size="icon-xs" aria-label="Refresh" onClick={() => files.refresh()} />}
           >
             <RotateCwIcon />
           </TooltipTrigger>
           <TooltipContent>Read the files again</TooltipContent>
         </Tooltip>
       </header>
-      {error !== null && (
+      {failure !== null && (
         <div className="p-2">
           <Alert variant="destructive">
             <AlertCircleIcon />
             <AlertTitle>Cannot list a directory</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{failure}</AlertDescription>
             <AlertAction>
-              <Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={() => setError(null)}>
+              <Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={() => files.dismissFailure()}>
                 <XIcon />
               </Button>
             </AlertAction>
@@ -70,30 +52,14 @@ export function FilesPanel({ workspaceId }: { workspaceId: number }) {
         </div>
       )}
       <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
-        <ResizablePanel id="tree" minSize={80} className="overflow-auto">
-          <FileTree
-            key={refresh}
-            workspaceId={workspaceId}
-            expanded={expanded}
-            onExpandedChange={setExpanded}
-            selected={file?.path}
-            reveal={file?.request ?? 0}
-            onOpen={(path) => openFile(path)}
-            onError={setError}
-          />
+        <ResizablePanel id="tree" minSize={80} className="overflow-auto p-2">
+          <FileTree files={files} />
         </ResizablePanel>
-        {file !== null && (
+        {opened && (
           <>
             <ResizableHandle />
             <ResizablePanel id="file" defaultSize="60" minSize={120}>
-              <FileView
-                workspaceId={workspaceId}
-                path={file.path}
-                line={file.line}
-                request={file.request}
-                refresh={refresh}
-                onClose={closeFile}
-              />
+              <FileView files={files} />
             </ResizablePanel>
           </>
         )}
