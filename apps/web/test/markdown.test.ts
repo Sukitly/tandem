@@ -79,13 +79,13 @@ describe("untrusted Markdown", () => {
     expect(all(tree, "break")).toHaveLength(1);
   });
 
-  test("links to the web and to mail stay; others become their text", () => {
+  test("links to the web, to mail, and to files stay; others become their text", () => {
     const tree = parse(
-      "[web](https://example.com) [mail](mailto:a@b.c) [file](src/app.ts#L3) [js](javascript:alert(1)) [ref][r]\n\n[r]: ./notes.md",
+      "[web](https://example.com) [mail](mailto:a@b.c) [file](src/app.ts#L3) [js](javascript:alert(1)) [app](vscode://x) [ref][r] [anchor](#usage)\n\n[r]: ./notes.md",
     );
-    expect(all(tree, "link").map((link) => link.url)).toEqual(["https://example.com", "mailto:a@b.c"]);
-    expect(all(tree, "linkReference")).toEqual([]);
-    expect(text("[file](src/app.ts) and [ref][r]\n\n[r]: ./notes.md")).toBe("file and ref");
+    expect(all(tree, "link").map((link) => link.url)).toEqual(["https://example.com", "mailto:a@b.c", "src/app.ts#L3"]);
+    expect(all(tree, "linkReference").map((link) => link.identifier)).toEqual(["r"]);
+    expect(text("[js](javascript:alert(1)) and [anchor](#usage)")).toBe("js and anchor");
   });
 
   test("images load only from the web; others become their alt text", () => {

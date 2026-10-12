@@ -6,22 +6,37 @@ import { Children, type ComponentProps, createElement, isValidElement, memo, typ
 import {
   type Components,
   defaultComponents,
+  defaultRehypePlugins,
   defaultRemarkPlugins,
   Streamdown,
   useIsCodeFenceIncomplete,
 } from "streamdown";
+import { parseFileLink } from "@/files/file-link.ts";
+import { FileLink } from "@/files/file-link-button.tsx";
 import { CodeBlock } from "./code-block.tsx";
 import { texDelimiters } from "./tex-delimiters.ts";
 import { untrustedMarkdown } from "./untrusted-markdown.ts";
 
 const plugins = { cjk, code, math, mermaid };
 const remarkPlugins = [...Object.values(defaultRemarkPlugins), texDelimiters, untrustedMarkdown];
+// Raw HTML is text by now, and links and images are checked by `untrustedMarkdown`; sanitizing stays.
+const sanitize = defaultRehypePlugins.sanitize;
+if (sanitize === undefined) throw new Error("Streamdown's sanitize plugin is missing");
+const rehypePlugins = [sanitize];
 
 /**
- * Code blocks are Tandem's own (`CodeBlock`); inline code and Mermaid diagrams keep Streamdown's. Streamdown marks a
- * fenced block's `code` element with `data-block` and its language with a `language-*` class.
+ * Code blocks are Tandem's own (`CodeBlock`), and so are links to files (`FileLink`); inline code and Mermaid diagrams
+ * keep Streamdown's. Streamdown marks a fenced block's `code` element with `data-block` and its language with a
+ * `language-*` class.
  */
 const components: Components = {
+  // Links to files open them in the files panel; links to the web keep Streamdown's, which asks before leaving.
+  a: (props: object) => {
+    const { href, children } = props as ComponentProps<"a">;
+    const target = href === undefined || /^(https?|mailto):/i.test(href) ? undefined : parseFileLink(href);
+    if (target === undefined) return createElement(defaultComponents.a, props as ComponentProps<"a">);
+    return <FileLink target={target}>{children}</FileLink>;
+  },
   // `object`: Streamdown types a component both as its element's props and as any record.
   code: (props: object) => {
     const { className, children } = props as ComponentProps<"code">;
@@ -61,6 +76,7 @@ export const Markdown = memo(
         className="min-w-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
         plugins={plugins}
         remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         components={components}
         isAnimating={streaming}
       >

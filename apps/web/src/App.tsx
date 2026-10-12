@@ -1,13 +1,17 @@
 import { AlertCircleIcon, FolderPlusIcon, KeyRoundIcon, MessageSquareIcon, WifiOffIcon, XIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./app/sidebar.tsx";
 import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
 import { ChatView, NewChat } from "./chat/chat-view.tsx";
+import { FilesPanel } from "./files/files-panel.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 import { useReplicatedState } from "./rpc/use-replicated-state.ts";
@@ -45,10 +49,15 @@ function Workbench() {
 function Main() {
   const { workspaces } = useConnected();
   const listed = useReplicatedState(workspaces.state)?.workspaces;
-  const { selected, draft, addProject } = useWorkbench();
-  // Keyed, so that starting another new conversation begins from an empty box.
-  if (draft !== null) return <NewChat key={draft} workspaceId={draft} />;
-  if (selected !== null) return <ChatView conversationId={selected} />;
+  const { selected, draft, workspaceId, addProject } = useWorkbench();
+  if (draft !== null || selected !== null) {
+    return (
+      <WithFiles workspaceId={workspaceId}>
+        {/* Keyed, so that starting another new conversation begins from an empty box. */}
+        {draft !== null ? <NewChat key={draft} workspaceId={draft} /> : <ChatView conversationId={selected ?? 0} />}
+      </WithFiles>
+    );
+  }
   return (
     <>
       <header className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
@@ -79,6 +88,38 @@ function Main() {
         </Empty>
       )}
     </>
+  );
+}
+
+/** The conversation, and the files panel of its project beside it when shown. Their widths are kept across reloads. */
+function WithFiles({ workspaceId, children }: { workspaceId: number | null; children: ReactNode }) {
+  const { filesShown } = useWorkbench();
+  const shown = filesShown && workspaceId !== null;
+  const layout = useDefaultLayout({
+    id: "tandem.layout",
+    panelIds: shown ? ["conversation", "files"] : ["conversation"],
+    storage: localStorage,
+  });
+  return (
+    <ResizablePanelGroup
+      orientation="horizontal"
+      className="min-h-0 flex-1"
+      defaultLayout={layout.defaultLayout}
+      onLayoutChanged={layout.onLayoutChanged}
+    >
+      <ResizablePanel id="conversation" minSize={360} className="flex min-w-0 flex-col">
+        {children}
+      </ResizablePanel>
+      {shown && (
+        <>
+          <ResizableHandle />
+          <ResizablePanel id="files" defaultSize="35" minSize={240}>
+            {/* Keyed, so that another project starts with its own tree. */}
+            <FilesPanel key={workspaceId} workspaceId={workspaceId} />
+          </ResizablePanel>
+        </>
+      )}
+    </ResizablePanelGroup>
   );
 }
 

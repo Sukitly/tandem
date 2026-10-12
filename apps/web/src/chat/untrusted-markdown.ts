@@ -1,10 +1,12 @@
 import type { Parent, Root, RootContent } from "mdast";
+import { parseFileLink } from "@/files/file-link.ts";
 
 /**
  * What the agent writes is untrusted: it may repeat what a file or a web page told it. So raw HTML shows as the text
- * it is, except for line breaks, which models put in table cells. Links work only to the web and to mail; images load
- * only from the web. Other links and images, such as a path in the project, which would open within Tandem's own
- * page, show as their text.
+ * it is, except for line breaks, which models put in table cells. Links work only to the web, to mail, and to files
+ * (which open in the files panel, see `parseFileLink`); images load only from the web. Other links and images show as
+ * their text. This replaces Streamdown's own link and image checks (rehype-harden), which would rewrite `src/app.ts` as
+ * `/src/app.ts`, a path that is not the same file.
  */
 export function untrustedMarkdown(): (tree: Root) => undefined {
   return (tree) => {
@@ -38,6 +40,7 @@ function replacement(node: RootContent, definitions: Map<string, string>): RootC
     case "linkReference": {
       const url = node.type === "link" ? node.url : definitions.get(node.identifier);
       if (url === undefined || isWeb(url) || url.startsWith("mailto:")) return undefined;
+      if (parseFileLink(url) !== undefined) return undefined;
       rewrite(node, definitions);
       return node.children;
     }

@@ -1,9 +1,12 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { ProjectFiles } from "@/files/project-files.ts";
 import { useConnected } from "@/rpc/connection.tsx";
+import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
 
 const LAST_WORKSPACE_KEY = "tandem.lastWorkspace";
+const FILES_SHOWN_KEY = "tandem.filesShown";
 
 /** Something the user asked for that did not happen. */
 export interface Failure {
@@ -21,6 +24,15 @@ interface Workbench {
    */
   draft: number | null;
   newConversation(workspaceId: number): void;
+  /** The project of the open conversation, or of the new one. */
+  workspaceId: number | null;
+  /** The files panel is shown; the user's choice, kept across reloads. */
+  filesShown: boolean;
+  showFiles(shown: boolean): void;
+  /** What the files panel shows of a project, kept while the page is open. */
+  projectFiles(workspaceId: number): ProjectFiles;
+  /** Show a file of the current project in the files panel, at a line if one is given. */
+  openFile(path: string, line?: number): void;
   /** The project a conversation was last started in, or the last one added. It may have been removed since. */
   lastWorkspaceId: number | undefined;
   addProject(): void;
@@ -40,12 +52,16 @@ export function useWorkbench(): Workbench {
 
 /** The app's navigation state and the actions that change it. */
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
-  const { workspaces, conversations } = useConnected();
+  const { workspaces, conversations, files } = useConnected();
   const [selected, setSelected] = useState(selectedInHash);
   const [draft, setDraft] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [lastWorkspaceId, setLastWorkspaceId] = useState(storedWorkspaceId);
+  const [filesShown, setFilesShown] = useState(() => localStorage.getItem(FILES_SHOWN_KEY) !== "false");
+  const [projects] = useState(() => new Map<number, ProjectFiles>());
+  const summaries = useReplicatedState(conversations.state)?.conversations;
+  const workspaceId = draft ?? summaries?.find((summary) => summary.id === selected)?.workspaceId ?? null;
 
   useEffect(() => {
     const onChange = (): void => {
@@ -69,22 +85,43 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setLastWorkspaceId(workspaceId);
   };
 
+  const projectFiles = (id: number): ProjectFiles => {
+    let project = projects.get(id);
+    if (project === undefined) {
+      project = new ProjectFiles(files, id);
+      projects.set(id, project);
+    }
+    return project;
+  };
+  const showFiles = (shown: boolean): void => {
+    localStorage.setItem(FILES_SHOWN_KEY, String(shown));
+    setFilesShown(shown);
+  };
+
   const workbench: Workbench = {
     selected,
     select,
     draft,
-    newConversation(workspaceId) {
+    newConversation(id) {
       select(null);
-      setDraft(workspaceId);
-      remember(workspaceId);
+      setDraft(id);
+      remember(id);
+    },
+    workspaceId,
+    filesShown,
+    showFiles,
+    projectFiles,
+    openFile(path, line) {
+      if (workspaceId === null) return;
+      showFiles(true);
+      projectFiles(workspaceId).open(path, line);
     },
     lastWorkspaceId,
     addProject: () => setAdding(true),
-    removeProject(workspaceId) {
-      const open = conversations.state.value?.conversations.find((summary) => summary.id === selected);
-      workspaces.remove(workspaceId, BACKGROUND_CONTEXT).then(
+    removeProject(id) {
+      workspaces.remove(id, BACKGROUND_CONTEXT).then(
         () => {
-          if (open?.workspaceId === workspaceId || draft === workspaceId) select(null);
+          if (workspaceId === id) select(null);
         },
         (error: unknown) => setFailure({ title: "Could not remove the project", message: messageOf(error) }),
       );

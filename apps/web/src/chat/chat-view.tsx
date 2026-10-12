@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
-import { AlertCircleIcon, ArrowDownIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowDownIcon, PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { useWorkbench } from "@/app/workbench.tsx";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
@@ -158,16 +159,42 @@ function ChatFrame({
 }) {
   return (
     <section className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" aria-label="Conversation">
-      <header className="flex min-w-0 items-center gap-2 border-b px-3 py-2">
+      {/* As tall as the files panel's header beside it, so that their borders line up. */}
+      <header className="flex h-13 min-w-0 shrink-0 items-center gap-2 border-b px-3">
         {/* On a narrow screen the sidebar is a drawer, out of sight, so the header opens it. */}
         <SidebarTrigger className="md:hidden" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-mono text-xs text-muted-foreground">{cwd}</p>
           <h1 className="truncate text-sm font-medium">{title}</h1>
         </div>
+        <FilesToggle />
       </header>
       {children}
     </section>
+  );
+}
+
+/** Shows or hides the files panel beside the conversation. */
+function FilesToggle() {
+  const { filesShown, showFiles } = useWorkbench();
+  const label = filesShown ? "Hide files" : "Show files";
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            aria-pressed={filesShown}
+            onClick={() => showFiles(!filesShown)}
+          />
+        }
+      >
+        {filesShown ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

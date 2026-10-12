@@ -1,5 +1,5 @@
 import { BootstrapError, type ConnectionStatus, connect, OpenConversations } from "@tandem/client";
-import { Conversation, Conversations, Models, Workspaces } from "@tandem/contracts";
+import { Conversation, Conversations, Files, Models, Workspaces } from "@tandem/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { readToken } from "./token.ts";
 import { useReplicatedState } from "./use-replicated-state.ts";
@@ -11,6 +11,8 @@ export interface Connected {
   conversations: Conversations;
   /** Providers, sign-in, and available models. */
   models: Models;
+  /** The projects' files. */
+  files: Files;
   /** The conversations this page has open. */
   open: OpenConversations;
   status: ConnectionStatus | undefined;
@@ -45,7 +47,7 @@ export function ConnectionProvider({
     connect({
       baseUrl: window.location.origin,
       token,
-      services: [Models, Workspaces, Conversations, Conversation],
+      services: [Models, Workspaces, Files, Conversations, Conversation],
       onError: (error) => console.error(error),
     }).then(
       (connection) => {
@@ -65,6 +67,7 @@ export function ConnectionProvider({
               workspaces: connection.services.use(Workspaces),
               conversations: connection.services.use(Conversations),
               models: connection.services.use(Models),
+              files: connection.services.use(Files),
             },
           });
       },
@@ -98,6 +101,7 @@ function Connected({
         workspaces: value.workspaces,
         conversations: value.conversations,
         models: value.models,
+        files: value.files,
         open: value.open,
         status,
       }}
