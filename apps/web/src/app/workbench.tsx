@@ -7,7 +7,6 @@ import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
 
-const LAST_WORKSPACE_KEY = "tandem.lastWorkspace";
 const FILES_SHOWN_KEY = "tandem.filesShown";
 const PANEL_TAB_KEY = "tandem.panelTab";
 
@@ -50,8 +49,6 @@ interface Workbench {
   comments(workspaceId: number): ProjectComments;
   /** Show a file of the current project in the files panel, at a line or a comment thread if one is given. */
   openFile(path: string, place?: Omit<OpenedFile, "path">): void;
-  /** The project a conversation was last started in, or the last one added. It may have been removed since. */
-  lastWorkspaceId: number | undefined;
   addProject(): void;
   /** Takes the project off the list, and closes its conversation if it is the open one. */
   removeProject(workspaceId: number): void;
@@ -76,7 +73,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [lastWorkspaceId, setLastWorkspaceId] = useState(storedWorkspaceId);
   const [filesShown, setFilesShown] = useState(() => localStorage.getItem(FILES_SHOWN_KEY) !== "false");
   const [panelTab, setPanelTab] = useState<PanelTab>(() => panelTabOf(localStorage.getItem(PANEL_TAB_KEY)));
   const [changeTarget, setChangeTarget] = useState<ChangeTarget | null>(null);
@@ -101,10 +97,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setSelected(id);
     setDraft(null);
     window.location.hash = id === null ? "" : String(id);
-  };
-  const remember = (workspaceId: number): void => {
-    localStorage.setItem(LAST_WORKSPACE_KEY, String(workspaceId));
-    setLastWorkspaceId(workspaceId);
   };
 
   const projectFiles = (id: number): ProjectFiles => {
@@ -139,7 +131,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     newConversation(id) {
       select(null);
       setDraft(id);
-      remember(id);
     },
     workspaceId,
     filesShown,
@@ -163,7 +154,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       showTab("files");
       projectFiles(workspaceId).open(path, place);
     },
-    lastWorkspaceId,
     addProject: () => setAdding(true),
     removeProject(id) {
       workspaces.remove(id, BACKGROUND_CONTEXT).then(
@@ -181,7 +171,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   return (
     <WorkbenchContext.Provider value={workbench}>
       {children}
-      <AddProjectDialog open={adding} onOpenChange={setAdding} onAdded={remember} />
+      <AddProjectDialog open={adding} onOpenChange={setAdding} />
     </WorkbenchContext.Provider>
   );
 }
@@ -193,10 +183,6 @@ export function panelTabOf(value: unknown): PanelTab {
 
 function selectedInHash(): number | null {
   return parseId(window.location.hash.slice(1)) ?? null;
-}
-
-function storedWorkspaceId(): number | undefined {
-  return parseId(localStorage.getItem(LAST_WORKSPACE_KEY) ?? "");
 }
 
 function parseId(text: string): number | undefined {
