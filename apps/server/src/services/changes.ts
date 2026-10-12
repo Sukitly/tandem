@@ -13,7 +13,6 @@ import {
   MAX_UNTRACKED_FILES,
   type ProjectChanges,
 } from "@tandem/contracts";
-import { invalidInput } from "./errors.ts";
 import type { ProjectPaths } from "./project-path.ts";
 
 const GIT_TIMEOUT_MS = 10_000;
@@ -78,7 +77,9 @@ export class ProjectChangeTracker {
   ): Promise<ProjectChangeTracker> {
     const { env, target } = await paths.resolve({ workspaceId, path: "" }, context);
     const tracker = new ProjectChangeTracker(workspaceId, target, env, paths, onError);
-    await tracker.refresh(context);
+    // The tracker outlives the call that started it, so its reads run under its own context: one belongs to the call,
+    // which Chord aborts when the call is done, and a read under an aborted context fails without saying so.
+    await tracker.refresh(BACKGROUND_CONTEXT);
     return tracker;
   }
 
@@ -95,10 +96,12 @@ export class ProjectChangeTracker {
         : ["diff", "--relative", "--no-color", this.#base, "--", path],
       context,
     );
-    if (run === undefined) throw invalidInput("Cannot run Git");
+    // A path the client may not ask about rejects; Git failing to read a file it could read a moment ago is an outcome
+    // the panel shows, not an error the client made.
+    if (run === undefined) return { kind: "unavailable", message: "Cannot run Git" };
     // `--no-index` answers 1 when the files differ, which for an untracked file is every case.
     if (run.code !== 0 && !(untracked && run.code === 1)) {
-      throw invalidInput(run.stderr.trim() === "" ? "Cannot read the diff" : run.stderr.trim());
+      return { kind: "unavailable", message: run.stderr.trim() === "" ? "Cannot read the diff" : run.stderr.trim() };
     }
     if (run.truncated) return { kind: "tooLarge" };
     return { kind: "patch", patch: run.stdout };
@@ -147,6 +150,8 @@ export class ProjectChangeTracker {
       return;
     }
     const untracked = await this.#untrackedFiles(context);
+    // A listing that could not run at all would drop those files from the list; the next read tries again.
+    if (untracked === undefined) return;
     const files = [...tracked, ...untracked].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
     const listed = files.slice(0, MAX_CHANGED_FILES);
     this.#publish({
@@ -205,9 +210,10 @@ export class ProjectChangeTracker {
   }
 
   /** Every untracked file, with the lines it would add; Git's ignore rules leave theirs out. */
-  async #untrackedFiles(context: Context): Promise<ChangedFile[]> {
+  async #untrackedFiles(context: Context): Promise<ChangedFile[] | undefined> {
     const listed = await git(this.#env, this.#root, ["ls-files", "--others", "--exclude-standard", "-z"], context);
-    if (listed === undefined || listed.code !== 0) return [];
+    if (listed === undefined) return undefined;
+    if (listed.code !== 0) return [];
     const files = listed.stdout.split("\0").filter((path) => path !== "");
     return Promise.all(
       files.slice(0, MAX_UNTRACKED_FILES).map(async (path): Promise<ChangedFile> => {
@@ -289,6 +295,70 @@ function withoutEmpty<T extends object>(value: T): T {
 function setOrDrop<T extends object, K extends keyof T>(target: T, key: K, value: T[K] | undefined): void {
   if (value === undefined) delete target[key];
   else target[key] = value;
+}
+
+/** One client's hold on a project's changes. */
+export interface ChangeHold {
+  readonly tracker: ProjectChangeTracker;
+  /** Give the hold up. Releasing one twice does nothing, so a late release cannot end another's. */
+  release(): Promise<void>;
+}
+
+/**
+ * The trackers of the projects, one per project however many clients watch it: a second tab, or a second person, adds
+ * to the count instead of starting another watcher and another set of Git reads. The last hold to be given up ends the
+ * tracker. Holds are counted rather than named, and a hold is given up once, because the open that took it and the
+ * close that gives it up arrive in either order.
+ */
+export class ChangeTrackers {
+  readonly #paths: Pick<ProjectPaths, "resolve">;
+  readonly #onError: (error: Error) => void;
+  readonly #trackers = new Map<number, { tracker: Promise<ProjectChangeTracker>; holds: number }>();
+
+  constructor(paths: Pick<ProjectPaths, "resolve">, onError: (error: Error) => void = () => {}) {
+    this.#paths = paths;
+    this.#onError = onError;
+  }
+
+  /** Watch a project, starting its tracker if it is not watched yet. */
+  async acquire(workspaceId: number, context: Context): Promise<ChangeHold> {
+    let entry = this.#trackers.get(workspaceId);
+    if (entry === undefined) {
+      const tracker = ProjectChangeTracker.open(workspaceId, this.#paths, context, this.#onError);
+      entry = { tracker, holds: 0 };
+      this.#trackers.set(workspaceId, entry);
+      tracker.catch(() => {
+        if (this.#trackers.get(workspaceId) === entry) this.#trackers.delete(workspaceId);
+      });
+    }
+    entry.holds += 1;
+    const holding = entry;
+    const tracker = await holding.tracker;
+    let released = false;
+    return {
+      tracker,
+      release: async () => {
+        if (released) return;
+        released = true;
+        await this.#release(workspaceId, holding);
+      },
+    };
+  }
+
+  /** End every tracker; for the server's shutdown. */
+  async dispose(): Promise<void> {
+    const trackers = [...this.#trackers.values()];
+    this.#trackers.clear();
+    for (const entry of trackers) (await entry.tracker.catch(() => undefined))?.dispose();
+  }
+
+  async #release(workspaceId: number, entry: { tracker: Promise<ProjectChangeTracker>; holds: number }): Promise<void> {
+    entry.holds -= 1;
+    if (entry.holds > 0) return;
+    if (this.#trackers.get(workspaceId) === entry) this.#trackers.delete(workspaceId);
+    const tracker = await entry.tracker.catch(() => undefined);
+    tracker?.dispose();
+  }
 }
 
 /** The `ProjectChanges` instance one connection receives for one open project. */

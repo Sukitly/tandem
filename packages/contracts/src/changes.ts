@@ -57,7 +57,10 @@ export type FilePatch =
   | { kind: "patch"; patch: string }
   /** Git reports no line changes for it. */
   | { kind: "binary" }
-  | { kind: "tooLarge" };
+  | { kind: "tooLarge" }
+  /** Git could not read it; the message says why. Whether a file is binary, and whether its patch is too large, is
+   * decided here, so that a client shows the outcome rather than judging the file again. */
+  | { kind: "unavailable"; message: string };
 
 /** The changes of one project, watched while a client holds it open. */
 export interface ProjectChanges {

@@ -12,7 +12,7 @@ import {
   Workspaces,
 } from "@tandem/contracts";
 import type { ConnectionServices } from "../rpc-host.ts";
-import { createProjectChanges, type ProjectChangeTracker } from "./changes.ts";
+import { type ChangeHold, type ChangeTrackers, createProjectChanges } from "./changes.ts";
 import {
   createConversationService,
   initialAgent,
@@ -28,8 +28,8 @@ import type { WorkspaceCatalog } from "./workspaces.ts";
 
 export interface AppServices {
   readonly harness: Harness;
-  /** Reads a project's changes against its integration branch, and watches them while a client holds it open. */
-  readonly openTracker: (workspaceId: number, context: Context) => Promise<ProjectChangeTracker>;
+  /** The projects' change trackers, shared by every connection: one tracker per project. */
+  readonly changes: ChangeTrackers;
   readonly catalog: ConversationCatalog;
   readonly workspaces: WorkspaceCatalog;
   readonly files: FileBrowser;
@@ -44,7 +44,7 @@ interface OpenConversation {
 
 /** A project whose changes one connection follows, or is still starting to follow. */
 interface Watching {
-  opening: Promise<ProjectChangeTracker>;
+  opening: Promise<ChangeHold>;
   /** Set once the instance reaches the client. */
   withdraw?: () => void;
   /** The client let it go, or the connection ended. */
@@ -59,7 +59,7 @@ export function createConnectionServices({
   files,
   models,
   notices,
-  openTracker,
+  changes,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
     Models,
@@ -147,16 +147,16 @@ export function createConnectionServices({
   // The tracker is long-lived, so it is not tied to the context of the call that opened it.
   const openChanges = async (workspaceId: number, context: Context): Promise<void> => {
     if (watching.has(workspaceId)) return;
-    const opening = openTracker(workspaceId, context);
+    const opening = changes.acquire(workspaceId, context);
     const entry: Watching = { opening, closed: false };
     watching.set(workspaceId, entry);
     opening.catch(() => {
       if (watching.get(workspaceId) === entry) watching.delete(workspaceId);
     });
-    const tracker = await opening;
-    // Closed while this was opening: the instance never reaches the client, and the tracker goes away with it.
-    if (entry.closed || disposed) tracker.dispose();
-    else entry.withdraw = provider.spawn(ProjectChanges, String(workspaceId), createProjectChanges(tracker));
+    const hold = await opening;
+    // Closed while this was opening: the instance never reaches the client, and this hold is given up with it.
+    if (entry.closed || disposed) await hold.release();
+    else entry.withdraw = provider.spawn(ProjectChanges, String(workspaceId), createProjectChanges(hold.tracker));
   };
 
   provider.provide(Changes, {
@@ -170,9 +170,9 @@ export function createConnectionServices({
       if (entry === undefined) return;
       watching.delete(workspaceId);
       entry.closed = true;
-      const tracker = await entry.opening.catch(() => undefined);
+      const hold = await entry.opening.catch(() => undefined);
       entry.withdraw?.();
-      tracker?.dispose();
+      await hold?.release();
     },
   });
 
@@ -226,7 +226,7 @@ export function createConnectionServices({
         entry.closed = true;
         entry.withdraw?.();
         void entry.opening.then(
-          (tracker) => tracker.dispose(),
+          (hold) => hold.release(),
           () => {},
         );
       }

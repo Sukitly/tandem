@@ -6,12 +6,12 @@ import { promisify } from "node:util";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { connect, type TandemConnection } from "@tandem/client";
-import { Changes, type ChangesState, ProjectChanges, Workspaces } from "@tandem/contracts";
+import { Changes, type ChangesState, Conversation, Conversations, ProjectChanges, Workspaces } from "@tandem/contracts";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { createFauxProvider } from "../src/models.ts";
 import type { TandemServer } from "../src/server.ts";
-import { ProjectChangeTracker } from "../src/services/changes.ts";
+import { ChangeTrackers, ProjectChangeTracker } from "../src/services/changes.ts";
 import type { ProjectPaths } from "../src/services/project-path.ts";
 
 const run = promisify(execFile);
@@ -32,7 +32,7 @@ beforeEach(async () => {
   connection = await connect({
     baseUrl: server.url,
     token: server.token,
-    services: [Workspaces, Changes, ProjectChanges],
+    services: [Workspaces, Changes, ProjectChanges, Conversations, Conversation],
   });
   project = await mkdtemp(join(tmpdir(), "tandem-changes-"));
   workspaceId = await connection.services.use(Workspaces).add({ path: project }, context);
@@ -191,6 +191,18 @@ describe("changes", () => {
     expect(await changes.diff("image.png", context)).toEqual({ kind: "binary" });
   });
 
+  test("a diff Git cannot read is an outcome, while a path it may not read is refused", async () => {
+    // The directory is not a repository: the list says so, and asking for a diff says why instead of rejecting.
+    const { changes } = await openChanges();
+    await writeFile(join(project, "a.ts"), "a\n");
+    const patch = await changes.diff("a.ts", context);
+    expect(patch.kind).toBe("unavailable");
+    // Git's own words, whatever they are for this case.
+    expect(patch.kind === "unavailable" && patch.message.length > 0).toBe(true);
+
+    await expect(changes.diff("../a.ts", context)).rejects.toThrow("outside the project");
+  });
+
   test("a path outside the project is refused", async () => {
     await repository();
     const { changes } = await openChanges();
@@ -240,6 +252,54 @@ describe("changes", () => {
     expect(patch.kind === "patch" && patch.patch).toContain("+TWO");
   });
 
+  describe("the projects' trackers", () => {
+    test("a project is tracked once, however many holds it has, and ended by its last one", async () => {
+      const project = await mkdtemp(join(tmpdir(), "tandem-trackers-"));
+      await run("git", ["init", "-q", "-b", "main"], { cwd: project });
+      const env = new NodeExecutionEnv({ cwd: project });
+      const paths: Pick<ProjectPaths, "resolve"> = {
+        resolve: async () => ({
+          env,
+          workspace: { id: 1, path: project, name: basename(project) },
+          path: "",
+          target: project,
+        }),
+      };
+      const trackers = new ChangeTrackers(paths);
+      try {
+        const first = await trackers.acquire(1, context);
+        const second = await trackers.acquire(1, context);
+        expect(second.tracker).toBe(first.tracker);
+
+        // One hold given up leaves the other's changes followed.
+        await first.release();
+        await writeFile(join(project, "a.ts"), "a\n");
+        await waitFor(() => first.tracker.state.value.files.length === 1);
+
+        // A hold taken later, and a hold given up twice: only the last one ends the tracker.
+        const third = await trackers.acquire(1, context);
+        await second.release();
+        await first.release();
+        await writeFile(join(project, "b.ts"), "b\n");
+        await waitFor(() => third.tracker.state.value.files.length === 2);
+
+        await third.release();
+        await writeFile(join(project, "c.ts"), "c\n");
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        expect(third.tracker.state.value.files.length).toBe(2);
+
+        // A project watched again is read from scratch, with what changed in between.
+        const again = await trackers.acquire(1, context);
+        expect(again.tracker).not.toBe(first.tracker);
+        await waitFor(() => again.tracker.state.value.files.length === 3);
+        await again.release();
+      } finally {
+        await trackers.dispose();
+        await env.cleanup(context);
+      }
+    });
+  });
+
   describe("the tracker on its own", () => {
     test("a burst of changes is read once, and nothing follows a disposed tracker", async () => {
       const project = await mkdtemp(join(tmpdir(), "tandem-tracker-"));
@@ -279,6 +339,27 @@ describe("changes", () => {
         await env.cleanup(context);
       }
     });
+  });
+
+  test("a project's changes and a conversation live on the same connection", async () => {
+    await repository();
+    const { changes } = await openChanges();
+    expect(changes.state.value?.workspaceId).toBe(workspaceId);
+
+    const conversations = connection.services.use(Conversations);
+    const opened: number[] = [];
+    connection.services.observe(Conversation, (conversation, instanceContext) => {
+      const id = conversation.view.value?.conversation.id;
+      if (id !== undefined) opened.push(id);
+      instanceContext.abortSignal?.addEventListener("abort", () => {});
+    });
+    const id = await conversations.start({ workspaceId, text: "where is it?" }, context);
+    await conversations.open(id, context);
+    await waitFor(() => opened.includes(id));
+    expect(opened).toEqual([id]);
+    // Starting a conversation leaves the project's changes alone.
+    expect(changes.state.value?.workspaceId).toBe(workspaceId);
+    await conversations.close(id, context);
   });
 
   test("closing a project stops its watcher", async () => {

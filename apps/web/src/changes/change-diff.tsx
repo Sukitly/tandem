@@ -25,11 +25,13 @@ export function ChangeDiff({ path, patch, style }: { path: string; patch: FilePa
   }, [path, text]);
 
   if (patch.kind !== "patch") {
-    return (
-      <p className="p-3 text-sm text-muted-foreground">
-        {patch.kind === "binary" ? "A binary file: there are no lines to show." : "This file's diff is too large."}
-      </p>
-    );
+    const message =
+      patch.kind === "binary"
+        ? "A binary file: there are no lines to show."
+        : patch.kind === "tooLarge"
+          ? "This file's diff is too large to show."
+          : patch.message;
+    return <p className="p-3 text-sm text-muted-foreground">{message}</p>;
   }
   if (items.length === 0) return <p className="p-3 text-sm text-muted-foreground">No line changes.</p>;
   return (
