@@ -20,6 +20,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { type AttachedImage, attachImages, IMAGE_ACCEPT, imageFiles } from "./attached-images.ts";
 import type { QueuedMessage } from "./transcript.ts";
 
+/**
+ * What the composer knows of the current model's images: it takes them (at most `maxPerMessage` in a message, if it
+ * says), it takes none, or there is no model that can answer, which the server refuses images for too.
+ */
+export type ImageSupport = { kind: "accepted"; maxPerMessage?: number } | { kind: "none" } | { kind: "unknown" };
+
 export interface ChatComposerProps {
   busy: boolean;
   queued: QueuedMessage[];
@@ -28,11 +34,8 @@ export interface ChatComposerProps {
   onWithdrawComment?(comment: WaitingComment): void;
   /** Rejects when the server refuses the message; the text and images then stay in the box, and the comments wait. */
   onSend: (text: string, comments: number[], images: ImageInput[], whenBusy: "steer" | "followUp") => Promise<void>;
-  /**
-   * Whether the current model takes images, and how many in a message. `false`: images are not offered, and pasting
-   * one says why. Unknown (no model) offers them; the server decides.
-   */
-  images?: false | { maxPerMessage?: number };
+  /** Whether the current model takes images; images are offered only when it does. */
+  imageSupport: ImageSupport;
   onStop: () => void;
   autoFocus?: boolean;
   /** Shown under the box: the model, the thinking level, and how full the context is. */
@@ -52,7 +55,7 @@ export function ChatComposer({
   onStop,
   autoFocus,
   status,
-  images: accepts = {},
+  imageSupport,
 }: ChatComposerProps) {
   const [value, setValue] = useState("");
   const [attached, setAttached] = useState<AttachedImage[]>([]);
@@ -74,20 +77,30 @@ export function ChatComposer({
 
   const attach = async (files: File[]): Promise<void> => {
     if (files.length === 0) return;
-    if (accepts === false) {
-      setError("The current model does not take images. Choose one that does.");
+    if (imageSupport.kind !== "accepted") {
+      setError(
+        imageSupport.kind === "none"
+          ? "The current model does not take images. Choose one that does."
+          : "Choose an available model before sending images.",
+      );
       return;
     }
-    const { attached: added, refused } = await attachImages(files, shown.current);
-    const room = accepts.maxPerMessage === undefined ? added.length : accepts.maxPerMessage - shown.current.length;
+    let read: Awaited<ReturnType<typeof attachImages>>;
+    try {
+      read = await attachImages(files, shown.current);
+    } catch {
+      setError("The image could not be read");
+      return;
+    }
+    const { attached: added, refused } = read;
+    const { maxPerMessage } = imageSupport;
+    const room = maxPerMessage === undefined ? added.length : maxPerMessage - shown.current.length;
     const kept = added.slice(0, Math.max(0, room));
     for (const image of added.slice(kept.length)) URL.revokeObjectURL(image.url);
     setAttached((current) => [...current, ...kept]);
     setError(
       refused ??
-        (kept.length < added.length
-          ? `The current model takes at most ${accepts.maxPerMessage} images in a message`
-          : null),
+        (kept.length < added.length ? `The current model takes at most ${maxPerMessage} images in a message` : null),
     );
   };
 
@@ -165,8 +178,10 @@ export function ChatComposer({
               <ItemContent>
                 <ItemDescription className="truncate">{message.text}</ItemDescription>
               </ItemContent>
-              {message.images > 0 && (
-                <Badge variant="secondary">{message.images === 1 ? "1 image" : `${message.images} images`}</Badge>
+              {message.imageCount > 0 && (
+                <Badge variant="secondary">
+                  {message.imageCount === 1 ? "1 image" : `${message.imageCount} images`}
+                </Badge>
               )}
             </Item>
           ))}
@@ -211,7 +226,7 @@ export function ChatComposer({
             autoFocus={autoFocus}
           />
           <InputGroupAddon align="inline-end" className="self-end pb-1.5">
-            {accepts !== false && (
+            {imageSupport.kind === "accepted" && (
               <>
                 <input
                   ref={picker}

@@ -135,8 +135,8 @@ describe("toTranscript", () => {
     ]);
     expect(transcript.busy).toBe(true);
     expect(transcript.queued).toEqual([
-      { id: 4, mode: "steer", text: "look here", images: 0 },
-      { id: 5, mode: "followUp", text: "then this", images: 0 },
+      { id: 4, mode: "steer", text: "look here", imageCount: 0 },
+      { id: 5, mode: "followUp", text: "then this", imageCount: 0 },
     ]);
   });
 
@@ -175,7 +175,7 @@ describe("toTranscript", () => {
   });
 
   test("keeps the images of user messages, tool results, and queued messages", () => {
-    const ref = (block: number) => ({ conversationId: 1, entryId: 1, message: 0, block });
+    const ref = (blockIndex: number) => ({ conversationId: 1, entryId: 1, messageIndex: 0, blockIndex });
     const transcript = toTranscript(
       view(
         [
@@ -221,6 +221,6 @@ describe("toTranscript", () => {
     });
     const [tool] = (transcript.items[1] as Extract<(typeof transcript.items)[number], { kind: "assistant" }>).parts;
     expect(tool).toMatchObject({ kind: "tool", status: "done", images: [{ mimeType: "image/jpeg" }] });
-    expect(transcript.queued).toEqual([{ id: 9, mode: "followUp", text: "", images: 1 }]);
+    expect(transcript.queued).toEqual([{ id: 9, mode: "followUp", text: "", imageCount: 1 }]);
   });
 });

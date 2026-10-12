@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, truncate, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,14 +12,18 @@ import {
   Conversation,
   Conversations,
   type ConversationView,
-  type ImageBlockRef,
+  type ImageRef,
   imagePath,
+  MAX_MESSAGE_IMAGE_BYTES,
   Models,
+  type PageImageBlock,
   Workspaces,
 } from "@tandem/contracts";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { withoutData } from "../src/conversation-view.ts";
+import { MAX_READ_IMAGE_BYTES } from "../src/image-read.ts";
+import { prepareImages } from "../src/images/message-images.ts";
 import { createFauxProvider, type FauxOptions } from "../src/models.ts";
 import type { TandemServer } from "../src/server.ts";
 
@@ -106,16 +110,18 @@ async function start(faux: FauxOptions = {}) {
   };
   const fetchImage = (path: string, token = server.token) =>
     fetch(new URL(path, server.url), { headers: { authorization: `Bearer ${token}` } });
-  return { server, connection, conversations, open, workspaceId, cwd, view, opened, requests, fetchImage };
+  /** The path of an image of this server's state directory. */
+  const pathOf = (ref: ImageRef) => imagePath(server.serverId, ref);
+  return { server, connection, conversations, open, workspaceId, cwd, view, opened, requests, fetchImage, pathOf };
 }
 
 /** The image blocks of a view, as a page receives them. */
-function refsOf(view: ConversationView | undefined): ImageBlockRef[] {
+function refsOf(view: ConversationView | undefined): PageImageBlock[] {
   return (view?.entries ?? []).flatMap((entry) =>
     (entry.model ?? []).flatMap((message) =>
       message.role === "assistant" || typeof message.content === "string"
         ? []
-        : message.content.flatMap((block) => (block.type === "image" ? [block as ImageBlockRef] : [])),
+        : message.content.flatMap((block) => (block.type === "image" ? [block as PageImageBlock] : [])),
     ),
   );
 }
@@ -140,7 +146,7 @@ describe("images in a message", () => {
     expect(ref?.mimeType).toBe("image/png");
     expect(ref?.ref).toBeDefined();
 
-    const response = await app.fetchImage(imagePath(ref?.ref as NonNullable<ImageBlockRef["ref"]>));
+    const response = await app.fetchImage(app.pathOf(ref?.ref as ImageRef));
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
@@ -186,6 +192,14 @@ describe("images in a message", () => {
     await waitFor(() => refsOf(app.view(id)).length === 1);
   });
 
+  test("are refused without a model to fit them to, which no answer would come from", async () => {
+    await expect(
+      prepareImages([{ data: base64(png(8, 8)), mimeType: "image/png" }], undefined, {
+        prepare: async () => undefined,
+      }),
+    ).rejects.toThrow(/Choose an available model/);
+  });
+
   test("are refused when the model takes none, and the conversation is not created", async () => {
     const app = await start({ models: [{ id: "text-only", input: ["text"] }] });
     const models = app.connection.services.use(Models);
@@ -224,6 +238,34 @@ describe("images in a message", () => {
   });
 });
 
+describe("the size of a message's images", () => {
+  /** Two files of `bytes` together that are not images: refused by the server, after the protocol carried them. */
+  const notImages = (bytes: number) => {
+    const half = Math.floor(bytes / 2);
+    return [half, bytes - half].map((size) => ({ data: base64(new Uint8Array(size)), mimeType: "image/png" }));
+  };
+
+  test("up to the limit fits in one protocol message with the text, and reaches the server", async () => {
+    const app = await start();
+    await expect(
+      app.conversations.start(
+        { workspaceId: app.workspaceId, text: "x".repeat(10_000), images: notImages(MAX_MESSAGE_IMAGE_BYTES) },
+        context,
+      ),
+    ).rejects.toThrow(/Image 1 is not a PNG/);
+  });
+
+  test("over the limit is refused, saying so", async () => {
+    const app = await start();
+    await expect(
+      app.conversations.start(
+        { workspaceId: app.workspaceId, text: "", images: notImages(MAX_MESSAGE_IMAGE_BYTES + 3) },
+        context,
+      ),
+    ).rejects.toThrow(/over 11.25 MB together/);
+  });
+});
+
 describe("the agent reading an image", () => {
   test("gets the image from read, which pages fetch like any other", async () => {
     const app = await start({
@@ -246,8 +288,27 @@ describe("the agent reading an image", () => {
 
     await waitFor(() => refsOf(app.view(id)).length === 1);
     const [ref] = refsOf(app.view(id));
-    const response = await app.fetchImage(imagePath(ref?.ref as NonNullable<ImageBlockRef["ref"]>));
+    const response = await app.fetchImage(app.pathOf(ref?.ref as ImageRef));
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(image);
+  });
+
+  test("refuses an image file over the limit without reading it", async () => {
+    const app = await start({
+      respond: (messages) =>
+        messages.at(-1)?.role === "toolResult"
+          ? fauxAssistantMessage("Too big.")
+          : fauxAssistantMessage([fauxToolCall("read", { path: "huge.png" })], { stopReason: "toolUse" }),
+    });
+    // A PNG header, then grown past the limit without taking the disk space: a sparse file.
+    const path = join(app.cwd, "huge.png");
+    await writeFile(path, png(8, 8));
+    await truncate(path, MAX_READ_IMAGE_BYTES + 1);
+    await app.conversations.start({ workspaceId: app.workspaceId, text: "read" }, context);
+    await waitFor(() => app.requests.length === 2);
+    const result = (app.requests[1] ?? []).find((message) => message.role === "toolResult");
+    expect(result?.isError).toBe(true);
+    expect(imagesOf([result as Message])).toEqual([]);
+    expect(JSON.stringify(result?.content)).toContain("over the 20 MB that can be read");
   });
 
   test("still reads text files as before", async () => {
@@ -274,15 +335,18 @@ describe("the image endpoint", () => {
     );
     await app.opened(id);
     await waitFor(() => refsOf(app.view(id)).length === 1);
-    const ref = refsOf(app.view(id))[0]?.ref as NonNullable<ImageBlockRef["ref"]>;
-    expect((await app.fetchImage(imagePath(ref), "wrong")).status).toBe(401);
-    expect((await fetch(new URL(imagePath(ref), app.server.url))).status).toBe(401);
+    const ref = refsOf(app.view(id))[0]?.ref as ImageRef;
+    expect((await app.fetchImage(app.pathOf(ref))).status).toBe(200);
+    expect((await app.fetchImage(app.pathOf(ref), "wrong")).status).toBe(401);
+    expect((await fetch(new URL(app.pathOf(ref), app.server.url))).status).toBe(401);
     // The text block before the image, a message that is not there, an entry that is not there, a malformed path.
-    expect((await app.fetchImage(imagePath({ ...ref, block: ref.block - 1 }))).status).toBe(404);
-    expect((await app.fetchImage(imagePath({ ...ref, message: 9 }))).status).toBe(404);
-    expect((await app.fetchImage(imagePath({ ...ref, entryId: 999_999 }))).status).toBe(404);
-    expect((await app.fetchImage(imagePath({ ...ref, conversationId: 999_999 }))).status).toBe(404);
-    expect((await app.fetchImage("/image/1/2/x/3")).status).toBe(404);
+    expect((await app.fetchImage(app.pathOf({ ...ref, blockIndex: ref.blockIndex - 1 }))).status).toBe(404);
+    expect((await app.fetchImage(app.pathOf({ ...ref, messageIndex: 9 }))).status).toBe(404);
+    expect((await app.fetchImage(app.pathOf({ ...ref, entryId: 999_999 }))).status).toBe(404);
+    expect((await app.fetchImage(app.pathOf({ ...ref, conversationId: 999_999 }))).status).toBe(404);
+    expect((await app.fetchImage(`/image/${app.server.serverId}/1/2/x/3`)).status).toBe(404);
+    // The same entry of another state directory, which another server ID names, as a browser may have cached it.
+    expect((await app.fetchImage(imagePath("00000000-0000-4000-8000-000000000000", ref))).status).toBe(404);
   });
 });
 
@@ -295,8 +359,8 @@ describe("a view without image data", () => {
     const turned = withoutData(entry, [], (path) => ({
       conversationId: 1,
       entryId: 2,
-      message: 0,
-      block: path.length,
+      messageIndex: 0,
+      blockIndex: path.length,
     }));
     expect(JSON.stringify(turned)).not.toContain("AAAA");
     const content = (turned as typeof entry).model[0]?.content;
@@ -304,7 +368,7 @@ describe("a view without image data", () => {
     expect(content?.[1]).toEqual({
       type: "image",
       mimeType: "image/png",
-      ref: { conversationId: 1, entryId: 2, message: 0, block: 4 },
+      ref: { conversationId: 1, entryId: 2, messageIndex: 0, blockIndex: 4 },
     });
     const plain = { model: [{ role: "user", content: "hi" }] };
     expect(withoutData(plain, [])).toBe(plain);

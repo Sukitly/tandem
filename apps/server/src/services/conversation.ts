@@ -176,7 +176,7 @@ export async function imagesFor(
 ): Promise<ImageContent[]> {
   if (sent === undefined || sent.length === 0) return [];
   try {
-    return await prepareImages(sent, imageModel(model), processor);
+    return await prepareImages(sent, model === undefined ? undefined : imageModel(model), processor);
   } catch (error) {
     if (error instanceof ImageRefused) throw invalidInput(error.message);
     throw error;

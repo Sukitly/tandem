@@ -12,7 +12,13 @@ import { type BinaryReader, getOrThrow } from "@earendil-works/pi-durable/env";
 import { createReadTool } from "@earendil-works/pi-durable/tools";
 import type { ImageProcessor } from "./images/image-processor.ts";
 import { detectSupportedImageMimeTypeOf } from "./images/image-type.ts";
-import { imageModel } from "./images/message-images.ts";
+import { imageModel, megabytes } from "./images/message-images.ts";
+
+/**
+ * The largest image file `read` reads. The file is read whole, copied to the image worker, and decoded there, which
+ * holds its pixels until the worker exits. pi's own `read` has no such limit: keep it when moving to pi's.
+ */
+export const MAX_READ_IMAGE_BYTES = 20 * 1024 * 1024;
 
 /** Characters that models write for a plain space in a path, as pi-durable's `read` normalizes them. */
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
@@ -40,9 +46,11 @@ function withImages(read: ToolRegistration, processor: ImageProcessor): ToolRegi
       const path = (args as { path?: unknown }).path;
       const env = api.env;
       if (typeof path !== "string" || env === undefined) return read.execute(args, api, context);
-      const absolute = getOrThrow(await env.absolutePath(normalized(path), context));
-      const opened = await env.openBinaryReader(absolute, undefined, context);
-      // A path that does not open is the wrapped tool's to report, in its words.
+      // A path that does not resolve or open is the wrapped tool's to report, in its words. Once the file is open, a
+      // failure to read it is thrown, as the wrapped tool throws it.
+      const absolute = await env.absolutePath(normalized(path), context);
+      if (!absolute.ok) return read.execute(args, api, context);
+      const opened = await env.openBinaryReader(absolute.value, undefined, context);
       if (!opened.ok) return read.execute(args, api, context);
       const reader = opened.value;
       try {
@@ -52,6 +60,10 @@ function withImages(read: ToolRegistration, processor: ImageProcessor): ToolRegi
           read: async (offset, length) => getOrThrow(await reader.read(offset, length, context)),
         });
         if (mimeType === undefined) return read.execute(args, api, context);
+        if (info.size > MAX_READ_IMAGE_BYTES) {
+          const message = `${path} is an image (${mimeType}) of ${megabytes(info.size)}, over the ${megabytes(MAX_READ_IMAGE_BYTES)} that can be read`;
+          return { content: [], isError: true, diagnostics: [{ severity: "error", code: "image_too_large", message }] };
+        }
         return await readImage(reader, info.size, path, mimeType, processor, api, context);
       } finally {
         await reader.close(context);

@@ -156,7 +156,7 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
     terminal: (id, screen, terminalOptions = {}) =>
       new TerminalConnection({ baseUrl, token: options.token, id, screen, ...terminalOptions }),
     async image(ref, signal) {
-      const response = await fetch(new URL(imagePath(ref), baseUrl), {
+      const response = await fetch(new URL(imagePath(client.serverId, ref), baseUrl), {
         headers: { authorization: `Bearer ${options.token}` },
         ...(signal === undefined ? {} : { signal }),
       });

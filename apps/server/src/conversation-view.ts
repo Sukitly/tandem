@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/chord";
 import { diffRevisions } from "@earendil-works/chord/delta";
 import type { ConversationId, ConversationView as DurableView, EntryId, Harness } from "@earendil-works/pi-durable";
-import type { ConversationView, ImageBlockRef, ImageRef } from "@tandem/contracts";
+import type { ConversationView, ImageRef, PageImageBlock } from "@tandem/contracts";
 
 type JsonValue = Parameters<typeof diffRevisions>[0];
 
@@ -87,16 +87,21 @@ function cached(cache: WeakMap<object, unknown>, value: unknown, make: () => unk
 /** An entry with the images of its messages as references; images elsewhere in it, such as in edits, lose their data. */
 function withRefs(entry: DurableView["entries"][number], conversationId: number): unknown {
   const refAt = (path: readonly (string | number)[]): ImageRef | undefined => {
-    const [model, message, content, block] = path;
-    if (model !== "model" || content !== "content" || typeof message !== "number" || typeof block !== "number")
+    const [model, messageIndex, content, blockIndex] = path;
+    if (
+      model !== "model" ||
+      content !== "content" ||
+      typeof messageIndex !== "number" ||
+      typeof blockIndex !== "number"
+    )
       return undefined;
-    return { conversationId, entryId: entry.id as number, message, block };
+    return { conversationId, entryId: entry.id as number, messageIndex, blockIndex };
   };
   return withoutData(entry, [], refAt);
 }
 
 /**
- * `value` with every image block (`{type: "image", data}`) replaced by an `ImageBlockRef`, at the reference `refAt`
+ * `value` with every image block (`{type: "image", data}`) replaced by a `PageImageBlock`, at the reference `refAt`
  * gives its path, if any. What holds no image is returned as it is, so unchanged parts stay the same objects.
  */
 export function withoutData(
@@ -117,7 +122,7 @@ export function withoutData(
   const record = value as Record<string, unknown>;
   if (record.type === "image" && typeof record.data === "string") {
     const ref = refAt?.(path);
-    const block: ImageBlockRef = {
+    const block: PageImageBlock = {
       type: "image",
       mimeType: typeof record.mimeType === "string" ? record.mimeType : "",
       ...(ref === undefined ? {} : { ref }),
@@ -145,8 +150,8 @@ export async function storedImage(
   const page = await conversation.entries({ minEntryId: entryId, maxEntryId: entryId }, 1, undefined, context);
   const entry = page.items[0];
   if (entry?.id !== entryId) return undefined;
-  const message = entry.model?.[ref.message];
+  const message = entry.model?.[ref.messageIndex];
   if (message === undefined || message.role === "assistant" || typeof message.content === "string") return undefined;
-  const block = message.content[ref.block];
+  const block = message.content[ref.blockIndex];
   return block?.type === "image" ? { data: block.data, mimeType: block.mimeType } : undefined;
 }

@@ -1,4 +1,4 @@
-import type { ConversationView, ImageBlockRef } from "@tandem/contracts";
+import type { ConversationView, PageImageBlock } from "@tandem/contracts";
 
 type Message = NonNullable<ConversationView["entries"][number]["model"]>[number];
 type AssistantMessage = Extract<Message, { role: "assistant" }>;
@@ -20,14 +20,14 @@ export type AssistantPart =
       /** Running output while it runs, then the result's text. */
       output: string;
       /** Images the result holds, such as an image file `read` returned. */
-      images: ImageBlockRef[];
+      images: PageImageBlock[];
       /** The edit tool's diff of the change it made. */
       diff?: string;
     };
 
 /** What the transcript shows, in order. */
 export type TranscriptItem =
-  | { kind: "user"; key: string; text: string; images: ImageBlockRef[] }
+  | { kind: "user"; key: string; text: string; images: PageImageBlock[] }
   | {
       kind: "assistant";
       key: string;
@@ -45,8 +45,8 @@ export interface QueuedMessage {
   id: number;
   mode: "steer" | "followUp";
   text: string;
-  /** How many images go with it. */
-  images: number;
+  /** How many images go with it; they have no entry to be fetched from until it is taken. */
+  imageCount: number;
 }
 
 export interface ContextUsage {
@@ -157,7 +157,7 @@ export function toTranscript(view: ConversationView): TranscriptState {
             id: item.id,
             mode: item.mode,
             text: textOf(item.content as Message["content"]),
-            images: imagesOf(item.content as Message["content"]).length,
+            imageCount: imagesOf(item.content as Message["content"]).length,
           },
         ]
       : [],
@@ -215,9 +215,9 @@ function contextTokens(usage: Usage | undefined): number {
   return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 }
 
-function imagesOf(content: Message["content"] | undefined): ImageBlockRef[] {
+function imagesOf(content: Message["content"] | undefined): PageImageBlock[] {
   if (content === undefined || typeof content === "string") return [];
-  return content.flatMap((block) => (block.type === "image" ? [block as ImageBlockRef] : []));
+  return content.flatMap((block) => (block.type === "image" ? [block as PageImageBlock] : []));
 }
 
 function textOf(content: Message["content"] | undefined): string {

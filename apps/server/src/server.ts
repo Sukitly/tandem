@@ -136,7 +136,8 @@ async function handleRequest(
       sendJson(response, 401, { error: "unauthorized" });
       return;
     }
-    const ref = imageRefOf(pathname.slice(IMAGE_PATH.length + 1));
+    // An image of another state directory, which has its own server ID, is not this server's to serve.
+    const ref = imageRefOf(pathname.slice(IMAGE_PATH.length + 1), server.serverId);
     const image = ref === undefined || request.method !== "GET" ? undefined : await server.image?.(ref);
     if (image === undefined || !SERVED_IMAGE_TYPES.has(image.mimeType)) {
       sendJson(response, 404, { error: "not_found" });
@@ -147,7 +148,7 @@ async function handleRequest(
       "content-type": image.mimeType,
       "content-length": body.length,
       "x-content-type-options": "nosniff",
-      // An entry never changes once written, so neither does its image.
+      // An entry never changes once written, and the path names the state directory it is in (`imagePath`).
       "cache-control": "private, max-age=31536000, immutable",
     });
     response.end(body);
@@ -172,12 +173,13 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.end(JSON.stringify(body));
 }
 
-/** `<conversation>/<entry>/<message>/<block>`, each a non-negative whole number. */
-function imageRefOf(path: string): ImageRef | undefined {
-  const parts = path.split("/");
-  if (parts.length !== 4 || !parts.every((part) => /^\d{1,15}$/.test(part))) return undefined;
-  const [conversationId, entryId, message, block] = parts.map(Number) as [number, number, number, number];
-  return { conversationId, entryId, message, block };
+/** `<server>/<conversation>/<entry>/<messageIndex>/<blockIndex>` of this server, the rest non-negative whole numbers. */
+function imageRefOf(path: string, serverId: string): ImageRef | undefined {
+  const [server, ...rest] = path.split("/");
+  if (server === undefined || decodedSegment(server) !== serverId) return undefined;
+  if (rest.length !== 4 || !rest.every((part) => /^\d{1,15}$/.test(part))) return undefined;
+  const [conversationId, entryId, messageIndex, blockIndex] = rest.map(Number) as [number, number, number, number];
+  return { conversationId, entryId, messageIndex, blockIndex };
 }
 
 /** A path segment as it was encoded, or `undefined` for one that is not valid percent-encoding. */

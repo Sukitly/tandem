@@ -45,11 +45,11 @@ export { type FileContent, type FileEntry, type FileLocation, Files, MAX_FILE_VI
 export {
   IMAGE_INPUT_TYPES,
   IMAGE_PATH,
-  type ImageBlockRef,
   type ImageInput,
   type ImageRef,
   imagePath,
   MAX_MESSAGE_IMAGE_BYTES,
+  type PageImageBlock,
 } from "./images.ts";
 export {
   type AuthType,

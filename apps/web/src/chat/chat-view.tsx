@@ -14,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { ChatComposer } from "./chat-composer.tsx";
+import { ChatComposer, type ImageSupport } from "./chat-composer.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
 import { toTranscript } from "./transcript.ts";
 import { TranscriptEntry, WaitingDots } from "./transcript-items.tsx";
@@ -92,7 +92,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
               .catch((error: unknown) => reportFailure("Could not take back the comment", error))
           }
           autoFocus
-          images={imagesOf(available?.models, agent.model)}
+          imageSupport={imageSupportOf(available?.models, agent.model)}
           onSend={async (text, sent, images) => {
             const id = await conversations.start(
               { workspaceId, text, comments: sent, ...(images.length === 0 ? {} : { images }), ...agent },
@@ -156,7 +156,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
               .catch((error: unknown) => reportFailure("Could not take back the comment", error))
           }
           autoFocus
-          images={imagesOf(available?.models, agent?.model)}
+          imageSupport={imageSupportOf(available?.models, agent?.model)}
           onSend={(text, sent, images, whenBusy) =>
             conversation.submit(
               { text, comments: sent, ...(images.length === 0 ? {} : { images }), whenBusy },
@@ -235,14 +235,12 @@ function ChatFooter({ children }: { children: ReactNode }) {
   return <div className="mx-auto grid w-full max-w-3xl gap-3 px-4 pt-2 pb-4">{children}</div>;
 }
 
-/** What the composer offers of images for `model`: nothing for a model known to take none. */
-function imagesOf(
-  models: readonly ModelSummary[] | undefined,
-  model: ModelRef | undefined,
-): false | { maxPerMessage?: number } {
+/** What `model` takes of images, among the available models; a model that is not among them answers nothing. */
+function imageSupportOf(models: readonly ModelSummary[] | undefined, model: ModelRef | undefined): ImageSupport {
   const summary = models?.find((candidate) => sameModel(candidate, model));
-  if (summary === undefined) return {};
-  return summary.images ?? false;
+  if (summary === undefined) return { kind: "unknown" };
+  if (summary.images === undefined) return { kind: "none" };
+  return { kind: "accepted", ...summary.images };
 }
 
 function sameModel(a: ModelRef | undefined, b: ModelRef | undefined): boolean {

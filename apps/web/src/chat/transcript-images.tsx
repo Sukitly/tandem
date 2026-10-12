@@ -1,4 +1,4 @@
-import type { ImageBlockRef } from "@tandem/contracts";
+import type { PageImageBlock } from "@tandem/contracts";
 import { ImageIcon, ImageOffIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -10,7 +10,7 @@ import { useConnected } from "@/rpc/connection.tsx";
  * The images of a message as thumbnails, each fetched from the server when shown; clicking one shows it whole. An
  * image of a message still queued has nowhere to be fetched from yet, and shows as a placeholder.
  */
-export function TranscriptImages({ images, className }: { images: readonly ImageBlockRef[]; className?: string }) {
+export function TranscriptImages({ images, className }: { images: readonly PageImageBlock[]; className?: string }) {
   if (images.length === 0) return null;
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
@@ -22,7 +22,7 @@ export function TranscriptImages({ images, className }: { images: readonly Image
   );
 }
 
-function TranscriptImage({ image, label }: { image: ImageBlockRef; label: string }) {
+function TranscriptImage({ image, label }: { image: PageImageBlock; label: string }) {
   const url = useImageUrl(image);
   const [open, setOpen] = useState(false);
   if (url === undefined) return <Skeleton className="size-24" />;
@@ -58,11 +58,11 @@ function TranscriptImage({ image, label }: { image: ImageBlockRef; label: string
 }
 
 /** A URL of the image's bytes while it is shown: `undefined` while it loads, `null` when there is none. */
-function useImageUrl(image: ImageBlockRef): string | null | undefined {
+function useImageUrl(image: PageImageBlock): string | null | undefined {
   const { fetchImage } = useConnected();
   const [url, setUrl] = useState<string | null | undefined>(image.ref === undefined ? null : undefined);
   const ref = image.ref;
-  const key = ref === undefined ? "" : `${ref.conversationId}/${ref.entryId}/${ref.message}/${ref.block}`;
+  const key = ref === undefined ? "" : `${ref.conversationId}/${ref.entryId}/${ref.messageIndex}/${ref.blockIndex}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ref`, which is a new object each revision.
   useEffect(() => {
     if (ref === undefined) {
