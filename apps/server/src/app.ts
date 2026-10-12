@@ -14,6 +14,7 @@ import { ConversationCatalog } from "./services/conversations.ts";
 import { FileBrowser } from "./services/files.ts";
 import { ModelCatalog } from "./services/models.ts";
 import { ProjectPaths } from "./services/project-path.ts";
+import { TerminalHost } from "./services/terminals.ts";
 import { WorkspaceCatalog } from "./services/workspaces.ts";
 import { Settings } from "./settings.ts";
 import { openStateDir } from "./state-dir.ts";
@@ -24,6 +25,8 @@ export interface StartAppOptions extends Pick<StartServerOptions, "hostname" | "
   /** Model providers. Default: every provider pi-ai ships. Tests pass the faux provider only. */
   providers?: readonly Provider[];
   onError?: (error: Error) => void;
+  /** The program a terminal runs, for tests; the user's login shell by default. */
+  terminalCommand?: readonly string[];
 }
 
 /** Open the state directory and the Harness, then serve them. `stop()` releases everything in reverse order. */
@@ -58,6 +61,11 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     const changes = new ChangeTrackers(paths, onError);
     cleanups.push(() => changes.dispose());
     const files = new FileBrowser(paths);
+    const terminals = new TerminalHost(
+      workspaces,
+      options.terminalCommand === undefined ? {} : { command: options.terminalCommand },
+    );
+    cleanups.push(async () => terminals.dispose());
 
     const server = await startServer({
       ...pick(options, ["hostname", "port", "allowedOrigins"]),
@@ -72,7 +80,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           notices,
           changes,
           comments,
+          terminals,
         }),
+      terminal: (id) => terminals.get(id),
       onError,
     });
     cleanups.push(() => server.stop());

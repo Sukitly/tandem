@@ -12,7 +12,7 @@ const FILES_SHOWN_KEY = "tandem.filesShown";
 const PANEL_TAB_KEY = "tandem.panelTab";
 
 /** The view of the panel beside the conversation. */
-export type PanelTab = "files" | "changes";
+export type PanelTab = "files" | "changes" | "terminal";
 
 /** Something the user asked for that did not happen. */
 export interface Failure {
@@ -78,9 +78,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [failure, setFailure] = useState<Failure | null>(null);
   const [lastWorkspaceId, setLastWorkspaceId] = useState(storedWorkspaceId);
   const [filesShown, setFilesShown] = useState(() => localStorage.getItem(FILES_SHOWN_KEY) !== "false");
-  const [panelTab, setPanelTab] = useState<PanelTab>(() =>
-    localStorage.getItem(PANEL_TAB_KEY) === "changes" ? "changes" : "files",
-  );
+  const [panelTab, setPanelTab] = useState<PanelTab>(() => panelTabOf(localStorage.getItem(PANEL_TAB_KEY)));
   const [changeTarget, setChangeTarget] = useState<ChangeTarget | null>(null);
   const [projects] = useState(() => new Map<number, ProjectFiles>());
   const [comments] = useState(() => new Map<number, ProjectComments>());
@@ -186,6 +184,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       <AddProjectDialog open={adding} onOpenChange={setAdding} onAdded={remember} />
     </WorkbenchContext.Provider>
   );
+}
+
+/** A stored tab, or the files for anything else. */
+export function panelTabOf(value: unknown): PanelTab {
+  return value === "changes" || value === "terminal" ? value : "files";
 }
 
 function selectedInHash(): number | null {

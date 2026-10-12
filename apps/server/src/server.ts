@@ -11,12 +11,15 @@ import {
   DEFAULT_PORT,
   HEALTH_PATH,
   type HealthResponse,
+  PTY_PATH,
   RPC_PATH,
   TOKEN_QUERY_PARAMETER,
 } from "@tandem/contracts";
 import packageJson from "../package.json" with { type: "json" };
 import { bearerToken, createToken, isAllowedOrigin, tokensMatch } from "./auth.ts";
+import type { Pty } from "./pty.ts";
 import { type ConnectionServices, createServiceHost } from "./rpc-host.ts";
+import { TerminalSockets } from "./terminal-sockets.ts";
 import { WebSocketListener } from "./websocket-listener.ts";
 
 export interface StartServerOptions {
@@ -31,6 +34,8 @@ export interface StartServerOptions {
   allowedOrigins?: readonly string[];
   /** Creates the services of each client connection. */
   createConnectionServices?: () => ConnectionServices;
+  /** The terminal a `/pty/<id>` connection is for. */
+  terminal?: (id: string) => Pty | undefined;
   onError?: (error: Error) => void;
 }
 
@@ -54,17 +59,26 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   await rpc.start();
 
   const allowedOrigins = new Set(options.allowedOrigins ?? []);
+  const terminalSockets = new TerminalSockets();
   const http = createServer((request, response) => handleRequest(request, response, { serverId, token }));
+  // Both sockets are authorized alike: a terminal is a shell, as much as the agent's tools are.
   http.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://localhost");
-    if (url.pathname !== RPC_PATH) {
+    const terminalId = url.pathname.startsWith(`${PTY_PATH}/`)
+      ? decodeURIComponent(url.pathname.slice(PTY_PATH.length + 1))
+      : undefined;
+    if (url.pathname !== RPC_PATH && terminalId === undefined) {
       rejectUpgrade(socket, 404, "Not Found");
     } else if (!tokensMatch(token, url.searchParams.get(TOKEN_QUERY_PARAMETER))) {
       rejectUpgrade(socket, 401, "Unauthorized");
     } else if (!isAllowedOrigin(request.headers.origin, allowedOrigins)) {
       rejectUpgrade(socket, 403, "Forbidden");
-    } else {
+    } else if (terminalId === undefined) {
       listener.handleUpgrade(request, socket, head);
+    } else {
+      const pty = options.terminal?.(terminalId);
+      if (pty === undefined) rejectUpgrade(socket, 404, "Not Found");
+      else terminalSockets.handleUpgrade(pty, request, socket, head);
     }
   });
 
@@ -88,6 +102,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     serverId,
     token,
     async stop() {
+      terminalSockets.close();
       await rpc.close();
       await new Promise<void>((resolve, reject) => {
         http.closeAllConnections();

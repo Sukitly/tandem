@@ -10,7 +10,7 @@ Tandem is built on [pi-durable](https://github.com/earendil-works/pi/tree/main/p
 
 ## Development
 
-Requires [Bun](https://bun.com) for installing and running scripts, and [Node.js](https://nodejs.org) 22.19 or later for the backend.
+Requires [Bun](https://bun.com) for installing and running scripts, and [Node.js](https://nodejs.org) 22.19 or later for the backend. Terminals use [node-pty](https://github.com/microsoft/node-pty), a native module: macOS and Windows get prebuilt binaries, while Linux builds it on install and needs Python, `make`, and a C++ compiler.
 
 ```bash
 bun install
