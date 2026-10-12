@@ -124,6 +124,28 @@ describe("conversations", () => {
     expect(conversations.state.value?.conversations[0]?.title).toBe("hello");
   });
 
+  test("an instance that arrives notifies what waits for it", async () => {
+    const { server } = await start();
+    const user = await client(server);
+    const id = await user.startIn("hello");
+
+    const held = new OpenConversations(user.connection);
+    let notified = 0;
+    const stop = held.subscribe(() => {
+      notified += 1;
+    });
+    const release = held.hold(id);
+    try {
+      await waitFor(() => held.get(id) !== undefined);
+      // The instance being in the map is not enough: a component renders when it is told, which is the whole point of
+      // subscribing. Without the notification the chat spins forever while the instance sits there.
+      expect(notified).toBeGreaterThan(0);
+    } finally {
+      stop();
+      release();
+    }
+  });
+
   test("two clients see the same list and the same conversation", async () => {
     const { server } = await start();
     const first = await client(server);

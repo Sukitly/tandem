@@ -108,6 +108,8 @@ export class OpenInstances<TKey, TInstance> {
     if (key === undefined) return;
     this.#failures.delete(key);
     this.#instances.set(key, instance);
+    // The instance arriving is what a component waits for; without this it is in the map but never rendered.
+    this.#notify();
     const remove = (): void => {
       if (this.#instances.get(key) !== instance) return;
       this.#instances.delete(key);
