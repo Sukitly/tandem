@@ -1,8 +1,18 @@
-import { RemoteServiceProvider } from "@earendil-works/chord";
+import { type Context, RemoteServiceProvider } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId, Harness } from "@earendil-works/pi-durable";
-import { Conversation, Conversations, Files, Models, type StartInput, Workspaces } from "@tandem/contracts";
+import {
+  Changes,
+  Conversation,
+  Conversations,
+  Files,
+  Models,
+  ProjectChanges,
+  type StartInput,
+  Workspaces,
+} from "@tandem/contracts";
 import type { ConnectionServices } from "../rpc-host.ts";
+import { type ChangeHold, type ChangeTrackers, createProjectChanges } from "./changes.ts";
 import {
   createConversationService,
   initialAgent,
@@ -18,6 +28,8 @@ import type { WorkspaceCatalog } from "./workspaces.ts";
 
 export interface AppServices {
   readonly harness: Harness;
+  /** The projects' change trackers, shared by every connection: one tracker per project. */
+  readonly changes: ChangeTrackers;
   readonly catalog: ConversationCatalog;
   readonly workspaces: WorkspaceCatalog;
   readonly files: FileBrowser;
@@ -30,6 +42,15 @@ interface OpenConversation {
   close(): void;
 }
 
+/** A project whose changes one connection follows, or is still starting to follow. */
+interface Watching {
+  opening: Promise<ChangeHold>;
+  /** Set once the instance reaches the client. */
+  withdraw?: () => void;
+  /** The client let it go, or the connection ended. */
+  closed: boolean;
+}
+
 /** The services of one client connection: the shared lists, and the conversations it opened. */
 export function createConnectionServices({
   harness,
@@ -38,15 +59,19 @@ export function createConnectionServices({
   files,
   models,
   notices,
+  changes,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
     Models,
     Workspaces,
     Files,
+    Changes,
     Conversations,
     { service: Conversation, mode: "keyed" },
+    { service: ProjectChanges, mode: "keyed" },
   ]);
   const opened = new Map<number, Promise<OpenConversation>>();
+  const watching = new Map<number, Watching>();
   let disposed = false;
 
   // Instances are long-lived, so they are not tied to the context of the call that opened them.
@@ -119,6 +144,38 @@ export function createConnectionServices({
     },
   });
 
+  // The tracker is long-lived, so it is not tied to the context of the call that opened it.
+  const openChanges = async (workspaceId: number, context: Context): Promise<void> => {
+    if (watching.has(workspaceId)) return;
+    const opening = changes.acquire(workspaceId, context);
+    const entry: Watching = { opening, closed: false };
+    watching.set(workspaceId, entry);
+    opening.catch(() => {
+      if (watching.get(workspaceId) === entry) watching.delete(workspaceId);
+    });
+    const hold = await opening;
+    // Closed while this was opening: the instance never reaches the client, and this hold is given up with it.
+    if (entry.closed || disposed) await hold.release();
+    else entry.withdraw = provider.spawn(ProjectChanges, String(workspaceId), createProjectChanges(hold.tracker));
+  };
+
+  provider.provide(Changes, {
+    async open(workspaceId, context) {
+      parseId(workspaceId, "Project");
+      await openChanges(workspaceId, context);
+    },
+    async close(workspaceId) {
+      parseId(workspaceId, "Project");
+      const entry = watching.get(workspaceId);
+      if (entry === undefined) return;
+      watching.delete(workspaceId);
+      entry.closed = true;
+      const hold = await entry.opening.catch(() => undefined);
+      entry.withdraw?.();
+      await hold?.release();
+    },
+  });
+
   provider.provide(Files, {
     list: (location, context) => files.list(location, context),
     read: (location, context) => files.read(location, context),
@@ -165,6 +222,15 @@ export function createConnectionServices({
     provider,
     dispose() {
       disposed = true;
+      for (const entry of watching.values()) {
+        entry.closed = true;
+        entry.withdraw?.();
+        void entry.opening.then(
+          (hold) => hold.release(),
+          () => {},
+        );
+      }
+      watching.clear();
       for (const opening of opened.values())
         void opening.then(
           (conversation) => conversation.close(),

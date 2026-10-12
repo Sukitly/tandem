@@ -5,6 +5,18 @@
  */
 
 export {
+  type ChangedFile,
+  type ChangeStatus,
+  Changes,
+  type ChangesState,
+  type FilePatch,
+  MAX_CHANGED_FILES,
+  MAX_PATCH_BYTES,
+  MAX_UNTRACKED_BYTES,
+  MAX_UNTRACKED_FILES,
+  ProjectChanges,
+} from "./changes.ts";
+export {
   Conversation,
   type ConversationNotice,
   type ConversationNotices,

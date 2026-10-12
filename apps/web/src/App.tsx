@@ -8,10 +8,10 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ProjectPanel } from "./app/project-panel.tsx";
 import { AppSidebar } from "./app/sidebar.tsx";
 import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
 import { ChatView, NewChat } from "./chat/chat-view.tsx";
-import { FilesPanel } from "./files/files-panel.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 import { useReplicatedState } from "./rpc/use-replicated-state.ts";
@@ -115,7 +115,7 @@ function WithFiles({ workspaceId, children }: { workspaceId: number | null; chil
           <ResizableHandle />
           <ResizablePanel id="files" defaultSize="35" minSize={240}>
             {/* Keyed, so that another project starts with its own tree. */}
-            <FilesPanel key={workspaceId} workspaceId={workspaceId} />
+            <ProjectPanel key={workspaceId} workspaceId={workspaceId} />
           </ResizablePanel>
         </>
       )}

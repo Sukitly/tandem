@@ -1,5 +1,5 @@
-import { BootstrapError, type ConnectionStatus, connect, OpenConversations } from "@tandem/client";
-import { Conversation, Conversations, Files, Models, Workspaces } from "@tandem/contracts";
+import { BootstrapError, type ConnectionStatus, connect, OpenChanges, OpenConversations } from "@tandem/client";
+import { Changes, Conversation, Conversations, Files, Models, ProjectChanges, Workspaces } from "@tandem/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { readToken } from "./token.ts";
 import { useReplicatedState } from "./use-replicated-state.ts";
@@ -15,6 +15,8 @@ export interface Connected {
   files: Files;
   /** The conversations this page has open. */
   open: OpenConversations;
+  /** The projects whose changes this page shows. */
+  openChanges: OpenChanges;
   status: ConnectionStatus | undefined;
 }
 
@@ -47,13 +49,15 @@ export function ConnectionProvider({
     connect({
       baseUrl: window.location.origin,
       token,
-      services: [Models, Workspaces, Files, Conversations, Conversation],
+      services: [Models, Workspaces, Files, Changes, ProjectChanges, Conversations, Conversation],
       onError: (error) => console.error(error),
     }).then(
       (connection) => {
         const open = new OpenConversations(connection, (error) => console.error(error));
+        const openChanges = new OpenChanges(connection, (error) => console.error(error));
         close = () => {
           open.dispose();
+          openChanges.dispose();
           void connection.close();
         };
         if (cancelled) close();
@@ -64,6 +68,7 @@ export function ConnectionProvider({
             value: {
               connection,
               open,
+              openChanges,
               workspaces: connection.services.use(Workspaces),
               conversations: connection.services.use(Conversations),
               models: connection.services.use(Models),
@@ -103,6 +108,7 @@ function Connected({
         models: value.models,
         files: value.files,
         open: value.open,
+        openChanges: value.openChanges,
         status,
       }}
     >
