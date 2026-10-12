@@ -69,7 +69,7 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 - The theme follows the system, and the user can choose light or dark (`src/theme.tsx`; `index.html` applies it before the first paint). Every color comes from the theme's CSS variables or has a `dark:` variant.
 - Text fields have no focus ring and keep their border when focused (`src/index.css`, by `data-slot`); invalid fields keep their red ring.
 - `src/components/ui/` is generated. Compose and style it from the outside rather than editing it, so it can be updated. It is excluded from linting.
-- `src/rpc/` connects to the server and exposes replicated state to React (`useReplicatedState`, `useConversation`). Components read state there and never keep their own copy of server state.
+- `src/rpc/` connects to the server and exposes replicated state to React (`useReplicatedState`, `useConversation`). Components read state there and never keep their own copy of replicated server state. One-shot filesystem reads are snapshots, not replicated state: `ProjectFiles` owns the Files panel's reads, and `useProjectDirectory` owns the Add Project dialog's directory reads, dropping results after the request is superseded or the dialog closes.
 - A page opens conversations through `OpenConversations` (`packages/client`), which opens them again after a reconnect.
 
 ## Models
@@ -116,7 +116,7 @@ These are deliberate decisions. Do not break them without discussing it first:
 - **One Harness.** The backend runs one pi-durable Harness over one SQLite database for every workspace. Workspaces are data, not processes or Sessions.
 - **No pi-server Sessions.** Every service is served at pi-server's server scope, with one `RemoteServiceProvider` per client connection (`apps/server/src/rpc-host.ts`). Shared state, such as the conversation list, is one `ReplicatedState` object provided to every connection.
 - **Per-connection instances, not global keyed services.** A Chord keyed subscription snapshot carries the state of every instance, so a global keyed service would send every conversation to every client. Clients call `open(id)` and the server spawns that instance on their connection only.
-- **Clients render subscriptions.** UI state comes from replicated state the client subscribes to. Method results are only used to report errors. The client holds no authoritative state.
+- **Clients render subscriptions.** Authoritative application state comes from replicated state the client subscribes to. Mutation results do not replace subscriptions. One-shot file and directory reads may return filesystem snapshots for display; snapshots do not update the project catalog or any other authoritative application state. The client holds no authoritative state.
 - **One execution path per workspace.** File access and process execution inside a workspace only go through its Workspace Runtime (ExecutionEnv, terminals, ProcessManager). No other module touches a repository directly. For now, terminals are the exception: one `TerminalHost` serves every project and spawns node-pty on this machine directly, since `ExecutionEnv` has no pseudo-terminals; only the project's directory is resolved through its `ExecutionEnv`. A sandbox must give each workspace its own way to start a terminal, and move them to it.
 - **Stop only stops the agent.** Aborting a conversation never kills terminals or managed processes.
 - **Terminals are raw byte streams** on their own WebSocket; they do not go through Chord.

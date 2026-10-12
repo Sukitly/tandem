@@ -28,6 +28,7 @@ import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
 import type { FileBrowser } from "./files.ts";
 import type { ModelCatalog } from "./models.ts";
+import type { ProjectDirectoryBrowser } from "./project-directories.ts";
 import type { TerminalHost } from "./terminals.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
@@ -38,6 +39,7 @@ export interface AppServices {
   readonly catalog: ConversationCatalog;
   readonly workspaces: WorkspaceCatalog;
   readonly files: FileBrowser;
+  readonly directories: ProjectDirectoryBrowser;
   readonly models: ModelCatalog;
   readonly notices: NoticeBoard;
   readonly comments: CommentBoard;
@@ -64,6 +66,7 @@ export function createConnectionServices({
   catalog,
   workspaces,
   files,
+  directories,
   models,
   notices,
   changes,
@@ -146,6 +149,7 @@ export function createConnectionServices({
 
   provider.provide(Workspaces, {
     state: workspaces.state,
+    browse: (path, context) => directories.browse(path, context),
     async add(input, context) {
       const { path } = (input ?? {}) as { path?: unknown };
       if (typeof path !== "string") throw invalidInput("path must be a string");

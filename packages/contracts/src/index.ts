@@ -71,7 +71,7 @@ export {
   type TerminalsState,
   terminalPath,
 } from "./terminals.ts";
-export { type WorkspaceSummary, Workspaces, type WorkspacesState } from "./workspaces.ts";
+export { type ProjectDirectory, type WorkspaceSummary, Workspaces, type WorkspacesState } from "./workspaces.ts";
 
 /** The server only listens on the loopback interface. */
 export const DEFAULT_HOST = "127.0.0.1";
