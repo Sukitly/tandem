@@ -154,6 +154,7 @@ export function ChangeDiff({
             return (
               <CommentDraft
                 place={`${path}:${draft.line}`}
+                view={box}
                 onSave={(text) => {
                   comments.add({ path, side: draft.side, line: draft.line, quote: draft.quote, text });
                   setDraft(null);
@@ -165,6 +166,7 @@ export function ChangeDiff({
           return (
             <CommentNote
               comment={written.comment}
+              view={box}
               onSave={(text) => comments.update(written.comment.id, text)}
               onRemove={() => comments.remove(written.comment.id)}
             />
