@@ -101,6 +101,21 @@ export function placeThreads(
     .map((thread) => ({ thread, line: relocate(thread.anchor, lineAt, count) }));
 }
 
+/**
+ * The line to show for a place that was asked for. A thread asked for is shown where it is now: on the line its text
+ * moved to, or, outdated, at no line, since it is shown above the text. A thread that is not among them is gone, and
+ * the line asked for is all there is.
+ */
+export function revealedLine(
+  placed: readonly PlacedThread[],
+  threadId: number | undefined,
+  line: number | undefined,
+): number | undefined {
+  if (threadId === undefined) return line;
+  const entry = placed.find((candidate) => candidate.thread.id === threadId);
+  return entry === undefined ? line : entry.line;
+}
+
 /** Where a thread is, as a person writes it: `src/app.ts:42`. */
 export function commentPlace(anchor: Pick<CommentAnchor, "path" | "line">): string {
   return `${anchor.path}:${anchor.line}`;

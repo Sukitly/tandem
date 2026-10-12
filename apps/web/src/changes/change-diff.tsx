@@ -4,7 +4,7 @@ import { CodeView, type CodeViewDiffItem, type CodeViewHandle, type DiffLineAnno
 import type { CommentThread, FilePatch } from "@tandem/contracts";
 import { PlusIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { anchorAt, type PlacedThread, placeThreads, relocate } from "@/comments/comment-anchor.ts";
+import { anchorAt, type PlacedThread, placeThreads, relocate, revealedLine } from "@/comments/comment-anchor.ts";
 import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { Button } from "@/components/ui/button";
@@ -92,12 +92,12 @@ export function ChangeDiff({
     if (reveal === undefined || reveal.path !== path || reveal.line === undefined) return;
     if (item === undefined || revealed.current === reveal) return;
     revealed.current = reveal;
-    // A thread has moved with its line, or is outdated and shown above the diff, where the line it had is no help.
-    const thread = placed.find((entry) => entry.thread.id === reveal.threadId);
+    // A thread has moved with its line. One the patch does not show, outdated or out of its hunks, has only the line it
+    // had.
     view.current?.scrollTo({
       type: "line",
       id: item.id,
-      lineNumber: thread?.line ?? reveal.line,
+      lineNumber: revealedLine(placed, reveal.threadId, reveal.line) ?? reveal.line,
       side: reveal.side ?? "additions",
       align: "center",
     });
@@ -129,7 +129,7 @@ export function ChangeDiff({
       {outdated.length > 0 && (
         <div className="max-h-1/2 shrink-0 overflow-auto border-b">
           {outdated.map(({ thread }) => (
-            <CommentThreadBox key={thread.id} thread={thread} comments={comments} outdated />
+            <CommentThreadBox key={thread.id} thread={thread} comments={comments} detached="outdated" />
           ))}
         </div>
       )}

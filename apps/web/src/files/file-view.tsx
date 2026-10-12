@@ -1,7 +1,7 @@
 import { AlertCircleIcon, FileIcon, XIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { HighlightedLine, languageOfFile, useHighlighted } from "@/chat/highlight.tsx";
-import { anchorAt, placeThreads } from "@/comments/comment-anchor.ts";
+import { anchorAt, placeThreads, revealedLine } from "@/comments/comment-anchor.ts";
 import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -77,7 +77,7 @@ export function FileView({ files, comments }: { files: ProjectFiles; comments: P
  * is written by clicking a line's number, and shown under the line it is about.
  */
 function FileText({ text, opened, comments }: { text: string; opened: OpenedFile; comments: ProjectComments }) {
-  const { path, line } = opened;
+  const { path } = opened;
   const body = text.endsWith("\n") ? text.slice(0, -1) : text;
   const lines = useMemo(() => body.split("\n"), [body]);
   const language =
@@ -90,19 +90,39 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
     () => placeThreads(threads, path, "additions", (number) => lines[number - 1], lines.length),
     [threads, path, lines],
   );
-  const outdated = placed.filter((entry) => entry.line === undefined);
+  // Threads on lines the changes removed: the file has no such line, so they are shown above it with the code they
+  // were written on, as the diff shows them on its removed side.
+  const removed = useMemo(
+    () => threads.filter((thread) => thread.anchor.path === path && thread.anchor.side === "deletions"),
+    [threads, path],
+  );
+  const above = [
+    ...placed.flatMap((entry) =>
+      entry.line === undefined ? [{ thread: entry.thread, why: "outdated" as const }] : [],
+    ),
+    ...removed.map((thread) => ({ thread, why: "removed" as const })),
+  ];
+  // A thread above the file has no line of it to show; a thread on a line is shown on the line it moved to.
+  const isAbove = opened.threadId !== undefined && above.some(({ thread }) => thread.id === opened.threadId);
+  const line = isAbove ? undefined : revealedLine(placed, opened.threadId, opened.line);
   const [draft, setDraft] = useState<number | null>(null);
 
-  // Each request to show a place is a new `opened`, so asking again for the same line shows it again.
+  // Each request to show a place is a new `opened`, so asking again for the same place shows it again. Shown once: as
+  // threads come and go, the view stays where the user scrolled it.
+  const shown = useRef<OpenedFile | null>(null);
   useEffect(() => {
-    if (opened.line === undefined) return;
-    scroller.current?.querySelector(`[data-line="${opened.line}"]`)?.scrollIntoView({ block: "center" });
-  }, [opened]);
+    if (shown.current === opened || (line === undefined && !isAbove)) return;
+    shown.current = opened;
+    const target = isAbove ? `[data-thread="${opened.threadId}"]` : `[data-line="${line}"]`;
+    scroller.current?.querySelector(target)?.scrollIntoView({ block: "center" });
+  }, [opened, line, isAbove]);
 
   return (
     <div ref={scroller} className="h-full overflow-auto">
-      {outdated.map(({ thread }) => (
-        <CommentThreadBox key={thread.id} thread={thread} comments={comments} view={scroller} outdated />
+      {above.map(({ thread, why }) => (
+        <div key={thread.id} data-thread={thread.id}>
+          <CommentThreadBox thread={thread} comments={comments} view={scroller} detached={why} />
+        </div>
       ))}
       <pre className="w-max min-w-full py-2 font-mono text-xs leading-relaxed">
         <code>

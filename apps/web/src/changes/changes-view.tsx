@@ -68,7 +68,10 @@ export function ChangesView({
       setSelected(reveal.path);
       setRevealed(reveal);
     } else {
-      openFile(reveal.path, reveal.line);
+      openFile(reveal.path, {
+        ...(reveal.line === undefined ? {} : { line: reveal.line }),
+        ...(reveal.threadId === undefined ? {} : { threadId: reveal.threadId }),
+      });
     }
     forgetChangeTarget();
   }, [reveal, state, openFile, forgetChangeTarget]);
