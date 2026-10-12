@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { connect, type TandemConnection } from "@tandem/client";
 import { Changes, type ChangesState, Conversation, Conversations, ProjectChanges, Workspaces } from "@tandem/contracts";
@@ -12,6 +13,7 @@ import { startApp } from "../src/app.ts";
 import { createFauxProvider } from "../src/models.ts";
 import type { TandemServer } from "../src/server.ts";
 import { ChangeTrackers, ProjectChangeTracker } from "../src/services/changes.ts";
+import { ChangeReader } from "../src/services/changes-git.ts";
 import type { ProjectPaths } from "../src/services/project-path.ts";
 
 const run = promisify(execFile);
@@ -295,6 +297,61 @@ describe("changes", () => {
         await again.release();
       } finally {
         await trackers.dispose();
+        await env.cleanup(context);
+      }
+    });
+  });
+
+  /** An execution environment that records what was asked of it. */
+  function counted(env: ExecutionEnv): { env: ExecutionEnv; calls: string[] } {
+    const calls: string[] = [];
+    const proxy = new Proxy(env, {
+      get(target, property, receiver) {
+        const value: unknown = Reflect.get(target, property, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          calls.push(property === "exec" ? (args[0] as string[]).join(" ") : String(property));
+          return (value as (...passed: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    return { env: proxy as ExecutionEnv, calls };
+  }
+
+  describe("reading a project's changes", () => {
+    test("what a read cannot change is asked once, and forgetting asks again", async () => {
+      const project = await mkdtemp(join(tmpdir(), "tandem-reader-"));
+      await run("git", ["init", "-q", "-b", "main"], { cwd: project });
+      await writeFile(join(project, "tracked.ts"), "a\n");
+      await writeFile(join(project, "untracked.ts"), "one\ntwo\n");
+      await run("git", ["add", "tracked.ts"], { cwd: project });
+
+      const { env, calls } = counted(new NodeExecutionEnv({ cwd: project }));
+      try {
+        const reader = new ChangeReader(env, project);
+        const first = await reader.read(context);
+        expect(first.status).toBe("ready");
+        const afterFirst = calls.length;
+        const counted1 = calls.filter((call) => call === "openBinaryReader").length;
+        expect(counted1).toBe(1);
+
+        // Nothing about the branch or the untracked file changed, so only the list itself is asked again: the base
+        // commit, the two diff summaries, the untracked listing, and whether a merge is in progress.
+        calls.length = 0;
+        const second = await reader.read(context);
+        expect(second).toEqual(first);
+        expect(calls.some((call) => call.includes("symbolic-ref"))).toBe(false);
+        expect(calls.filter((call) => call === "openBinaryReader")).toEqual([]);
+        expect(calls.length).toBeLessThanOrEqual(6);
+        expect(calls.length).toBeLessThan(afterFirst);
+
+        // The user asking again asks everything again.
+        calls.length = 0;
+        reader.forget();
+        await reader.read(context);
+        expect(calls.some((call) => call.includes("symbolic-ref"))).toBe(true);
+        expect(calls.filter((call) => call === "openBinaryReader").length).toBe(1);
+      } finally {
         await env.cleanup(context);
       }
     });
