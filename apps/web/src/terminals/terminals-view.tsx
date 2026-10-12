@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { TerminalView } from "./terminal-view.tsx";
@@ -94,31 +95,43 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
             </TabsTrigger>
           ))}
         </TabsList>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label="New terminal"
-          title="New terminal"
-          disabled={creating || list.length >= MAX_TERMINALS_PER_PROJECT}
-          onClick={create}
-        >
-          <PlusIcon />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={`Close ${current.title}`}
-          title={`Close ${current.title}`}
-          className="ml-auto"
-          // A running shell is ended by closing: that is asked first. One that ended has nothing left to lose.
-          onClick={() => (current.exit === undefined ? setClosing(current) : close(current))}
-        >
-          <XIcon />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="New terminal"
+                disabled={creating || list.length >= MAX_TERMINALS_PER_PROJECT}
+                onClick={create}
+              />
+            }
+          >
+            <PlusIcon />
+          </TooltipTrigger>
+          <TooltipContent>New terminal</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Close ${current.title}`}
+                className="ml-auto"
+                // A running shell is ended by closing: that is asked first. One that ended has nothing left to lose.
+                onClick={() => (current.exit === undefined ? setClosing(current) : close(current))}
+              />
+            }
+          >
+            <XIcon />
+          </TooltipTrigger>
+          <TooltipContent>Close {current.title}</TooltipContent>
+        </Tooltip>
       </div>
       {list.map((summary) => (
         // Kept mounted: a hidden terminal keeps its screen and its connection, as a terminal app's tabs do.
-        <TabsContent key={summary.id} value={summary.id} keepMounted className="min-h-0 [&[hidden]]:hidden">
+        <TabsContent key={summary.id} value={summary.id} keepMounted className="min-h-0">
           <TerminalView id={summary.id} active={active && summary.id === current.id} />
         </TabsContent>
       ))}

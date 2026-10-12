@@ -3,7 +3,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
-import { readToken } from "@/rpc/token.ts";
+import { useConnected } from "@/rpc/connection.tsx";
 import { TERMINAL_OPTIONS, TerminalConnection, type TerminalLink } from "./terminal-connection.ts";
 
 /**
@@ -11,14 +11,14 @@ import { TERMINAL_OPTIONS, TerminalConnection, type TerminalLink } from "./termi
  * newest size of any page wins. Its colors follow the theme.
  */
 export function TerminalView({ id, active }: { id: string; active: boolean }) {
+  const { token } = useConnected();
   const box = useRef<HTMLDivElement>(null);
   const [link, setLink] = useState<TerminalLink>("connecting");
-  const parts = useRef<{ terminal: Terminal; fit: FitAddon; connection: TerminalConnection } | null>(null);
+  const parts = useRef<Parts | null>(null);
 
   useEffect(() => {
     const element = box.current;
-    const token = readToken();
-    if (element === null || token === undefined) return;
+    if (element === null) return;
     const terminal = new Terminal({ ...TERMINAL_OPTIONS, theme: themeOf(element) });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
@@ -47,19 +47,14 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
     const input = terminal.onData((data) => connection.input(data));
     // A key xterm turns into bytes as binary data, such as a mouse report in some modes.
     const binary = terminal.onBinary((data) => connection.input(data));
-    parts.current = { terminal, fit, connection };
-
-    const fitNow = (): void => {
-      // A hidden tab has no size: fitting it would ask for the smallest terminal.
-      if (element.clientWidth === 0 || element.clientHeight === 0) return;
-      const size = fit.proposeDimensions();
-      if (size === undefined || !Number.isFinite(size.cols) || !Number.isFinite(size.rows)) return;
-      connection.resize({ cols: Math.max(2, size.cols), rows: Math.max(1, size.rows) });
-      if (size.cols !== terminal.cols || size.rows !== terminal.rows) terminal.resize(size.cols, size.rows);
-    };
-    const observer = new ResizeObserver(fitNow);
+    const current: Parts = { element, terminal, fit, connection };
+    parts.current = current;
+    const observer = new ResizeObserver(() => fitToBox(current));
     observer.observe(element);
-    fitNow();
+    // Focused, as when the user comes back to this page: its size becomes the terminal's again.
+    const onFocus = (): void => fitToBox(current);
+    element.addEventListener("focusin", onFocus);
+    fitToBox(current);
 
     // The theme is the root element's `dark` class.
     const themeObserver = new MutationObserver(() => {
@@ -69,6 +64,7 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
 
     return () => {
       observer.disconnect();
+      element.removeEventListener("focusin", onFocus);
       themeObserver.disconnect();
       input.dispose();
       binary.dispose();
@@ -76,32 +72,15 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
       terminal.dispose();
       parts.current = null;
     };
-  }, [id]);
+  }, [id, token]);
 
-  // Shown again, or focused: this page's size becomes the terminal's, and keys go to it.
+  // Shown again: this page's size becomes the terminal's, and keys go to it.
   useEffect(() => {
     const current = parts.current;
     if (!active || current === null) return;
-    const size = current.fit.proposeDimensions();
-    if (size !== undefined && Number.isFinite(size.cols) && Number.isFinite(size.rows)) {
-      current.connection.resize({ cols: Math.max(2, size.cols), rows: Math.max(1, size.rows) });
-    }
+    fitToBox(current);
     current.terminal.focus();
   }, [active]);
-
-  useEffect(() => {
-    const element = box.current;
-    if (element === null) return;
-    const onFocus = (): void => {
-      const current = parts.current;
-      const size = current?.fit.proposeDimensions();
-      if (current !== null && current !== undefined && size !== undefined && Number.isFinite(size.cols)) {
-        current.connection.resize({ cols: Math.max(2, size.cols), rows: Math.max(1, size.rows) });
-      }
-    };
-    element.addEventListener("focusin", onFocus);
-    return () => element.removeEventListener("focusin", onFocus);
-  }, []);
 
   return (
     <div className="relative h-full min-h-0 bg-background p-2">
@@ -113,6 +92,27 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
       )}
     </div>
   );
+}
+
+interface Parts {
+  element: HTMLElement;
+  terminal: Terminal;
+  fit: FitAddon;
+  connection: TerminalConnection;
+}
+
+/**
+ * Fit the terminal to its box, and send that size to the server, where the newest size of any page wins. A hidden
+ * box has no size: fitting it would ask for the smallest terminal, so it is left as it is.
+ */
+function fitToBox({ element, terminal, fit, connection }: Parts): void {
+  if (element.clientWidth === 0 || element.clientHeight === 0) return;
+  const size = fit.proposeDimensions();
+  if (size === undefined || !Number.isFinite(size.cols) || !Number.isFinite(size.rows)) return;
+  const cols = Math.max(2, size.cols);
+  const rows = Math.max(1, size.rows);
+  connection.resize({ cols, rows });
+  if (cols !== terminal.cols || rows !== terminal.rows) terminal.resize(cols, rows);
 }
 
 /** The theme's colors, as the browser computes them: xterm parses only colors a canvas understands. */

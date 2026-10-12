@@ -59,14 +59,19 @@ export class Pty {
     this.#screen = new Screen({ ...size, scrollback: TERMINAL_SCROLLBACK, allowProposedApi: true });
     this.#screen.loadAddon(this.#serialize);
     this.#onExit = options.onExit;
-    this.#pty = spawn(file as string, args, {
-      name: "xterm-256color",
-      cwd: options.cwd,
-      ...size,
-      env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>,
-      // Bytes, not text: a character may arrive split over two reads.
-      encoding: null,
-    });
+    try {
+      this.#pty = spawn(file as string, args, {
+        name: "xterm-256color",
+        cwd: options.cwd,
+        ...size,
+        env: { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>,
+        // Bytes, not text: a character may arrive split over two reads.
+        encoding: null,
+      });
+    } catch (error) {
+      this.#screen.dispose();
+      throw error;
+    }
     this.#pty.onData((data) => this.#output(data as unknown as Buffer));
     this.#pty.onExit(({ exitCode, signal }) => {
       // Ended by `dispose()`: the screen is gone, and so is the terminal.

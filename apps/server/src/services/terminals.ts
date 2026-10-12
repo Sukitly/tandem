@@ -57,17 +57,14 @@ export class TerminalHost {
     if (open >= MAX_TERMINALS_PER_PROJECT)
       throw invalidInput(`A project has at most ${MAX_TERMINALS_PER_PROJECT} terminals open`);
 
-    let pty: Pty;
-    try {
-      pty = new Pty({
-        cwd: workspace.path,
-        size: { cols, rows } as TerminalSize,
-        ...(this.#command === undefined ? {} : { command: this.#command }),
-        onExit: (exit) => this.#change(pty.id, (summary) => (summary.exit = exit)),
-      });
-    } catch (error) {
-      throw invalidInput(`Cannot start a shell: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    // A shell that cannot start is the server's failure, not the input's: it goes to the server's error report, and
+    // the page is told only that it failed.
+    const pty: Pty = new Pty({
+      cwd: workspace.path,
+      size: { cols, rows } as TerminalSize,
+      ...(this.#command === undefined ? {} : { command: this.#command }),
+      onExit: (exit) => this.#change(pty.id, (summary) => (summary.exit = exit)),
+    });
     const number = this.#opened.get(workspaceId) ?? 1;
     this.#opened.set(workspaceId, number + 1);
     this.#ptys.set(pty.id, pty);

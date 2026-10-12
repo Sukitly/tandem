@@ -64,19 +64,18 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   // Both sockets are authorized alike: a terminal is a shell, as much as the agent's tools are.
   http.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://localhost");
-    const terminalId = url.pathname.startsWith(`${PTY_PATH}/`)
-      ? decodeURIComponent(url.pathname.slice(PTY_PATH.length + 1))
-      : undefined;
-    if (url.pathname !== RPC_PATH && terminalId === undefined) {
+    const terminal = url.pathname.startsWith(`${PTY_PATH}/`);
+    if (url.pathname !== RPC_PATH && !terminal) {
       rejectUpgrade(socket, 404, "Not Found");
     } else if (!tokensMatch(token, url.searchParams.get(TOKEN_QUERY_PARAMETER))) {
       rejectUpgrade(socket, 401, "Unauthorized");
     } else if (!isAllowedOrigin(request.headers.origin, allowedOrigins)) {
       rejectUpgrade(socket, 403, "Forbidden");
-    } else if (terminalId === undefined) {
+    } else if (!terminal) {
       listener.handleUpgrade(request, socket, head);
     } else {
-      const pty = options.terminal?.(terminalId);
+      const id = decodedSegment(url.pathname.slice(PTY_PATH.length + 1));
+      const pty = id === undefined ? undefined : options.terminal?.(id);
       if (pty === undefined) rejectUpgrade(socket, 404, "Not Found");
       else terminalSockets.handleUpgrade(pty, request, socket, head);
     }
@@ -137,6 +136,15 @@ function handleRequest(
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
+}
+
+/** A path segment as it was encoded, or `undefined` for one that is not valid percent-encoding. */
+function decodedSegment(segment: string): string | undefined {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
 }
 
 function rejectUpgrade(socket: Duplex, status: number, reason: string): void {

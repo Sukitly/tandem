@@ -194,6 +194,9 @@ describe("terminals", () => {
     expect(await refused(server, terminalPath(id), "wrong")).toBe(401);
     expect(await refused(server, terminalPath(id), server.token, "https://evil.example")).toBe(403);
     expect(await refused(server, terminalPath("nope"), server.token)).toBe(404);
+    // A path that is not valid percent-encoding is refused, before and after the token is checked.
+    expect(await refused(server, "/pty/%E0", "wrong")).toBe(401);
+    expect(await refused(server, "/pty/%E0", server.token)).toBe(404);
     expect(await refused(server, terminalPath(id), server.token, server.url.origin)).toBe(101);
   });
 });

@@ -27,6 +27,8 @@ export interface Connected {
   comments: Comments;
   /** The terminals of every project. */
   terminals: Terminals;
+  /** The session token, which a terminal's own socket presents too. */
+  token: string;
   /** The conversations this page has open. */
   open: OpenConversations;
   /** The projects whose changes this page shows. */
@@ -89,6 +91,7 @@ export function ConnectionProvider({
               files: connection.services.use(Files),
               comments: connection.services.use(Comments),
               terminals: connection.services.use(Terminals),
+              token,
             },
           });
       },
@@ -125,6 +128,7 @@ function Connected({
         files: value.files,
         comments: value.comments,
         terminals: value.terminals,
+        token: value.token,
         open: value.open,
         openChanges: value.openChanges,
         status,

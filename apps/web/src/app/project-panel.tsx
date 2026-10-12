@@ -94,7 +94,7 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
         />
       </TabsContent>
       {/* Kept mounted, so the terminals keep their screens and connections while another tab shows. */}
-      <TabsContent value="terminal" keepMounted className="flex min-h-0 flex-col [&[hidden]]:hidden">
+      <TabsContent value="terminal" keepMounted className="flex min-h-0 flex-col">
         <TerminalsView workspaceId={workspaceId} active={panelTab === "terminal"} />
       </TabsContent>
     </Tabs>
