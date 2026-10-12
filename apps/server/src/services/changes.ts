@@ -1,0 +1,403 @@
+import { type Context, type MutableReplicatedState, replicatedState } from "@earendil-works/chord";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { ExecutionEnv, FileWatcher, WatchChange } from "@earendil-works/pi-durable/env";
+import {
+  type ChangedFile,
+  type ChangeStatus,
+  type ChangesState,
+  type FilePatch,
+  MAX_CHANGED_FILES,
+  MAX_PATCH_BYTES,
+  MAX_UNTRACKED_BYTES,
+  MAX_UNTRACKED_FILES,
+  type ProjectChanges,
+} from "@tandem/contracts";
+import { invalidInput } from "./errors.ts";
+import type { ProjectPaths } from "./project-path.ts";
+
+const GIT_TIMEOUT_MS = 10_000;
+
+/** How long changes settle before the list is read again. */
+const REFRESH_DELAY_MS = 300;
+
+/** Probed in order when the remote's default branch is not configured locally. */
+const BASE_REFS = ["origin/main", "origin/master", "main", "master"];
+
+/** Git output kept for one command; what follows is dropped and makes the result incomplete. */
+const MAX_OUTPUT_BYTES = MAX_PATCH_BYTES * 2;
+
+/** Directories whose changes do not affect the list; other ignores come from Git itself. */
+const UNWATCHED = ["node_modules"];
+
+/**
+ * One project's changes against its integration branch, watched while a client holds the project open. The base is the
+ * merge base with that branch, so branch commits, staged and unstaged work, and untracked files are one list; a project
+ * without an integration branch is compared with its last commit.
+ */
+export class ProjectChangeTracker {
+  readonly state: MutableReplicatedState<ChangesState>;
+  readonly #paths: ProjectPaths;
+  readonly #env: ExecutionEnv;
+  readonly #workspaceId: number;
+  /** Where Git runs: the project's directory. */
+  readonly #root: string;
+  #base = "HEAD";
+  #watcher: FileWatcher | undefined;
+  #timer: ReturnType<typeof setTimeout> | undefined;
+  #closed = false;
+
+  private constructor(workspaceId: number, root: string, env: ExecutionEnv, paths: ProjectPaths) {
+    this.#workspaceId = workspaceId;
+    this.#root = root;
+    this.#env = env;
+    this.#paths = paths;
+    this.state = replicatedState<ChangesState>({ workspaceId, status: "ready", files: [] });
+  }
+
+  /** Read the changes once, then follow them. */
+  static async open(workspaceId: number, paths: ProjectPaths, context: Context): Promise<ProjectChangeTracker> {
+    const { env, target } = await paths.resolve({ workspaceId, path: "" }, context);
+    const tracker = new ProjectChangeTracker(workspaceId, target, env, paths);
+    await tracker.refresh(context);
+    return tracker;
+  }
+
+  async diff(pathInput: string, context: Context): Promise<FilePatch> {
+    const { path } = await this.#paths.resolve({ workspaceId: this.#workspaceId, path: pathInput }, context);
+    const entry = this.state.value.files.find((file) => file.path === path);
+    if (entry !== undefined && entry.additions === undefined && entry.status !== "deleted") return { kind: "binary" };
+    const untracked = entry?.status === "untracked";
+    const run = await git(
+      this.#env,
+      this.#root,
+      untracked
+        ? ["diff", "--no-index", "--no-color", "--", "/dev/null", path]
+        : ["diff", "--relative", "--no-color", this.#base, "--", path],
+      context,
+    );
+    if (run === undefined) throw invalidInput("Cannot run Git");
+    // `--no-index` answers 1 when the files differ, which for an untracked file is every case.
+    if (run.code !== 0 && !(untracked && run.code === 1)) {
+      throw invalidInput(run.stderr.trim() === "" ? "Cannot read the diff" : run.stderr.trim());
+    }
+    if (run.truncated) return { kind: "tooLarge" };
+    return { kind: "patch", patch: run.stdout };
+  }
+
+  /** Read the list again, and watch again if watching had stopped. */
+  async refresh(context: Context): Promise<void> {
+    await this.#read(context);
+    await this.#watch();
+  }
+
+  /** Stop watching. The state stays as it is; no later read follows. */
+  dispose(): void {
+    this.#closed = true;
+    if (this.#timer !== undefined) {
+      clearTimeout(this.#timer);
+      this.#timer = undefined;
+    }
+    const watcher = this.#watcher;
+    this.#watcher = undefined;
+    watcher?.close(BACKGROUND_CONTEXT).catch(() => {});
+  }
+
+  async #read(context: Context): Promise<void> {
+    const repository = await git(this.#env, this.#root, ["rev-parse", "--git-dir"], context);
+    if (repository === undefined) {
+      this.#unavailable("error", "Cannot run Git. Is it installed and on the PATH?");
+      return;
+    }
+    if (repository.code !== 0) {
+      this.#unavailable("notRepository", "This directory is not in a Git repository.");
+      return;
+    }
+    const baseRef = await this.#resolveBaseRef(context);
+    this.#base = baseRef === undefined ? "HEAD" : await mergeBase(this.#env, this.#root, baseRef, context);
+    const tracked = await this.#trackedFiles(context);
+    if (tracked === undefined) {
+      this.#unavailable("error", "Cannot read this repository's changes.");
+      return;
+    }
+    const untracked = await this.#untrackedFiles(context);
+    const files = [...tracked, ...untracked].sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+    const listed = files.slice(0, MAX_CHANGED_FILES);
+    this.#publish({
+      status: "ready",
+      base: baseRef ?? "HEAD",
+      files: listed,
+      message:
+        files.length > listed.length ? `Only the first ${MAX_CHANGED_FILES} changed files are listed.` : undefined,
+    });
+  }
+
+  /** The commit the list is measured from, named for the panel: the integration branch when there is one. */
+  async #resolveBaseRef(context: Context): Promise<string | undefined> {
+    const advertised = await git(
+      this.#env,
+      this.#root,
+      ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+      context,
+    );
+    if (advertised !== undefined && advertised.code === 0 && advertised.stdout.trim() !== "") {
+      return advertised.stdout.trim();
+    }
+    for (const ref of BASE_REFS) {
+      const found = await git(this.#env, this.#root, ["rev-parse", "--verify", "--quiet", ref], context);
+      if (found !== undefined && found.code === 0) return ref;
+    }
+    return undefined;
+  }
+
+  /** The changed tracked files, or `undefined` when Git cannot say. */
+  async #trackedFiles(context: Context): Promise<ChangedFile[] | undefined> {
+    const [names, numbers] = await Promise.all([
+      this.#diff("--name-status", context),
+      this.#diff("--numstat", context),
+    ]);
+    if (names === undefined || numbers === undefined) return undefined;
+    const counts = parseNumstat(numbers);
+    return parseNameStatus(names).map((entry) => {
+      const count = counts.get(entry.path) ?? {};
+      return withoutEmpty({
+        path: entry.path,
+        status: entry.status,
+        from: entry.from,
+        additions: count.additions,
+        deletions: count.deletions,
+      });
+    });
+  }
+
+  /** A `git diff` against the base, or against the index in a repository without a commit yet. */
+  async #diff(summary: string, context: Context): Promise<string | undefined> {
+    const base = await git(this.#env, this.#root, ["diff", "--relative", summary, "-z", this.#base, "--"], context);
+    if (base !== undefined && base.code === 0) return base.stdout;
+    const index = await git(this.#env, this.#root, ["diff", "--relative", summary, "-z", "--cached", "--"], context);
+    return index !== undefined && index.code === 0 ? index.stdout : undefined;
+  }
+
+  /** Every untracked file, with the lines it would add; Git's ignore rules leave theirs out. */
+  async #untrackedFiles(context: Context): Promise<ChangedFile[]> {
+    const listed = await git(this.#env, this.#root, ["ls-files", "--others", "--exclude-standard", "-z"], context);
+    if (listed === undefined || listed.code !== 0) return [];
+    const files = listed.stdout.split("\0").filter((path) => path !== "");
+    return Promise.all(
+      files.slice(0, MAX_UNTRACKED_FILES).map(async (path): Promise<ChangedFile> => {
+        const additions = await addedLines(this.#env, `${this.#root}/${path}`, context);
+        return withoutEmpty({ path, status: "untracked" as const, additions });
+      }),
+    );
+  }
+
+  async #watch(): Promise<void> {
+    if (this.#closed || this.#watcher !== undefined || this.state.value.status !== "ready") return;
+    const result = await this.#env.watch(
+      [{ path: this.#root, recursive: true, exclude: { hidden: true, names: UNWATCHED } }],
+      (change) => this.#changed(change),
+      BACKGROUND_CONTEXT,
+    );
+    if (!result.ok) {
+      this.#note(`Not watching for changes: ${result.error.message}`);
+      return;
+    }
+    if (this.#closed) {
+      result.value.close(BACKGROUND_CONTEXT).catch(() => {});
+      return;
+    }
+    this.#watcher = result.value;
+  }
+
+  #changed(change: WatchChange): void {
+    if (this.#closed) return;
+    if ("error" in change) {
+      const watcher = this.#watcher;
+      this.#watcher = undefined;
+      watcher?.close(BACKGROUND_CONTEXT).catch(() => {});
+      this.#note(`Not watching for changes: ${change.error.message}`);
+      return;
+    }
+    this.#schedule();
+  }
+
+  /** Read again once the changes have settled; further changes wait for that read. */
+  #schedule(): void {
+    if (this.#closed || this.#timer !== undefined) return;
+    this.#timer = setTimeout(() => {
+      this.#timer = undefined;
+      this.#read(BACKGROUND_CONTEXT).catch(() => {});
+    }, REFRESH_DELAY_MS);
+  }
+
+  #unavailable(status: "notRepository" | "error", message: string): void {
+    this.#publish({ status, files: [], message });
+  }
+
+  /** Say something about a list that stays as it is. */
+  #note(message: string): void {
+    const current = this.state.value;
+    this.#publish({ ...current, message });
+  }
+
+  #publish(next: Omit<ChangesState, "workspaceId">): void {
+    this.state.change(BACKGROUND_CONTEXT, (draft) => {
+      draft.status = next.status;
+      draft.files = next.files;
+      setOrDrop(draft, "base", next.base);
+      setOrDrop(draft, "message", next.message);
+    });
+  }
+}
+
+/** An absent value is left out: a replicated state holds JSON, which has no `undefined`. */
+function withoutEmpty<T extends object>(value: T): T {
+  for (const key of Object.keys(value) as (keyof T)[]) {
+    if (value[key] === undefined) delete value[key];
+  }
+  return value;
+}
+
+function setOrDrop<T extends object, K extends keyof T>(target: T, key: K, value: T[K] | undefined): void {
+  if (value === undefined) delete target[key];
+  else target[key] = value;
+}
+
+/** The `ProjectChanges` instance one connection receives for one open project. */
+export function createProjectChanges(tracker: ProjectChangeTracker): ProjectChanges {
+  return {
+    state: tracker.state,
+    diff: (path, context) => tracker.diff(path, context),
+    refresh: (context) => tracker.refresh(context),
+  };
+}
+
+interface GitRun {
+  code: number;
+  stdout: string;
+  stderr: string;
+  /** The command wrote more than was kept. */
+  truncated: boolean;
+}
+
+/** Run Git in a directory. `undefined` when the command could not be run at all, for example without Git installed. */
+async function git(
+  env: ExecutionEnv,
+  cwd: string,
+  args: readonly string[],
+  context: Context,
+): Promise<GitRun | undefined> {
+  let stdout = "";
+  let stderr = "";
+  let truncated = false;
+  const result = await env.exec(
+    ["git", ...args],
+    {
+      cwd,
+      timeout: GIT_TIMEOUT_MS,
+      onOutput: (text, _context, info) => {
+        if (info.stream === "stdout") {
+          stdout += text;
+          if (stdout.length > MAX_OUTPUT_BYTES) {
+            stdout = stdout.slice(0, MAX_OUTPUT_BYTES);
+            truncated = true;
+          }
+        } else if (stderr.length < MAX_OUTPUT_BYTES) {
+          stderr += text;
+        }
+      },
+    },
+    context,
+  );
+  if (!result.ok) return undefined;
+  return { code: result.value.exitCode, stdout, stderr, truncated };
+}
+
+/** The merge base with the integration branch, or `HEAD` when the two have no common ancestor. */
+async function mergeBase(env: ExecutionEnv, cwd: string, baseRef: string, context: Context): Promise<string> {
+  const base = await git(env, cwd, ["merge-base", baseRef, "HEAD"], context);
+  const value = base?.stdout.trim() ?? "";
+  return base !== undefined && base.code === 0 && value !== "" ? value : "HEAD";
+}
+
+/** `git diff --name-status -z`: a status, then the path; a rename or copy adds the path it came from. */
+function parseNameStatus(output: string): { path: string; status: ChangeStatus; from?: string }[] {
+  const parts = output.split("\0");
+  const entries: { path: string; status: ChangeStatus; from?: string }[] = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const code = parts[index];
+    if (code === undefined || code === "") continue;
+    const letter = code[0] ?? "M";
+    if (letter === "R" || letter === "C") {
+      const from = parts[index + 1];
+      const path = parts[index + 2];
+      index += 2;
+      if (from === undefined || path === undefined) break;
+      entries.push({ path, status: letter === "R" ? "renamed" : "copied", from });
+      continue;
+    }
+    const path = parts[index + 1];
+    index += 1;
+    if (path === undefined) break;
+    entries.push({ path, status: statusOf(letter) });
+  }
+  return entries;
+}
+
+function statusOf(letter: string): ChangeStatus {
+  switch (letter) {
+    case "A":
+      return "added";
+    case "D":
+      return "deleted";
+    case "T":
+      return "typeChanged";
+    case "U":
+      return "conflicted";
+    default:
+      return "modified";
+  }
+}
+
+/** `git diff --numstat -z`: added and deleted lines per path; a binary file reports `-`. */
+function parseNumstat(output: string): Map<string, { additions?: number; deletions?: number }> {
+  const parts = output.split("\0");
+  const counts = new Map<string, { additions?: number; deletions?: number }>();
+  let index = 0;
+  while (index < parts.length) {
+    const record = parts[index];
+    index += 1;
+    if (record === undefined || record === "") continue;
+    const [added, deleted, inline] = record.split("\t");
+    let path = inline;
+    // A rename leaves the path out and gives the path it came from, then the path it became.
+    if (path === undefined || path === "") {
+      index += 1;
+      path = parts[index];
+      index += 1;
+    }
+    if (path === undefined || path === "") continue;
+    counts.set(path, {
+      additions: added === "-" ? undefined : Number(added),
+      deletions: deleted === "-" ? undefined : Number(deleted),
+    });
+  }
+  return counts;
+}
+
+/** The lines an untracked file would add, or `undefined` for one too large or not text. */
+async function addedLines(env: ExecutionEnv, path: string, context: Context): Promise<number | undefined> {
+  const opened = await env.openBinaryReader(path, undefined, context);
+  if (!opened.ok) return undefined;
+  const reader = opened.value;
+  try {
+    const info = await reader.info(context);
+    if (!info.ok || info.value.size > MAX_UNTRACKED_BYTES) return undefined;
+    const bytes = await reader.read(0, info.value.size, context);
+    if (!bytes.ok || bytes.value.includes(0)) return undefined;
+    let lines = 0;
+    for (const byte of bytes.value) if (byte === 0x0a) lines += 1;
+    return bytes.value.length > 0 && bytes.value[bytes.value.length - 1] !== 0x0a ? lines + 1 : lines;
+  } finally {
+    await reader.close(context);
+  }
+}

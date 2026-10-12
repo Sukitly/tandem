@@ -5,11 +5,13 @@ import { FileCredentialStore } from "./credentials.ts";
 import { openHarness } from "./harness.ts";
 import { createAppModels, defaultProviders } from "./models.ts";
 import { type StartServerOptions, startServer, type TandemServer } from "./server.ts";
+import { ProjectChangeTracker } from "./services/changes.ts";
 import { createConnectionServices } from "./services/connection.ts";
 import { NoticeBoard } from "./services/conversation.ts";
 import { ConversationCatalog } from "./services/conversations.ts";
 import { FileBrowser } from "./services/files.ts";
 import { ModelCatalog } from "./services/models.ts";
+import { ProjectPaths } from "./services/project-path.ts";
 import { WorkspaceCatalog } from "./services/workspaces.ts";
 import { Settings } from "./settings.ts";
 import { openStateDir } from "./state-dir.ts";
@@ -46,7 +48,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     const workspaces = await WorkspaceCatalog.load(opened.harness, context);
     const catalog = await ConversationCatalog.load(opened.harness, workspaces, context);
     cleanups.push(async () => catalog.dispose());
-    const files = new FileBrowser(workspaces, opened.env);
+    const paths = new ProjectPaths(workspaces, opened.env);
+    const files = new FileBrowser(paths);
 
     const server = await startServer({
       ...pick(options, ["hostname", "port", "allowedOrigins"]),
@@ -59,6 +62,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           files,
           models: modelCatalog,
           notices,
+          openTracker: (workspaceId, context) => ProjectChangeTracker.open(workspaceId, paths, context),
         }),
       onError,
     });
