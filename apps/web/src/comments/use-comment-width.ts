@@ -25,13 +25,18 @@ export function useCommentWidth(
     const viewElement = view?.current;
     if (viewElement === null || viewElement === undefined || boxElement === null) return;
     const measure = (): void => {
-      const available =
-        viewElement.getBoundingClientRect().right - boxElement.getBoundingClientRect().left - RIGHT_MARGIN;
-      setWidth(Math.max(MINIMUM_WIDTH, Math.floor(available)));
+      const boxBox = boxElement.getBoundingClientRect();
+      const viewBox = viewElement.getBoundingClientRect();
+      // A box that is not on screen—its tab is not shown—has no place to measure from. It is measured when it is, since
+      // the observer then reports the box and the view gaining a size.
+      if (boxBox.width === 0 || viewBox.width === 0) return;
+      setWidth(Math.max(MINIMUM_WIDTH, Math.floor(viewBox.right - boxBox.left - RIGHT_MARGIN)));
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(viewElement);
+    // The box too: where it begins moves when the layout around it changes, as a wider line number column does.
+    observer.observe(boxElement);
     return () => observer.disconnect();
   }, [box, view]);
 
