@@ -54,6 +54,11 @@ export {
   type ProviderSummary,
 } from "./models.ts";
 export {
+  type PromptOrigin,
+  Prompts,
+  type PromptTemplateSummary,
+} from "./prompts.ts";
+export {
   clampTerminalSize,
   exitLabel,
   MAX_TERMINALS_PER_PROJECT,
