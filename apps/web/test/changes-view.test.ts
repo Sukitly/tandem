@@ -70,8 +70,11 @@ describe("file type icons in the changed files list", () => {
     };
     state.changes.files = [file];
     const markup = changes();
-    expect(markup).toContain(renderToStaticMarkup(createElement(FileIcon, { fileName: "new.tsx", autoAssign: true })));
+    const icon = renderToStaticMarkup(createElement(FileIcon, { fileName: "new.tsx", autoAssign: true }));
+    expect(markup).toContain(icon);
     expect(markup).toContain(">R</span>");
+    expect(markup.indexOf(">R</span>")).toBeLessThan(markup.indexOf(icon));
+    expect(markup.indexOf(icon)).toBeLessThan(markup.indexOf(file.path));
     expect(markup).toContain(file.path);
     expect(markup).toContain("src/old.tsx");
     expect(markup).toContain("+12");
