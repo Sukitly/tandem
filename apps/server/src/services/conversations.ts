@@ -94,6 +94,11 @@ export class ConversationCatalog {
     return this.#state;
   }
 
+  /** The project a conversation belongs to, listed or not. */
+  workspaceOf(id: number): number | undefined {
+    return this.#stored.get(id)?.workspaceId;
+  }
+
   /** The conversation is listed. */
   has(id: number): boolean {
     return this.#state.value.conversations.some((summary) => summary.id === id);

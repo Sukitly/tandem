@@ -8,7 +8,7 @@ import type { AnnotationSide, FileDiffMetadata } from "@pierre/diffs";
  * the patch's lines in the same order, from the index the hunk records. A line keeps its line ending there; it is
  * dropped here, because the text stands on its own where it is written down.
  */
-export function diffQuote(fileDiff: FileDiffMetadata, side: AnnotationSide, line: number): string | undefined {
+export function diffLine(fileDiff: FileDiffMetadata, side: AnnotationSide, line: number): string | undefined {
   for (const hunk of fileDiff.hunks) {
     const start = side === "additions" ? hunk.additionStart : hunk.deletionStart;
     const count = side === "additions" ? hunk.additionCount : hunk.deletionCount;
@@ -18,4 +18,15 @@ export function diffQuote(fileDiff: FileDiffMetadata, side: AnnotationSide, line
     return text?.replace(/\r?\n$/, "");
   }
   return undefined;
+}
+
+/** The highest line number a side of the diff shows. */
+export function diffLineCount(fileDiff: FileDiffMetadata, side: AnnotationSide): number {
+  let highest = 0;
+  for (const hunk of fileDiff.hunks) {
+    const start = side === "additions" ? hunk.additionStart : hunk.deletionStart;
+    const count = side === "additions" ? hunk.additionCount : hunk.deletionCount;
+    if (count > 0) highest = Math.max(highest, start + count - 1);
+  }
+  return highest;
 }

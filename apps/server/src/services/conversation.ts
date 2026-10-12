@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   type AttachedReplicatedState,
   type Context,
@@ -13,6 +14,7 @@ import type {
   SettledSubmissionRecord,
 } from "@earendil-works/pi-durable";
 import type { Conversation, ConversationNotices, ModelRef, SubmitInput } from "@tandem/contracts";
+import type { CommentBoard, TakenComments } from "./comments.ts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
 
@@ -51,6 +53,9 @@ export interface ConversationServiceOptions {
   view: AttachedReplicatedState<ConversationView>;
   notices: NoticeBoard;
   models: ModelCatalog;
+  comments: CommentBoard;
+  /** The project the conversation belongs to, whose comments its messages may carry. */
+  workspaceId: () => number | undefined;
   onSubmitted: (text: string, context: Context) => Promise<void>;
 }
 
@@ -60,6 +65,8 @@ export function createConversationService({
   view,
   notices,
   models,
+  comments,
+  workspaceId,
   onSubmitted,
 }: ConversationServiceOptions): Conversation {
   const id = conversation.id as number;
@@ -67,9 +74,16 @@ export function createConversationService({
     view,
     notices: notices.get(id),
     async submit(input, context) {
-      const { text, whenBusy } = parseSubmitInput(input);
-      await submitMessage(conversation, notices, { text, whenBusy }, context);
-      await onSubmitted(text, context);
+      const { text, whenBusy, comments: ids } = parseSubmitInput(input);
+      const project = workspaceId();
+      const taken = project === undefined ? undefined : comments.take(project, ids);
+      const message = joinMessage(taken?.text ?? "", text);
+      if (message === "") {
+        taken?.release();
+        throw invalidInput("Write a message, or a comment to send");
+      }
+      await sendWithComments(conversation, notices, taken, { text: message, whenBusy }, context);
+      await onSubmitted(message, context);
     },
     abort: (context) => conversation.abort(context),
     async configure(input, context) {
@@ -101,16 +115,47 @@ export function createConversationService({
   };
 }
 
+/**
+ * Submit a message with the comments it carries, and mark them sent once it is taken. A refused message leaves them
+ * waiting. The request ID is recorded with the comments, so a message that was taken while marking them failed can be
+ * told apart from one that was never sent.
+ */
+export async function sendWithComments(
+  conversation: HarnessConversation,
+  notices: NoticeBoard,
+  taken: TakenComments | undefined,
+  input: Pick<SubmitInput, "text" | "whenBusy">,
+  context: Context,
+): Promise<void> {
+  const requestId = randomUUID();
+  try {
+    await submitMessage(conversation, notices, input, context, requestId);
+  } catch (error) {
+    taken?.release();
+    throw error;
+  }
+  await taken?.sent({ conversationId: conversation.id as number, requestId }, BACKGROUND_CONTEXT);
+}
+
+/** What the agent receives: the comments' text, then what the user typed. */
+export function joinMessage(comments: string, text: string): string {
+  return [comments, text.trim()].filter((part) => part !== "").join("\n\n");
+}
+
 /** Submit a message. The answer arrives in the view; a message that gets none leaves a notice saying why. */
 export async function submitMessage(
   conversation: HarnessConversation,
   notices: NoticeBoard,
-  { text, whenBusy }: SubmitInput,
+  { text, whenBusy }: Pick<SubmitInput, "text" | "whenBusy">,
   context: Context,
+  requestId?: string,
 ): Promise<void> {
   const id = conversation.id as number;
   notices.clear(id);
-  const submission = await conversation.submit({ type: "input", content: text, whenBusy }, context);
+  const submission = await conversation.submit(
+    { type: "input", content: text, whenBusy, ...(requestId === undefined ? {} : { requestId }) },
+    context,
+  );
   void submission.wait(BACKGROUND_CONTEXT).then(
     (settled) => {
       const message = unansweredMessage(settled);
@@ -163,9 +208,12 @@ function unansweredMessage(settled: SettledSubmissionRecord): string | undefined
   return `The message got no answer (${reason}).`;
 }
 
+/** The message's parts. The text may be empty here; the message as a whole may not, which is checked once it is put together. */
 export function parseSubmitInput(input: unknown): SubmitInput {
-  const { text, whenBusy } = (input ?? {}) as Partial<SubmitInput>;
-  if (typeof text !== "string" || text.trim() === "") throw invalidInput("text must be a non-empty string");
+  const { text, whenBusy, comments } = (input ?? {}) as Partial<SubmitInput>;
+  if (typeof text !== "string") throw invalidInput("text must be a string");
   if (whenBusy !== "steer" && whenBusy !== "followUp") throw invalidInput('whenBusy must be "steer" or "followUp"');
-  return { text, whenBusy };
+  if (comments !== undefined && !(Array.isArray(comments) && comments.every((id) => Number.isSafeInteger(id))))
+    throw invalidInput("comments must be a list of message IDs");
+  return { text, whenBusy, ...(comments === undefined ? {} : { comments }) };
 }

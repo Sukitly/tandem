@@ -1,6 +1,6 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { describe, expect, test } from "vitest";
-import { diffQuote } from "../src/changes/diff-quote.ts";
+import { diffLine, diffLineCount } from "../src/changes/diff-lines.ts";
 
 /** One file, one hunk: a context line, a change, and a context line after it. */
 const PATCH = [
@@ -20,7 +20,7 @@ const file = parsePatchFiles(PATCH).flatMap((parsed) => parsed.files)[0];
 
 function quote(side: "additions" | "deletions", line: number): string | undefined {
   if (file === undefined) throw new Error("the patch did not parse");
-  return diffQuote(file, side, line);
+  return diffLine(file, side, line);
 }
 
 describe("the text of a commented line", () => {
@@ -44,5 +44,11 @@ describe("the text of a commented line", () => {
   test("is nothing beyond the hunk", () => {
     expect(quote("additions", 5)).toBeUndefined();
     expect(quote("deletions", 4)).toBeUndefined();
+  });
+
+  test("the last line each side shows", () => {
+    if (file === undefined) throw new Error("the patch did not parse");
+    expect(diffLineCount(file, "additions")).toBe(4);
+    expect(diffLineCount(file, "deletions")).toBe(3);
   });
 });

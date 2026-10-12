@@ -17,6 +17,20 @@ export {
   ProjectChanges,
 } from "./changes.ts";
 export {
+  COMMENT_CONTEXT_LINES,
+  type CommentAnchor,
+  type CommentMessage,
+  type CommentSide,
+  Comments,
+  type CommentsState,
+  type CommentThread,
+  MAX_COMMENT_LENGTH,
+  MAX_COMMENT_LINE_LENGTH,
+  MAX_COMMENT_THREADS,
+  MAX_THREAD_MESSAGES,
+  waitingMessages,
+} from "./comments.ts";
+export {
   Conversation,
   type ConversationNotice,
   type ConversationNotices,

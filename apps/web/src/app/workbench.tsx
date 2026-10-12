@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import type { ChangeTarget } from "@/changes/change-target.ts";
-import { CommentDrafts } from "@/comments/comment-drafts.ts";
+import { ProjectComments } from "@/comments/project-comments.ts";
 import { ProjectFiles } from "@/files/project-files.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
@@ -46,8 +46,8 @@ interface Workbench {
   forgetChangeTarget(): void;
   /** What the files panel shows of a project, kept while the page is open. */
   projectFiles(workspaceId: number): ProjectFiles;
-  /** The review comments of a project, waiting to be sent with the next message. */
-  comments(workspaceId: number): CommentDrafts;
+  /** The comment threads of a project. */
+  comments(workspaceId: number): ProjectComments;
   /** Show a file of the current project in the files panel, at a line if one is given. */
   openFile(path: string, line?: number): void;
   /** The project a conversation was last started in, or the last one added. It may have been removed since. */
@@ -69,7 +69,7 @@ export function useWorkbench(): Workbench {
 
 /** The app's navigation state and the actions that change it. */
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
-  const { workspaces, conversations, files } = useConnected();
+  const { workspaces, conversations, files, comments: commentService } = useConnected();
   const [selected, setSelected] = useState(selectedInHash);
   const [draft, setDraft] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -81,7 +81,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   );
   const [changeTarget, setChangeTarget] = useState<ChangeTarget | null>(null);
   const [projects] = useState(() => new Map<number, ProjectFiles>());
-  const [comments] = useState(() => new Map<number, CommentDrafts>());
+  const [comments] = useState(() => new Map<number, ProjectComments>());
   const summaries = useReplicatedState(conversations.state)?.conversations;
   const workspaceId = draft ?? summaries?.find((summary) => summary.id === selected)?.workspaceId ?? null;
 
@@ -115,13 +115,13 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     }
     return project;
   };
-  const projectComments = (id: number): CommentDrafts => {
-    let drafts = comments.get(id);
-    if (drafts === undefined) {
-      drafts = new CommentDrafts(id);
-      comments.set(id, drafts);
+  const projectComments = (id: number): ProjectComments => {
+    let project = comments.get(id);
+    if (project === undefined) {
+      project = new ProjectComments(commentService, id);
+      comments.set(id, project);
     }
-    return drafts;
+    return project;
   };
   const showFiles = (shown: boolean): void => {
     localStorage.setItem(FILES_SHOWN_KEY, String(shown));
