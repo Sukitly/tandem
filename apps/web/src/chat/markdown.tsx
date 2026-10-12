@@ -3,10 +3,19 @@ import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import { Children, type ComponentProps, createElement, isValidElement, memo, type ReactNode } from "react";
-import { type Components, defaultComponents, Streamdown, useIsCodeFenceIncomplete } from "streamdown";
+import {
+  type Components,
+  defaultComponents,
+  defaultRemarkPlugins,
+  Streamdown,
+  useIsCodeFenceIncomplete,
+} from "streamdown";
 import { CodeBlock } from "./code-block.tsx";
+import { texDelimiters } from "./tex-delimiters.ts";
+import { untrustedMarkdown } from "./untrusted-markdown.ts";
 
 const plugins = { cjk, code, math, mermaid };
+const remarkPlugins = [...Object.values(defaultRemarkPlugins), texDelimiters, untrustedMarkdown];
 
 /**
  * Code blocks are Tandem's own (`CodeBlock`); inline code and Mermaid diagrams keep Streamdown's. Streamdown marks a
@@ -41,13 +50,17 @@ function textOf(children: ReactNode): string {
     .join("");
 }
 
-/** Markdown of a message: code with highlighting, math, Mermaid diagrams, and CJK-aware emphasis. */
+/**
+ * Markdown of a message: code with highlighting, math (`$$…$$`, `\(…\)`, `\[…\]`), Mermaid diagrams, and CJK-aware
+ * emphasis. Untrusted: see `untrustedMarkdown`.
+ */
 export const Markdown = memo(
   function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
     return (
       <Streamdown
         className="min-w-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
         plugins={plugins}
+        remarkPlugins={remarkPlugins}
         components={components}
         isAnimating={streaming}
       >
