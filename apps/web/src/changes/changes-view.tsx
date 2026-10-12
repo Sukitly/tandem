@@ -120,18 +120,14 @@ export function ChangesView({
           <SidebarMenu aria-label="Changed files">
             {state.files.map((file) => (
               <SidebarMenuItem key={file.path}>
-                <SidebarMenuButton
-                  isActive={file.path === selected}
-                  className="h-auto py-1 font-mono text-xs"
-                  onClick={() => setSelected(file.path)}
-                >
-                  <span className={cn("w-3 shrink-0 font-sans font-medium", statusColor(file.status))}>
+                <SidebarMenuButton isActive={file.path === selected} onClick={() => setSelected(file.path)}>
+                  <span className={cn("w-3 shrink-0 font-medium", statusColor(file.status))}>
                     {statusLetter(file.status)}
                   </span>
-                  <span className="truncate" title={statusLabel(file.status, file.from)}>
+                  <span className="truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
                     {file.path}
                   </span>
-                  <span className="ml-auto flex shrink-0 items-center gap-1 tabular-nums">
+                  <span className="ml-auto flex shrink-0 items-center gap-1 text-xs tabular-nums">
                     {countParts(file.additions, file.deletions).map((part) => (
                       <span key={part.kind} className={part.kind === "additions" ? ADDITIONS_COLOR : DELETIONS_COLOR}>
                         {part.text}
