@@ -1,12 +1,5 @@
 import type { FileEntry } from "@tandem/contracts";
-import {
-  ChevronRightIcon,
-  FileIcon,
-  FileSymlinkIcon,
-  FolderClosedIcon,
-  FolderOpenIcon,
-  FolderSymlinkIcon,
-} from "lucide-react";
+import { FileIcon, FileSymlinkIcon, FolderClosedIcon, FolderOpenIcon, FolderSymlinkIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -16,12 +9,12 @@ import {
   SidebarMenuSkeleton,
   SidebarMenuSub,
 } from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
 import { type ProjectFiles, useProjectFiles } from "./project-files.ts";
 
 /**
  * A project's files as a tree, built as shadcn's file tree block (`sidebar-11`) is: sidebar menu items, with
- * collapsible directories. A directory is listed when it first opens.
+ * collapsible directories. As in the sidebar's project rows, an open or closed folder icon shows whether a directory is
+ * expanded, without the block's arrow, so files and directories line up. A directory is listed when it first opens.
  */
 export function FileTree({ files }: { files: ProjectFiles }) {
   return (
@@ -58,7 +51,6 @@ function Directory({ files, entry }: { files: ProjectFiles; entry: FileEntry }) 
   return (
     <Collapsible open={open} onOpenChange={(next) => files.setExpanded(entry.path, next)} render={<SidebarMenuItem />}>
       <CollapsibleTrigger render={<SidebarMenuButton title={entry.path} />}>
-        <ChevronRightIcon className={cn("transition-transform", open && "rotate-90")} />
         <Icon />
         <span>{entry.name}</span>
       </CollapsibleTrigger>
