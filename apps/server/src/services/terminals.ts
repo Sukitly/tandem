@@ -1,13 +1,15 @@
-import { type MutableReplicatedState, replicatedState } from "@earendil-works/chord";
+import { randomUUID } from "node:crypto";
+import { type Context, type MutableReplicatedState, replicatedState } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   MAX_TERMINALS_PER_PROJECT,
-  type TerminalSize,
+  TERMINAL_START_SIZE,
   type TerminalSummary,
   type TerminalsState,
 } from "@tandem/contracts";
-import { Pty } from "../pty.ts";
+import { HostedTerminal } from "../hosted-terminal.ts";
 import { invalidInput } from "./errors.ts";
+import type { ProjectPaths } from "./project-path.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
 export interface TerminalHostOptions {
@@ -16,20 +18,24 @@ export interface TerminalHostOptions {
 }
 
 /**
- * The terminals of every project, in memory only: they stop with the server. A terminal of a project that is removed
- * is closed; stopping an agent does not touch them.
+ * The terminals of every project, in memory only: they stop with the server, and with their project. Stopping an
+ * agent does not touch them.
+ *
+ * One host serves every project, and spawns shells on this machine directly, not through the project's execution
+ * environment: that has no pseudo-terminals. Only the directory is resolved through it. A sandbox has to give each
+ * project its own way to start a terminal.
  */
 export class TerminalHost {
-  readonly #workspaces: WorkspaceCatalog;
+  readonly #paths: ProjectPaths;
   readonly #command: readonly string[] | undefined;
-  readonly #ptys = new Map<string, Pty>();
+  readonly #terminals = new Map<string, HostedTerminal>();
   readonly #state: MutableReplicatedState<TerminalsState> = replicatedState<TerminalsState>({ terminals: [] });
   /** The number of the next terminal of each project, for its title. */
   readonly #opened = new Map<number, number>();
   readonly #stop: () => void;
 
-  constructor(workspaces: WorkspaceCatalog, options: TerminalHostOptions = {}) {
-    this.#workspaces = workspaces;
+  constructor(workspaces: WorkspaceCatalog, paths: ProjectPaths, options: TerminalHostOptions = {}) {
+    this.#paths = paths;
     this.#command = options.command;
     this.#stop = workspaces.subscribe(() => {
       for (const summary of this.#state.value.terminals)
@@ -42,59 +48,60 @@ export class TerminalHost {
   }
 
   /** The terminal a `/pty/<id>` connection is for. */
-  get(id: string): Pty | undefined {
-    return this.#ptys.get(id);
+  get(id: string): HostedTerminal | undefined {
+    return this.#terminals.get(id);
   }
 
-  create(input: unknown): string {
-    const { workspaceId, cols, rows } = (input ?? {}) as { workspaceId?: unknown; cols?: unknown; rows?: unknown };
+  async create(input: unknown, context: Context): Promise<string> {
+    const { workspaceId } = (input ?? {}) as { workspaceId?: unknown };
     if (typeof workspaceId !== "number") throw invalidInput("workspaceId must be a number");
-    const workspace = this.#workspaces.get(workspaceId);
-    if (workspace === undefined) throw invalidInput(`Project ${workspaceId} does not exist`);
-    if (!Number.isSafeInteger(cols) || !Number.isSafeInteger(rows))
-      throw invalidInput("cols and rows must be integers");
+    // The directory as the project's environment resolves it; a directory that is gone is refused here, not reported
+    // later as a shell that exited.
+    const { target: cwd } = await this.#paths.resolve({ workspaceId, path: "" }, context);
     const open = this.#state.value.terminals.filter((summary) => summary.workspaceId === workspaceId).length;
     if (open >= MAX_TERMINALS_PER_PROJECT)
       throw invalidInput(`A project has at most ${MAX_TERMINALS_PER_PROJECT} terminals open`);
 
-    // A shell that cannot start is the server's failure, not the input's: it goes to the server's error report, and
-    // the page is told only that it failed.
-    const pty: Pty = new Pty({
-      cwd: workspace.path,
-      size: { cols, rows } as TerminalSize,
+    // A program that cannot run ends at once with exit code 1; one that cannot even be forked throws, and goes to the
+    // server's error report as any failure that is not the input's.
+    const id = randomUUID();
+    const terminal = new HostedTerminal({
+      id,
+      cwd,
+      size: TERMINAL_START_SIZE,
       ...(this.#command === undefined ? {} : { command: this.#command }),
-      onExit: (exit) => this.#change(pty.id, (summary) => (summary.exit = exit)),
+      onExit: (exit) => this.#change(id, (summary) => (summary.exit = exit)),
     });
     const number = this.#opened.get(workspaceId) ?? 1;
     this.#opened.set(workspaceId, number + 1);
-    this.#ptys.set(pty.id, pty);
+    this.#terminals.set(id, terminal);
     this.#state.change(BACKGROUND_CONTEXT, (draft) => {
-      draft.terminals.push({ id: pty.id, workspaceId, title: `Terminal ${number}` });
+      draft.terminals.push({ id, workspaceId, title: `Terminal ${number}` });
     });
-    return pty.id;
+    return id;
   }
 
   close(id: unknown): void {
-    if (typeof id !== "string" || !this.#ptys.has(id)) throw invalidInput(`Terminal ${String(id)} does not exist`);
+    if (typeof id !== "string" || !this.#terminals.has(id)) throw invalidInput(`Terminal ${String(id)} does not exist`);
     this.#close(id);
   }
 
   dispose(): void {
     this.#stop();
-    for (const pty of this.#ptys.values()) pty.dispose();
-    this.#ptys.clear();
+    for (const terminal of this.#terminals.values()) terminal.dispose();
+    this.#terminals.clear();
   }
 
   #close(id: string): void {
-    this.#ptys.get(id)?.dispose();
-    this.#ptys.delete(id);
+    this.#terminals.get(id)?.dispose();
+    this.#terminals.delete(id);
     this.#state.change(BACKGROUND_CONTEXT, (draft) => {
       draft.terminals = draft.terminals.filter((summary) => summary.id !== id);
     });
   }
 
   #change(id: string, change: (summary: TerminalSummary) => void): void {
-    if (!this.#ptys.has(id)) return;
+    if (!this.#terminals.has(id)) return;
     this.#state.change(BACKGROUND_CONTEXT, (draft) => {
       const summary = draft.terminals.find((candidate) => candidate.id === id);
       if (summary !== undefined) change(summary);

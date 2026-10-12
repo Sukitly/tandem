@@ -1,17 +1,30 @@
+import type { TerminalConnection, TerminalLink } from "@tandem/client";
+import { clampTerminalSize, TERMINAL_SCROLLBACK } from "@tandem/contracts";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { useConnected } from "@/rpc/connection.tsx";
-import { TERMINAL_OPTIONS, TerminalConnection, type TerminalLink } from "./terminal-connection.ts";
+
+/** How a page draws a terminal; the server keeps as many lines. */
+const TERMINAL_OPTIONS = {
+  scrollback: TERMINAL_SCROLLBACK,
+  fontSize: 12,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+  cursorBlink: true,
+  // xterm's 16 colors are made for a dark background: on the light theme, cyan and green text is hard to read. Text
+  // below this contrast with its background is drawn lighter or darker until it reaches it; 4.5 is WCAG AA.
+  minimumContrastRatio: 4.5,
+} as const;
 
 /**
  * One terminal of the server, drawn by xterm. It fits its box: the size it fits to is sent to the server, where the
  * newest size of any page wins. Its colors follow the theme.
  */
 export function TerminalView({ id, active }: { id: string; active: boolean }) {
-  const { token } = useConnected();
+  const { openTerminal } = useConnected();
   const box = useRef<HTMLDivElement>(null);
   const [link, setLink] = useState<TerminalLink>("connecting");
   const parts = useRef<Parts | null>(null);
@@ -31,22 +44,20 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
     } catch {
       // No WebGL: the DOM renderer stays.
     }
-    const connection = new TerminalConnection({
-      origin: window.location.origin,
-      token,
+    const connection = openTerminal(
       id,
-      screen: {
-        write: (data, done) => terminal.write(data, done),
+      {
+        write: (data) => terminal.write(data),
         reset: () => terminal.reset(),
         resize: (cols, rows) => {
           if (cols !== terminal.cols || rows !== terminal.rows) terminal.resize(cols, rows);
         },
       },
-      onLink: setLink,
-    });
+      { onLink: setLink, onError: (error) => console.error(error) },
+    );
     const input = terminal.onData((data) => connection.input(data));
-    // A key xterm turns into bytes as binary data, such as a mouse report in some modes.
-    const binary = terminal.onBinary((data) => connection.input(data));
+    // Bytes that are not text, such as mouse reports: one character per byte.
+    const binary = terminal.onBinary((data) => connection.inputBinary(data));
     const current: Parts = { element, terminal, fit, connection };
     parts.current = current;
     const observer = new ResizeObserver(() => fitToBox(current));
@@ -72,7 +83,7 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
       terminal.dispose();
       parts.current = null;
     };
-  }, [id, token]);
+  }, [id, openTerminal]);
 
   // Shown again: this page's size becomes the terminal's, and keys go to it.
   useEffect(() => {
@@ -89,6 +100,17 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
         <p className="absolute top-2 right-3 text-xs text-muted-foreground" aria-live="polite">
           Connecting…
         </p>
+      )}
+      {link === "closed" && (
+        <div
+          className="absolute top-2 right-3 flex items-center gap-2 text-xs text-muted-foreground"
+          aria-live="polite"
+        >
+          Disconnected
+          <Button size="xs" variant="outline" onClick={() => parts.current?.connection.reconnect()}>
+            Reconnect
+          </Button>
+        </div>
       )}
     </div>
   );
@@ -107,12 +129,11 @@ interface Parts {
  */
 function fitToBox({ element, terminal, fit, connection }: Parts): void {
   if (element.clientWidth === 0 || element.clientHeight === 0) return;
-  const size = fit.proposeDimensions();
-  if (size === undefined || !Number.isFinite(size.cols) || !Number.isFinite(size.rows)) return;
-  const cols = Math.max(2, size.cols);
-  const rows = Math.max(1, size.rows);
-  connection.resize({ cols, rows });
-  if (cols !== terminal.cols || rows !== terminal.rows) terminal.resize(cols, rows);
+  const proposed = fit.proposeDimensions();
+  if (proposed === undefined || !Number.isFinite(proposed.cols) || !Number.isFinite(proposed.rows)) return;
+  const size = clampTerminalSize(proposed);
+  connection.resize(size);
+  if (size.cols !== terminal.cols || size.rows !== terminal.rows) terminal.resize(size.cols, size.rows);
 }
 
 /** The theme's colors, as the browser computes them: xterm parses only colors a canvas understands. */

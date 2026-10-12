@@ -1,7 +1,7 @@
 import type { TerminalEvent } from "@tandem/contracts";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-/** The pseudo-terminal the last `Pty` spawned: the test writes its output and sees it paused. */
+/** The pseudo-terminal the last terminal spawned: the test writes its output and sees it paused. */
 const fake = vi.hoisted(() => ({
   current: undefined as
     | undefined
@@ -37,7 +37,7 @@ vi.mock("node-pty", () => ({
   },
 }));
 
-const { Pty } = await import("../src/pty.ts");
+const { HostedTerminal } = await import("../src/hosted-terminal.ts");
 
 async function waitFor(check: () => boolean, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -61,7 +61,10 @@ function peer() {
     sendEvent(event: TerminalEvent) {
       events.push(event);
     },
-    close() {},
+    closed: [] as number[],
+    close(code: number) {
+      this.closed.push(code);
+    },
   };
 }
 
@@ -69,11 +72,11 @@ const screens = (events: TerminalEvent[]): string[] =>
   events.flatMap((event) => (event.type === "screen" ? [event.data] : []));
 
 describe("a terminal's flow", () => {
-  let pty: InstanceType<typeof Pty>;
+  let terminal: InstanceType<typeof HostedTerminal>;
   beforeEach(() => {
-    pty = new Pty({ cwd: "/", size: { cols: 80, rows: 24 }, onExit: () => {} });
+    terminal = new HostedTerminal({ id: "t", cwd: "/", size: { cols: 80, rows: 24 }, onExit: () => {} });
   });
-  afterEach(() => pty.dispose());
+  afterEach(() => terminal.dispose());
 
   test("pauses the shell while the server's screen is far behind, and resumes it", async () => {
     const shell = fake.current;
@@ -86,7 +89,7 @@ describe("a terminal's flow", () => {
 
   test("sends a page that fell behind the screen again, not the bytes it missed", async () => {
     const page = peer();
-    pty.attach(page);
+    terminal.attach(page);
     await waitFor(() => screens(page.events).length === 1);
     fake.current?.data(Buffer.from("one "));
     await waitFor(() => page.bytes.join("") === "one ");
@@ -108,14 +111,12 @@ describe("a terminal's flow", () => {
     expect(page.bytes.join("")).toBe("one  four");
   });
 
-  test("tells a page the exit after the output before it", async () => {
+  test("closes its pages when it is disposed", async () => {
     const page = peer();
-    pty.attach(page);
+    terminal.attach(page);
     await waitFor(() => screens(page.events).length === 1);
-    fake.current?.data(Buffer.from("bye"));
-    fake.current?.exit({ exitCode: 2 });
-    await waitFor(() => page.events.some((event) => event.type === "exit"));
-    expect(page.bytes.join("")).toBe("bye");
-    expect(page.events.at(-1)).toEqual({ type: "exit", code: 2 });
+    terminal.dispose();
+    expect(page.closed).toEqual([1000]);
+    expect(fake.current?.calls).toContain("kill");
   });
 });

@@ -54,8 +54,15 @@ export {
   type ProviderSummary,
 } from "./models.ts";
 export {
+  clampTerminalSize,
+  exitLabel,
   MAX_TERMINALS_PER_PROJECT,
+  TERMINAL_BAD_MESSAGE,
+  TERMINAL_CLOSED,
+  TERMINAL_MAX_SIZE,
+  TERMINAL_MIN_SIZE,
   TERMINAL_SCROLLBACK,
+  TERMINAL_START_SIZE,
   type TerminalControl,
   type TerminalEvent,
   type TerminalSize,

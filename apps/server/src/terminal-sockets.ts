@@ -1,8 +1,8 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
-import type { TerminalEvent } from "@tandem/contracts";
+import { TERMINAL_BAD_MESSAGE, type TerminalEvent } from "@tandem/contracts";
 import { type RawData, type WebSocket, WebSocketServer } from "ws";
-import type { Pty, TerminalPeer } from "./pty.ts";
+import type { HostedTerminal, TerminalPeer } from "./hosted-terminal.ts";
 
 /** Largest message a page may send: input is typed or pasted. */
 const MAX_INPUT_BYTES = 1024 * 1024;
@@ -15,8 +15,8 @@ export class TerminalSockets {
   readonly #server = new WebSocketServer({ noServer: true, maxPayload: MAX_INPUT_BYTES });
   readonly #sockets = new Set<WebSocket>();
 
-  handleUpgrade(pty: Pty, request: IncomingMessage, socket: Duplex, head: Buffer): void {
-    this.#server.handleUpgrade(request, socket, head, (webSocket) => this.#accept(pty, webSocket));
+  handleUpgrade(terminal: HostedTerminal, request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    this.#server.handleUpgrade(request, socket, head, (webSocket) => this.#accept(terminal, webSocket));
   }
 
   close(): void {
@@ -25,7 +25,7 @@ export class TerminalSockets {
     this.#server.close();
   }
 
-  #accept(pty: Pty, socket: WebSocket): void {
+  #accept(terminal: HostedTerminal, socket: WebSocket): void {
     this.#sockets.add(socket);
     const peer: TerminalPeer = {
       sendBytes: (data) => {
@@ -37,18 +37,18 @@ export class TerminalSockets {
       get behind() {
         return socket.bufferedAmount;
       },
-      close: () => socket.close(1000, "Terminal closed"),
+      close: (code) => socket.close(code, "Terminal closed"),
     };
-    const detach = pty.attach(peer);
+    const detach = terminal.attach(peer);
     socket.on("message", (data: RawData, isBinary: boolean) => {
       const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer);
       if (isBinary) {
-        pty.write(bytes);
+        terminal.write(bytes);
         return;
       }
       const control = parseControl(bytes.toString("utf8"));
-      if (control === undefined) socket.close(1003, "Unknown control message");
-      else pty.resize(control);
+      if (control === undefined) socket.close(TERMINAL_BAD_MESSAGE, "Unknown control message");
+      else terminal.resize(control);
     });
     socket.on("close", () => {
       this.#sockets.delete(socket);

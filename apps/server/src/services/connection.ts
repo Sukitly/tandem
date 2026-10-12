@@ -200,7 +200,7 @@ export function createConnectionServices({
 
   provider.provide(Terminals, {
     state: terminals.state,
-    create: async (input) => terminals.create(input),
+    create: (input, context) => terminals.create(input, context),
     close: async (id) => terminals.close(id),
   });
 

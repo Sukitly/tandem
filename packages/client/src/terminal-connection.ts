@@ -1,5 +1,6 @@
 import {
-  TERMINAL_SCROLLBACK,
+  TERMINAL_BAD_MESSAGE,
+  TERMINAL_CLOSED,
   type TerminalControl,
   type TerminalEvent,
   type TerminalSize,
@@ -7,34 +8,42 @@ import {
   terminalPath,
 } from "@tandem/contracts";
 
-/** What a terminal's connection needs of the screen that shows it: an xterm `Terminal`, or a test's recorder. */
+/** What a terminal's connection needs of the screen that shows it: an xterm `Terminal`, or a recorder. */
 export interface TerminalScreen {
-  /** Draw bytes or text; `done` runs once they are drawn. */
-  write(data: Uint8Array | string, done?: () => void): void;
+  /** Draw bytes or text. */
+  write(data: Uint8Array | string): void;
   reset(): void;
   resize(cols: number, rows: number): void;
 }
 
+/**
+ * The state of a terminal's connection. `closed` is final until `reconnect()`: the terminal is gone, or the page
+ * sent what the server did not understand. A dropped connection is `connecting` again, by itself.
+ */
 export type TerminalLink = "connecting" | "open" | "closed";
 
 export interface TerminalConnectionOptions {
-  /** The page's origin: `/pty` is served beside the page. */
-  origin: string;
+  /** The server's origin. */
+  baseUrl: URL;
   token: string;
   id: string;
   screen: TerminalScreen;
-  /** The connection's state changed. */
   onLink?(link: TerminalLink): void;
-  /** Builds the socket; the browser's `WebSocket` by default. */
+  /** Where a fault of the page's own is reported, such as a control message the server refused. */
+  onError?(error: Error): void;
+  /** Builds the socket; the global `WebSocket` by default, which browsers and Node 22 or later have. */
   socket?: (url: string) => WebSocket;
 }
 
-/** How long to wait before connecting again, after the first failure and at most. */
+/** How long to wait before connecting again, after the first drop and at most. */
 const RETRY_MS = [250, 5_000] as const;
 
+/** The largest message input is sent in: the server refuses bigger ones, and a paste may be bigger. */
+const MAX_INPUT_CHUNK = 64 * 1024;
+
 /**
- * One page's connection to a terminal on the server. The server sends the screen first, so connecting again after a
- * drop shows the terminal as it is; the page's own screen is reset before it is drawn.
+ * One connection to a terminal on the server, over its own WebSocket. The server sends the screen first, so connecting
+ * again after a drop shows the terminal as it is; the screen here is reset before it is drawn.
  */
 export class TerminalConnection {
   readonly #options: TerminalConnectionOptions;
@@ -50,9 +59,19 @@ export class TerminalConnection {
     this.#connect();
   }
 
-  /** The user's input, as xterm encodes it. */
+  /** Text the user typed or pasted, as xterm's `onData` gives it: sent as UTF-8. */
   input(data: string): void {
-    if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(new TextEncoder().encode(data));
+    this.#send(new TextEncoder().encode(data));
+  }
+
+  /**
+   * Bytes xterm gives as a string of one character per byte (`onBinary`), such as mouse reports: each character is
+   * one byte, not UTF-8.
+   */
+  inputBinary(data: string): void {
+    const bytes = new Uint8Array(data.length);
+    for (let index = 0; index < data.length; index += 1) bytes[index] = data.charCodeAt(index) & 0xff;
+    this.#send(bytes);
   }
 
   /** The size the page fits the terminal to. Sent now if it is connected, and on every later connection. */
@@ -61,15 +80,32 @@ export class TerminalConnection {
     this.#sendSize();
   }
 
+  /** Connect again after the connection closed for good. */
+  reconnect(): void {
+    if (this.#closed || this.#socket !== undefined) return;
+    clearTimeout(this.#timer);
+    this.#retry = 0;
+    this.#connect();
+  }
+
   close(): void {
     this.#closed = true;
     clearTimeout(this.#timer);
-    this.#socket?.close(1000);
+    const socket = this.#socket;
     this.#socket = undefined;
+    socket?.close(TERMINAL_CLOSED);
+  }
+
+  #send(bytes: Uint8Array<ArrayBuffer>): void {
+    const socket = this.#socket;
+    if (socket?.readyState !== WebSocket.OPEN) return;
+    for (let start = 0; start < bytes.length; start += MAX_INPUT_CHUNK) {
+      socket.send(bytes.slice(start, start + MAX_INPUT_CHUNK));
+    }
   }
 
   #connect(): void {
-    const url = new URL(terminalPath(this.#options.id), this.#options.origin);
+    const url = new URL(terminalPath(this.#options.id), this.#options.baseUrl);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.searchParams.set(TOKEN_QUERY_PARAMETER, this.#options.token);
     const socket = (this.#options.socket ?? ((target) => new WebSocket(target)))(url.toString());
@@ -88,9 +124,17 @@ export class TerminalConnection {
     socket.onclose = (event: CloseEvent) => {
       if (this.#socket !== socket) return;
       this.#socket = undefined;
-      this.#options.onLink?.("closed");
-      // Closed on purpose by the server: the terminal is gone. Otherwise the connection dropped, and is tried again.
-      if (this.#closed || event.code === 1000 || event.code === 1003) return;
+      if (this.#closed) return;
+      if (event.code === TERMINAL_BAD_MESSAGE) {
+        // The page's fault, not the terminal's: it is still there, and the user can connect again.
+        this.#options.onError?.(new Error(`The terminal refused a message: ${event.reason || "bad message"}`));
+      }
+      if (event.code === TERMINAL_CLOSED || event.code === TERMINAL_BAD_MESSAGE) {
+        this.#options.onLink?.("closed");
+        return;
+      }
+      // Dropped: tried again, sooner first.
+      this.#options.onLink?.("connecting");
       const delay = Math.min(RETRY_MS[1], RETRY_MS[0] * 2 ** this.#retry);
       this.#retry += 1;
       this.#timer = setTimeout(() => this.#connect(), delay);
@@ -110,9 +154,6 @@ export class TerminalConnection {
       case "resize":
         screen.resize(event.cols, event.rows);
         return;
-      case "exit":
-        // The list shows that the shell ended; the screen keeps what it printed.
-        return;
     }
   }
 
@@ -122,15 +163,3 @@ export class TerminalConnection {
     this.#socket.send(JSON.stringify(control));
   }
 }
-
-/** The options a page's terminal is drawn with: the server keeps as many lines. */
-export const TERMINAL_OPTIONS = {
-  scrollback: TERMINAL_SCROLLBACK,
-  fontSize: 12,
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-  cursorBlink: true,
-  allowProposedApi: false,
-  // xterm's 16 colors are made for a dark background: on the light theme, cyan and green text is hard to read. Text
-  // below this contrast with its background is drawn lighter or darker until it reaches it; 4.5 is WCAG AA.
-  minimumContrastRatio: 4.5,
-} as const;

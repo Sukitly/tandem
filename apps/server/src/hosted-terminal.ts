@@ -1,6 +1,10 @@
-import { randomUUID } from "node:crypto";
-import type { TerminalEvent, TerminalSize } from "@tandem/contracts";
-import { TERMINAL_SCROLLBACK } from "@tandem/contracts";
+import {
+  clampTerminalSize,
+  TERMINAL_CLOSED,
+  TERMINAL_SCROLLBACK,
+  type TerminalEvent,
+  type TerminalSize,
+} from "@tandem/contracts";
 import SerializeModule from "@xterm/addon-serialize";
 import HeadlessModule from "@xterm/headless";
 import { type IPty, spawn } from "node-pty";
@@ -15,21 +19,20 @@ const MAX_BEHIND_BYTES = 4 * 1024 * 1024;
 /** Output the server's screen may have unparsed before the shell is paused. */
 const MAX_UNPARSED_BYTES = 1024 * 1024;
 
-export const MIN_COLS = 2;
-export const MAX_COLS = 1000;
-export const MIN_ROWS = 1;
-export const MAX_ROWS = 500;
-
 /** Where a terminal's events go for one page: a WebSocket, or a test's recorder. */
 export interface TerminalPeer {
   sendBytes(data: Uint8Array): void;
   sendEvent(event: TerminalEvent): void;
   /** Bytes sent and not yet written to the connection. */
   readonly behind: number;
-  close(): void;
+  /** The terminal is gone: close with `code`. */
+  close(code: number): void;
 }
 
-export interface PtyOptions {
+export interface HostedTerminalOptions {
+  /** Given by the host, which lists the terminal under it. */
+  id: string;
+  /** The project's directory, resolved. */
   cwd: string;
   size: TerminalSize;
   /** The program and its arguments; the user's login shell by default. */
@@ -38,27 +41,27 @@ export interface PtyOptions {
 }
 
 /**
- * One shell on a pseudo-terminal, and the screen it draws, kept on the server: a page that connects is sent that
- * screen first, then the output that follows, so it shows what a terminal that was always open would show.
+ * A terminal the server hosts: a shell on a pseudo-terminal (node-pty), the screen it draws, kept on the server
+ * (`@xterm/headless`), and the pages that show it. A page that connects is sent that screen first, then the output that
+ * follows, so it shows what a terminal that was always open would show.
  */
-export class Pty {
-  readonly id = randomUUID();
+export class HostedTerminal {
+  readonly id: string;
   readonly #pty: IPty;
   readonly #screen: Screen;
   readonly #serialize = new SerializeAddon();
   readonly #peers = new Map<TerminalPeer, { live: boolean }>();
-  readonly #onExit: PtyOptions["onExit"];
   #unparsed = 0;
   #paused = false;
-  #exit: { code: number; signal?: number } | undefined;
+  #ended = false;
   #disposed = false;
 
-  constructor(options: PtyOptions) {
-    const size = clampSize(options.size);
+  constructor(options: HostedTerminalOptions) {
+    this.id = options.id;
+    const size = clampTerminalSize(options.size);
     const [file, ...args] = options.command ?? [process.env.SHELL || "/bin/sh", "-l"];
     this.#screen = new Screen({ ...size, scrollback: TERMINAL_SCROLLBACK, allowProposedApi: true });
     this.#screen.loadAddon(this.#serialize);
-    this.#onExit = options.onExit;
     try {
       this.#pty = spawn(file as string, args, {
         name: "xterm-256color",
@@ -74,15 +77,10 @@ export class Pty {
     }
     this.#pty.onData((data) => this.#output(data as unknown as Buffer));
     this.#pty.onExit(({ exitCode, signal }) => {
-      // Ended by `dispose()`: the screen is gone, and so is the terminal.
       if (this.#disposed) return;
-      // The screen takes what was written before the exit, so the exit comes after the last output.
-      this.#screen.write("", () => {
-        if (this.#disposed) return;
-        this.#exit = { code: exitCode, ...(signal ? { signal } : {}) };
-        for (const [peer, state] of this.#peers) if (state.live) peer.sendEvent({ type: "exit", ...this.#exit });
-        this.#onExit(this.#exit);
-      });
+      this.#ended = true;
+      // A signal reports exit code 0: the signal is what ended it.
+      options.onExit({ code: exitCode, ...(signal ? { signal } : {}) });
     });
   }
 
@@ -90,16 +88,16 @@ export class Pty {
     return { cols: this.#screen.cols, rows: this.#screen.rows };
   }
 
-  /** The user's input, as the page encoded it. */
+  /** The user's input, as bytes. */
   write(data: Uint8Array): void {
-    if (this.#exit === undefined && !this.#disposed) this.#pty.write(Buffer.from(data));
+    if (!this.#ended && !this.#disposed) this.#pty.write(Buffer.from(data));
   }
 
   /** The newest size wins: a pseudo-terminal has one, whatever pages show it. */
   resize(size: TerminalSize): void {
-    const next = clampSize(size);
+    const next = clampTerminalSize(size);
     if (this.#disposed || (next.cols === this.#screen.cols && next.rows === this.#screen.rows)) return;
-    if (this.#exit === undefined) this.#pty.resize(next.cols, next.rows);
+    if (!this.#ended) this.#pty.resize(next.cols, next.rows);
     this.#screen.resize(next.cols, next.rows);
     for (const [peer, state] of this.#peers) if (state.live) peer.sendEvent({ type: "resize", ...next });
   }
@@ -107,7 +105,7 @@ export class Pty {
   /** Start sending to a page: the screen, then every output after it. */
   attach(peer: TerminalPeer): () => void {
     if (this.#disposed) {
-      peer.close();
+      peer.close(TERMINAL_CLOSED);
       return () => {};
     }
     this.#peers.set(peer, { live: false });
@@ -117,13 +115,13 @@ export class Pty {
     };
   }
 
-  /** End the shell and drop every page. */
+  /** End the shell and close every page's connection. */
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    for (const peer of this.#peers.keys()) peer.close();
+    for (const peer of this.#peers.keys()) peer.close(TERMINAL_CLOSED);
     this.#peers.clear();
-    if (this.#exit === undefined) {
+    if (!this.#ended) {
       try {
         this.#pty.kill();
       } catch {
@@ -165,8 +163,7 @@ export class Pty {
    */
   #sendScreen(peer: TerminalPeer): void {
     const whenDrained = (): void => {
-      const state = this.#peers.get(peer);
-      if (state === undefined || this.#disposed) return;
+      if (!this.#peers.has(peer) || this.#disposed) return;
       if (peer.behind > 0) {
         setTimeout(whenDrained, 50);
         return;
@@ -175,17 +172,9 @@ export class Pty {
         const current = this.#peers.get(peer);
         if (current === undefined || this.#disposed) return;
         peer.sendEvent({ type: "screen", data: this.#serialize.serialize(), ...this.size });
-        if (this.#exit !== undefined) peer.sendEvent({ type: "exit", ...this.#exit });
         current.live = true;
       });
     };
     whenDrained();
   }
-}
-
-/** A size within what a terminal can be, from a page's numbers. */
-export function clampSize(size: TerminalSize): TerminalSize {
-  const clamp = (value: number, min: number, max: number): number =>
-    Math.min(max, Math.max(min, Math.floor(Number.isFinite(value) ? value : min)));
-  return { cols: clamp(size.cols, MIN_COLS, MAX_COLS), rows: clamp(size.rows, MIN_ROWS, MAX_ROWS) };
 }

@@ -63,6 +63,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     const files = new FileBrowser(paths);
     const terminals = new TerminalHost(
       workspaces,
+      paths,
       options.terminalCommand === undefined ? {} : { command: options.terminalCommand },
     );
     cleanups.push(async () => terminals.dispose());

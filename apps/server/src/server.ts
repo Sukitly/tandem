@@ -17,7 +17,7 @@ import {
 } from "@tandem/contracts";
 import packageJson from "../package.json" with { type: "json" };
 import { bearerToken, createToken, isAllowedOrigin, tokensMatch } from "./auth.ts";
-import type { Pty } from "./pty.ts";
+import type { HostedTerminal } from "./hosted-terminal.ts";
 import { type ConnectionServices, createServiceHost } from "./rpc-host.ts";
 import { TerminalSockets } from "./terminal-sockets.ts";
 import { WebSocketListener } from "./websocket-listener.ts";
@@ -35,7 +35,7 @@ export interface StartServerOptions {
   /** Creates the services of each client connection. */
   createConnectionServices?: () => ConnectionServices;
   /** The terminal a `/pty/<id>` connection is for. */
-  terminal?: (id: string) => Pty | undefined;
+  terminal?: (id: string) => HostedTerminal | undefined;
   onError?: (error: Error) => void;
 }
 
@@ -75,9 +75,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       listener.handleUpgrade(request, socket, head);
     } else {
       const id = decodedSegment(url.pathname.slice(PTY_PATH.length + 1));
-      const pty = id === undefined ? undefined : options.terminal?.(id);
-      if (pty === undefined) rejectUpgrade(socket, 404, "Not Found");
-      else terminalSockets.handleUpgrade(pty, request, socket, head);
+      const hosted = id === undefined ? undefined : options.terminal?.(id);
+      if (hosted === undefined) rejectUpgrade(socket, 404, "Not Found");
+      else terminalSockets.handleUpgrade(hosted, request, socket, head);
     }
   });
 

@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { MAX_TERMINALS_PER_PROJECT, type TerminalSummary } from "@tandem/contracts";
+import { exitLabel, MAX_TERMINALS_PER_PROJECT, type TerminalSummary } from "@tandem/contracts";
 import { PlusIcon, SquareTerminalIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
@@ -22,9 +22,6 @@ import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { TerminalView } from "./terminal-view.tsx";
 
-/** A size to start a shell with, until the page fits it to its box. */
-const START_SIZE = { cols: 80, rows: 24 };
-
 /**
  * The terminals of a project, one tab each. They are the server's: every page shows the same ones, and they keep
  * running when the page goes. A shell that ended stays, with its exit code, until it is closed.
@@ -44,7 +41,7 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
   const create = (): void => {
     if (creating) return;
     setCreating(true);
-    terminals.create({ workspaceId, ...START_SIZE }, BACKGROUND_CONTEXT).then(
+    terminals.create({ workspaceId }, BACKGROUND_CONTEXT).then(
       (id) => {
         setCreating(false);
         setSelected(id);
@@ -91,7 +88,7 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
           {list.map((summary) => (
             <TabsTrigger key={summary.id} value={summary.id} className="flex-none">
               {summary.title}
-              {summary.exit !== undefined && <Badge variant="outline">Exited {summary.exit.code}</Badge>}
+              {summary.exit !== undefined && <Badge variant="outline">{exitLabel(summary.exit)}</Badge>}
             </TabsTrigger>
           ))}
         </TabsList>

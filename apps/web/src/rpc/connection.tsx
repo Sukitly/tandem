@@ -1,4 +1,11 @@
-import { BootstrapError, type ConnectionStatus, connect, OpenChanges, OpenConversations } from "@tandem/client";
+import {
+  BootstrapError,
+  type ConnectionStatus,
+  connect,
+  OpenChanges,
+  OpenConversations,
+  type TandemConnection,
+} from "@tandem/client";
 import {
   Changes,
   Comments,
@@ -27,8 +34,8 @@ export interface Connected {
   comments: Comments;
   /** The terminals of every project. */
   terminals: Terminals;
-  /** The session token, which a terminal's own socket presents too. */
-  token: string;
+  /** Connect to a terminal's own socket; the connection holds the server and the token. */
+  openTerminal: TandemConnection["terminal"];
   /** The conversations this page has open. */
   open: OpenConversations;
   /** The projects whose changes this page shows. */
@@ -91,7 +98,7 @@ export function ConnectionProvider({
               files: connection.services.use(Files),
               comments: connection.services.use(Comments),
               terminals: connection.services.use(Terminals),
-              token,
+              openTerminal: (id, screen, options) => connection.terminal(id, screen, options),
             },
           });
       },
@@ -128,7 +135,7 @@ function Connected({
         files: value.files,
         comments: value.comments,
         terminals: value.terminals,
-        token: value.token,
+        openTerminal: value.openTerminal,
         open: value.open,
         openChanges: value.openChanges,
         status,
