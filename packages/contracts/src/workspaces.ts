@@ -14,9 +14,19 @@ export interface WorkspacesState {
   workspaces: WorkspaceSummary[];
 }
 
+/** A directory on the server's machine, offered when choosing a new project. */
+export interface ProjectDirectory {
+  path: string;
+  /** Null at a filesystem root. */
+  parent: string | null;
+  directories: { name: string; path: string }[];
+}
+
 /** The projects shared by every client. */
 export interface Workspaces {
   readonly state: ReplicatedState<WorkspacesState>;
+  /** Browse directories before adding a project. Null opens the server's home directory. */
+  browse(path: string | null, context: Context): Promise<ProjectDirectory>;
   /**
    * Add a directory: an absolute path, or one starting with `~`. Returns its ID. Adding a directory that is listed
    * already returns its ID; adding one that was removed brings it back with its conversations.

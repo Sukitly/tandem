@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Provider } from "@earendil-works/pi-ai";
@@ -13,6 +14,7 @@ import { NoticeBoard } from "./services/conversation.ts";
 import { ConversationCatalog } from "./services/conversations.ts";
 import { FileBrowser } from "./services/files.ts";
 import { ModelCatalog } from "./services/models.ts";
+import { ProjectDirectoryBrowser } from "./services/project-directories.ts";
 import { ProjectPaths } from "./services/project-path.ts";
 import { TerminalHost } from "./services/terminals.ts";
 import { WorkspaceCatalog } from "./services/workspaces.ts";
@@ -61,6 +63,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     const changes = new ChangeTrackers(paths, onError);
     cleanups.push(() => changes.dispose());
     const files = new FileBrowser(paths);
+    const directories = new ProjectDirectoryBrowser(opened.env(homedir()));
     const terminals = new TerminalHost(
       workspaces,
       paths,
@@ -77,6 +80,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           catalog,
           workspaces,
           files,
+          directories,
           models: modelCatalog,
           notices,
           changes,
