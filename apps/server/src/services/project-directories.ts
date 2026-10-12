@@ -19,7 +19,8 @@ export class ProjectDirectoryBrowser {
       throw invalidInput("path must be an absolute path or null");
     }
     const env = this.#env;
-    const path = unwrap(await env.canonicalPath(input === null ? homedir() : input, context), String(input));
+    // Preserve the selected spelling: project identity uses its absolute path, not its symlink target.
+    const path = unwrap(await env.absolutePath(input === null ? homedir() : input, context), String(input));
     const entries = unwrap(await env.listDir(path, context), path);
     const directories = await Promise.all(
       entries.map(async (entry) => {

@@ -16,6 +16,7 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { useConnected } from "@/rpc/connection.tsx";
+import { useProjectDirectory } from "@/rpc/use-project-directory.ts";
 
 /** Chooses a directory on the server's machine without uploading its files. */
 export function AddProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -28,10 +29,11 @@ export function AddProjectDialog({ open, onOpenChange }: { open: boolean; onOpen
 
 function AddProjectContent({ onAdded }: { onAdded: () => void }) {
   const { workspaces } = useConnected();
-  const [target, setTarget] = useState<{ path: string | null }>({ path: null });
-  const [directory, setDirectory] = useState<ProjectDirectory | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { listing, navigate, refresh } = useProjectDirectory(workspaces);
+  const directory = listing.status === "ready" ? listing.value : null;
+  const loading = listing.status === "loading";
+  const [addError, setAddError] = useState<string | null>(null);
+  const error = addError ?? (listing.status === "failed" ? listing.message : null);
   const [adding, setAdding] = useState(false);
   const mounted = useRef(false);
 
@@ -42,43 +44,18 @@ function AddProjectContent({ onAdded }: { onAdded: () => void }) {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    workspaces.browse(target.path, BACKGROUND_CONTEXT).then(
-      (value) => {
-        if (cancelled) return;
-        setDirectory(value);
-        setLoading(false);
-      },
-      (failure: unknown) => {
-        if (cancelled) return;
-        setError(errorMessage(failure));
-        setLoading(false);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [workspaces, target]);
-
-  const navigate = (path: string | null): void => {
-    setLoading(true);
-    setError(null);
-    setTarget({ path });
-  };
-
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (directory === null || loading || adding) return;
     setAdding(true);
-    setError(null);
+    setAddError(null);
     workspaces.add({ path: directory.path }, BACKGROUND_CONTEXT).then(
       () => {
         if (mounted.current) onAdded();
       },
       (failure: unknown) => {
         if (!mounted.current) return;
-        setError(errorMessage(failure));
+        setAddError(errorMessage(failure));
         setAdding(false);
       },
     );
@@ -93,7 +70,14 @@ function AddProjectContent({ onAdded }: { onAdded: () => void }) {
             Choose a directory on the machine Tandem runs on. Its conversations work in it.
           </DialogDescription>
         </DialogHeader>
-        <ProjectDirectoryPicker directory={directory} busy={loading || adding} onNavigate={navigate} />
+        <ProjectDirectoryPicker
+          directory={directory}
+          busy={loading || adding}
+          onNavigate={(path) => {
+            setAddError(null);
+            navigate(path);
+          }}
+        />
         {loading && (
           <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
             <Spinner /> Loading directories…
@@ -106,7 +90,15 @@ function AddProjectContent({ onAdded }: { onAdded: () => void }) {
           </Alert>
         )}
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={loading || adding} onClick={() => navigate(target.path)}>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading || adding}
+            onClick={() => {
+              setAddError(null);
+              refresh();
+            }}
+          >
             <RefreshCw /> {error === null ? "Refresh" : "Retry"}
           </Button>
           <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>

@@ -16,6 +16,7 @@ export interface WorkspacesState {
 
 /** A directory on the server's machine, offered when choosing a new project. */
 export interface ProjectDirectory {
+  /** Absolute selected path, preserving symlinks so existing projects keep their identity. */
   path: string;
   /** Null at a filesystem root. */
   parent: string | null;

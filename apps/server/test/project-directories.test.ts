@@ -52,7 +52,7 @@ describe("project directory selection", () => {
   });
 
   test("opens the server's home by default and stops parent navigation at a filesystem root", async () => {
-    expect((await browser.browse(null, context)).path).toBe(await realpath(homedir()));
+    expect((await browser.browse(null, context)).path).toBe(homedir());
     const filesystemRoot = parse(root).root;
     expect((await browser.browse(filesystemRoot, context)).parent).toBeNull();
   });
@@ -65,7 +65,11 @@ describe("project directory selection", () => {
     await symlink(join(root, "file.txt"), join(root, "file-link"), "file");
     await symlink(join(root, "missing"), join(root, "broken"), "dir");
     expect((await browser.browse(root, context)).directories.map((entry) => entry.name)).toEqual(["alias", "target"]);
-    expect((await browser.browse(join(root, "alias"), context)).path).toBe(target);
+    expect(await browser.browse(join(root, "alias"), context)).toEqual({
+      path: join(root, "alias"),
+      parent: root,
+      directories: [],
+    });
   });
 
   test("rejects invalid JSON arguments, missing directories, and files", async () => {
@@ -80,6 +84,20 @@ describe("project directory selection", () => {
   test("reports unreadable directories as service errors", async () => {
     vi.spyOn(env, "listDir").mockResolvedValueOnce(err(new FileError("permission_denied", "denied", root)));
     await expect(browser.browse(root, context)).rejects.toThrow(`Permission denied: ${root}`);
+  });
+
+  test("preserves a symlink in the parent path when browsing children", async () => {
+    const target = join(root, "target");
+    const alias = join(root, "alias");
+    await mkdir(join(target, "child"), { recursive: true });
+    await symlink(target, alias, "dir");
+    const listing = await browser.browse(alias, context);
+    expect(listing.directories).toEqual([{ name: "child", path: join(alias, "child") }]);
+    expect(await browser.browse(join(alias, "child"), context)).toEqual({
+      path: join(alias, "child"),
+      parent: alias,
+      directories: [],
+    });
   });
 
   test("browses through authenticated RPC and adds the chosen directory without browsing creating a project", async () => {
@@ -97,5 +115,14 @@ describe("project directory selection", () => {
     const id = await workspaces.add({ path: chosen.path }, context);
     expect(await workspaces.add({ path: chosen.path }, context)).toBe(id);
     expect(workspaces.state.value?.workspaces).toEqual([{ id, name: "chosen-project", path: projectPath }]);
+
+    // A project previously added through a symlink must be restored, not recreated at its real path.
+    const alias = join(root, "project-alias");
+    await symlink(projectPath, alias, "dir");
+    const previousId = await workspaces.add({ path: alias }, context);
+    await workspaces.remove(previousId, context);
+    const selected = await workspaces.browse(alias, context);
+    expect(await workspaces.add({ path: selected.path }, context)).toBe(previousId);
+    expect(workspaces.state.value?.workspaces).toContainEqual({ id: previousId, name: "project-alias", path: alias });
   });
 });
