@@ -1,12 +1,14 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { parsePatchFiles } from "@pierre/diffs";
 import { CodeView, type CodeViewDiffItem, type CodeViewHandle, type DiffLineAnnotation } from "@pierre/diffs/react";
 import type { CommentThread, FilePatch } from "@tandem/contracts";
 import { PlusIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { anchorAt, type PlacedThread, placeThreads } from "@/comments/comment-anchor.ts";
+import { anchorAt, type PlacedThread, placeThreads, relocate } from "@/comments/comment-anchor.ts";
 import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { Button } from "@/components/ui/button";
+import { useConnected } from "@/rpc/connection.tsx";
 import { useTheme } from "@/theme.tsx";
 import type { ChangeTarget } from "./change-target.ts";
 import { diffLine, diffLineCount } from "./diff-lines.ts";
@@ -51,8 +53,8 @@ export function ChangeDiff({
   const [draft, setDraft] = useState<Draft | null>(null);
 
   const files = useMemo(() => (text.trim() === "" ? [] : parsePatchFiles(text).flatMap((file) => file.files)), [text]);
-  // Each thread on the line its text is on now, on its side of the diff. A line the patch does not show cannot be
-  // looked at, so a thread whose line is outside every hunk is outdated here too.
+  // Each thread on the line its text is on now, on its side of the diff; one whose line the patch does not show is
+  // looked for in the file (`useOutdatedThreads`).
   const placed = useMemo<PlacedThread[]>(() => {
     const fileDiff = files[0];
     if (fileDiff === undefined) return [];
@@ -60,7 +62,7 @@ export function ChangeDiff({
       placeThreads(threads, path, side, (line) => diffLine(fileDiff, side, line), diffLineCount(fileDiff, side)),
     );
   }, [files, threads, path]);
-  const outdated = placed.filter((entry) => entry.line === undefined);
+  const outdated = useOutdatedThreads(comments.workspaceId, path, text, placed);
   // The renderer keeps the item it has until its version changes, and it cannot see a thread change by itself.
   const version = useMemo(() => versionOf(placed, draft), [placed, draft]);
 
@@ -195,6 +197,54 @@ export function ChangeDiff({
       </div>
     </div>
   );
+}
+
+/**
+ * The threads whose line is gone. A diff shows only its hunks, so a thread missing from it may only be on a line the
+ * patch leaves out: the file as it is is read, and a thread on the new file is outdated only if its line is not there
+ * either. A thread on a removed line has no other file to look in: missing from the diff, it is outdated.
+ *
+ * The file is read again when the patch changes, since the file changed with it; until it is read, a thread that may
+ * still be there is not shown.
+ */
+function useOutdatedThreads(
+  workspaceId: number,
+  path: string,
+  patchText: string,
+  placed: readonly PlacedThread[],
+): PlacedThread[] {
+  const { files } = useConnected();
+  const missing = placed.filter((entry) => entry.line === undefined);
+  const needsFile = missing.some(({ thread }) => thread.anchor.side !== "deletions");
+  const [file, setFile] = useState<{ key: string; lines: string[] | null } | null>(null);
+  const key = `${workspaceId}#${path}#${patchText}`;
+
+  useEffect(() => {
+    if (!needsFile) return;
+    let cancelled = false;
+    files.read({ workspaceId, path }, BACKGROUND_CONTEXT).then(
+      (content) => {
+        if (cancelled) return;
+        const text = content.kind === "text" ? content.text : null;
+        const body = text?.endsWith("\n") === true ? text.slice(0, -1) : text;
+        setFile({ key, lines: body === null || body === undefined ? null : body.split("\n") });
+      },
+      // An unreadable file has no lines to find: a thread missing from the diff is outdated then.
+      () => {
+        if (!cancelled) setFile({ key, lines: null });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [files, workspaceId, path, key, needsFile]);
+
+  const lines = file?.key === key ? file.lines : undefined;
+  return missing.filter(({ thread }) => {
+    if (thread.anchor.side === "deletions") return true;
+    if (lines === undefined) return false;
+    return lines === null || relocate(thread.anchor, (line) => lines[line - 1], lines.length) === undefined;
+  });
 }
 
 /**

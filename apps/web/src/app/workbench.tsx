@@ -56,6 +56,8 @@ interface Workbench {
   /** Takes the project off the list, and closes its conversation if it is the open one. */
   removeProject(workspaceId: number): void;
   failure: Failure | null;
+  /** Show that something the user asked for did not happen. */
+  reportFailure(title: string, error: unknown): void;
   dismissFailure(): void;
 }
 
@@ -174,6 +176,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       );
     },
     failure,
+    reportFailure: (title, error) => setFailure({ title, message: messageOf(error) }),
     dismissFailure: () => setFailure(null),
   };
 

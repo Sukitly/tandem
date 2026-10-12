@@ -31,13 +31,13 @@ export function CommentList({
               type="button"
               variant="link"
               size="xs"
-              className="shrink-0 font-mono"
+              className="shrink-0"
               title={`Show ${place} in the changes`}
               onClick={() =>
                 openChange({ path: anchor.path, line: anchor.line, side: anchor.side, threadId: comment.thread.id })
               }
             >
-              {place}
+              <span className="font-mono">{place}</span>
             </Button>
             <Button
               type="button"

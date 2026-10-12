@@ -1,5 +1,6 @@
 import type { CommentMessage, CommentThread } from "@tandem/contracts";
 import { type RefObject, useEffect, useRef, useState } from "react";
+import { useWorkbench } from "@/app/workbench.tsx";
 import { plainCommentRow } from "@/changes/diff-plain-annotations.ts";
 import {
   AlertDialog,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupAddon,
@@ -21,7 +23,7 @@ import {
   InputGroupTextarea,
 } from "@/components/ui/input-group";
 import { commentPlace } from "./comment-anchor.ts";
-import { type ProjectComments, reportFailure } from "./project-comments.ts";
+import type { ProjectComments } from "./project-comments.ts";
 import { useCommentWidth } from "./use-comment-width.ts";
 
 /**
@@ -57,16 +59,19 @@ export function CommentDraft({
 }) {
   const [text, setText] = useState(initial);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const box = useCommentBox(embedded ? undefined : view);
   const empty = text.trim() === "";
+  // A refused note stays in the box with the reason under it, so it can be changed and saved again.
   const save = (): void => {
     if (empty || saving) return;
     setSaving(true);
+    setError(null);
     onSave(text.trim()).then(
       () => setSaving(false),
-      (error: unknown) => {
+      (failure: unknown) => {
         setSaving(false);
-        reportFailure(error);
+        setError(failure instanceof Error ? failure.message : String(failure));
       },
     );
   };
@@ -99,6 +104,11 @@ export function CommentDraft({
           {submitLabel}
         </InputGroupButton>
       </InputGroupAddon>
+      {error !== null && (
+        <InputGroupAddon align="block-end">
+          <FieldError>{error}</FieldError>
+        </InputGroupAddon>
+      )}
     </InputGroup>
   );
   // In a thread's box the group is the stock one, set off from the messages above it.
@@ -128,6 +138,7 @@ export function CommentThreadBox({
   const [editing, setEditing] = useState<number | null>(null);
   const [replying, setReplying] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const { reportFailure } = useWorkbench();
   const box = useCommentBox(view);
   return (
     <div ref={box.element} className={`${SURFACE} ${className ?? ""} flex flex-col text-sm`} style={box.style}>
@@ -150,7 +161,11 @@ export function CommentThreadBox({
             key={message.id}
             message={message}
             onEdit={() => setEditing(message.id)}
-            onWithdraw={() => comments.withdraw(thread.id, message.id).catch(reportFailure)}
+            onWithdraw={() =>
+              comments
+                .withdraw(thread.id, message.id)
+                .catch((error: unknown) => reportFailure("Could not take back the comment", error))
+            }
           />
         ),
       )}
@@ -189,7 +204,9 @@ export function CommentThreadBox({
               variant="destructive"
               onClick={() => {
                 setDeleting(false);
-                comments.remove(thread.id).catch(reportFailure);
+                comments
+                  .remove(thread.id)
+                  .catch((error: unknown) => reportFailure("Could not delete the thread", error));
               }}
             >
               Delete

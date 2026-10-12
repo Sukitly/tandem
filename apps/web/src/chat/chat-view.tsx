@@ -4,7 +4,7 @@ import { AlertCircleIcon, ArrowDownIcon, PanelRightCloseIcon, PanelRightOpenIcon
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { useWorkbench } from "@/app/workbench.tsx";
-import { reportFailure, useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
+import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -46,7 +46,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
   const { workspaces, conversations, models } = useConnected();
   const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
   const available = useReplicatedState(models.state);
-  const { select, comments } = useWorkbench();
+  const { select, comments, reportFailure } = useWorkbench();
   const projectComments = comments(workspaceId);
   const threads = useCommentThreads(projectComments);
   const waiting = useMemo(() => waitingComments(threads), [threads]);
@@ -87,7 +87,9 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
           queued={[]}
           comments={waiting}
           onWithdrawComment={(comment) =>
-            projectComments.withdraw(comment.thread.id, comment.messageId).catch(reportFailure)
+            projectComments
+              .withdraw(comment.thread.id, comment.messageId)
+              .catch((error: unknown) => reportFailure("Could not take back the comment", error))
           }
           autoFocus
           onSend={async (text, sent) => {
@@ -104,7 +106,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
   const { conversations } = useConnected();
-  const { comments } = useWorkbench();
+  const { comments, reportFailure } = useWorkbench();
   const summary = useReplicatedState(conversations.state)?.conversations.find(
     (candidate) => candidate.id === conversationId,
   );
@@ -144,7 +146,9 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           queued={transcript.queued}
           comments={waiting}
           onWithdrawComment={(comment) =>
-            projectComments?.withdraw(comment.thread.id, comment.messageId).catch(reportFailure)
+            projectComments
+              ?.withdraw(comment.thread.id, comment.messageId)
+              .catch((error: unknown) => reportFailure("Could not take back the comment", error))
           }
           autoFocus
           onSend={(text, sent, whenBusy) => conversation.submit({ text, comments: sent, whenBusy }, BACKGROUND_CONTEXT)}

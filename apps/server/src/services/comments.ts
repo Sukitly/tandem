@@ -26,6 +26,12 @@ const CommentsDoc = defineDoc<StoredComments>({
 
 const MAX_PATH_LENGTH = 4096;
 
+export interface CommentBoardOptions {
+  now?: () => number;
+  /** Where a failure no caller is told of goes: comments of a message that went out, which could not be marked sent. */
+  onError?: (error: Error) => void;
+}
+
 /** Waiting messages taken for a message that is being sent; `sent()` or `release()` settles them. */
 export interface TakenComments {
   /** What the agent reads ahead of the user's text; `""` when nothing was taken. */
@@ -46,16 +52,23 @@ export class CommentBoard {
   readonly #harness: Harness;
   readonly #workspaces: WorkspaceCatalog;
   readonly #now: () => number;
+  readonly #onError: (error: Error) => void;
   readonly #state: MutableReplicatedState<CommentsState>;
   readonly #stop: () => void;
   /** Messages a send has taken and not yet settled: another send must not take them too. */
   readonly #taken = new Set<number>();
   #stored: readonly CommentThread[];
 
-  private constructor(harness: Harness, workspaces: WorkspaceCatalog, now: () => number, stored: CommentThread[]) {
+  private constructor(
+    harness: Harness,
+    workspaces: WorkspaceCatalog,
+    options: CommentBoardOptions,
+    stored: CommentThread[],
+  ) {
     this.#harness = harness;
     this.#workspaces = workspaces;
-    this.#now = now;
+    this.#now = options.now ?? Date.now;
+    this.#onError = options.onError ?? (() => {});
     this.#stored = stored;
     this.#state = replicatedState<CommentsState>({ threads: this.#listed() });
     this.#stop = workspaces.subscribe(() => this.#publish());
@@ -65,10 +78,10 @@ export class CommentBoard {
     harness: Harness,
     workspaces: WorkspaceCatalog,
     context: Context,
-    now: () => number = Date.now,
+    options: CommentBoardOptions = {},
   ): Promise<CommentBoard> {
     const doc = await harness.snapshot(CommentsDoc, context);
-    return new CommentBoard(harness, workspaces, now, copyJson(doc?.threads ?? []) as CommentThread[]);
+    return new CommentBoard(harness, workspaces, options, copyJson(doc?.threads ?? []) as CommentThread[]);
   }
 
   get state(): MutableReplicatedState<CommentsState> {
@@ -175,6 +188,11 @@ export class CommentBoard {
             for (const thread of doc.threads)
               for (const message of thread.messages) if (takenIds.includes(message.id)) message.sent = { ...sent };
           });
+        } catch (error) {
+          this.#onError(
+            new Error(`Comments sent with request ${sent.requestId} could not be marked sent`, { cause: error }),
+          );
+          throw error;
         } finally {
           release();
         }

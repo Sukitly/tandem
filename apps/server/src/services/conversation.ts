@@ -117,8 +117,8 @@ export function createConversationService({
 
 /**
  * Submit a message with the comments it carries, and mark them sent once it is taken. A refused message leaves them
- * waiting. The request ID is recorded with the comments, so a message that was taken while marking them failed can be
- * told apart from one that was never sent.
+ * waiting. Once the message is taken the call succeeds: failing it would have the user send the message again. If
+ * marking the comments fails then, they stay waiting and the failure goes to the server's error report.
  */
 export async function sendWithComments(
   conversation: HarnessConversation,
@@ -134,7 +134,9 @@ export async function sendWithComments(
     taken?.release();
     throw error;
   }
-  await taken?.sent({ conversationId: conversation.id as number, requestId }, BACKGROUND_CONTEXT);
+  await taken?.sent({ conversationId: conversation.id as number, requestId }, BACKGROUND_CONTEXT).catch(() => {
+    // Reported by the board; the message went out all the same.
+  });
 }
 
 /** What the agent receives: the comments' text, then what the user typed. */

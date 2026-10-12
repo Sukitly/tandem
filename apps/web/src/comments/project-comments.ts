@@ -67,8 +67,3 @@ export function waitingComments(threads: readonly CommentThread[]): WaitingComme
     waitingMessages(thread).map((message) => ({ thread, messageId: message.id, text: message.text })),
   );
 }
-
-/** A failed call, reported where the page reports errors; a comment's box stays as it was. */
-export function reportFailure(error: unknown): void {
-  console.error(error);
-}
