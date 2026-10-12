@@ -1,6 +1,8 @@
 import type { ConversationSummary, WorkspaceSummary } from "@tandem/contracts";
 import {
   BikeIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   EllipsisIcon,
   FolderIcon,
   FolderMinusIcon,
@@ -8,7 +10,6 @@ import {
   KeyRoundIcon,
   MonitorIcon,
   MoonIcon,
-  PanelLeftIcon,
   PlusIcon,
   SunIcon,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
@@ -258,27 +260,28 @@ function ProjectItem({
   );
 }
 
-/** The name, and the button that folds the sidebar. Folded, the name's icon is what unfolds it. */
+/** The name and the sidebar toggle, with directional icons matching the project panel's toggle. */
 function SidebarBrand() {
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        {/* Folded, the icon is the button that unfolds the sidebar; unfolded, the name is only a name. */}
         {collapsed ? (
-          <SidebarMenuButton tooltip="Expand the sidebar" aria-label="Expand the sidebar" onClick={toggleSidebar}>
-            <BikeIcon />
+          <SidebarMenuButton aria-label="Expand the sidebar" onClick={toggleSidebar}>
+            <ChevronRightIcon />
           </SidebarMenuButton>
         ) : (
-          <div className="flex h-8 items-center gap-2 px-2 text-sm font-semibold [&>svg]:size-4">
-            <BikeIcon />
-            Tandem
+          <div className="flex h-8 items-center gap-2 pl-2">
+            <div className="flex flex-1 items-center gap-2 text-sm font-semibold [&>svg]:size-4">
+              <BikeIcon />
+              Tandem
+            </div>
+            <Button variant="ghost" size="icon-sm" aria-label="Collapse the sidebar" onClick={toggleSidebar}>
+              <ChevronLeftIcon />
+            </Button>
           </div>
         )}
-        <SidebarMenuAction onClick={toggleSidebar} aria-label="Collapse the sidebar" title="Collapse the sidebar">
-          <PanelLeftIcon />
-        </SidebarMenuAction>
       </SidebarMenuItem>
     </SidebarMenu>
   );

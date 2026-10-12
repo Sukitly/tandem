@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
-import { AlertCircleIcon, ArrowDownIcon, PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { useWorkbench } from "@/app/workbench.tsx";
@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
@@ -200,22 +199,15 @@ function FilesToggle() {
   const { filesShown, showFiles } = useWorkbench();
   const label = filesShown ? "Hide files" : "Show files";
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={label}
-            aria-pressed={filesShown}
-            onClick={() => showFiles(!filesShown)}
-          />
-        }
-      >
-        {filesShown ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      aria-pressed={filesShown}
+      onClick={() => showFiles(!filesShown)}
+    >
+      {filesShown ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+    </Button>
   );
 }
 
