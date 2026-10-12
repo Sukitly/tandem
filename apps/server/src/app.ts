@@ -6,6 +6,7 @@ import { openHarness } from "./harness.ts";
 import { createAppModels, defaultProviders } from "./models.ts";
 import { type StartServerOptions, startServer, type TandemServer } from "./server.ts";
 import { ChangeTrackers } from "./services/changes.ts";
+import { CommentBoard } from "./services/comments.ts";
 import { createConnectionServices } from "./services/connection.ts";
 import { NoticeBoard } from "./services/conversation.ts";
 import { ConversationCatalog } from "./services/conversations.ts";
@@ -48,6 +49,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     const workspaces = await WorkspaceCatalog.load(opened.harness, context);
     const catalog = await ConversationCatalog.load(opened.harness, workspaces, context);
     cleanups.push(async () => catalog.dispose());
+    const comments = await CommentBoard.load(opened.harness, workspaces, context, { onError });
+    cleanups.push(async () => comments.dispose());
     const paths = new ProjectPaths(workspaces, opened.env);
     const changes = new ChangeTrackers(paths, onError);
     cleanups.push(() => changes.dispose());
@@ -65,6 +68,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           models: modelCatalog,
           notices,
           changes,
+          comments,
         }),
       onError,
     });

@@ -3,6 +3,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId, Harness } from "@earendil-works/pi-durable";
 import {
   Changes,
+  Comments,
   Conversation,
   Conversations,
   Files,
@@ -13,12 +14,14 @@ import {
 } from "@tandem/contracts";
 import type { ConnectionServices } from "../rpc-host.ts";
 import { type ChangeHold, type ChangeTrackers, createProjectChanges } from "./changes.ts";
+import type { CommentBoard } from "./comments.ts";
 import {
   createConversationService,
   initialAgent,
+  joinMessage,
   type NoticeBoard,
   parseSubmitInput,
-  submitMessage,
+  sendWithComments,
 } from "./conversation.ts";
 import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
@@ -35,6 +38,7 @@ export interface AppServices {
   readonly files: FileBrowser;
   readonly models: ModelCatalog;
   readonly notices: NoticeBoard;
+  readonly comments: CommentBoard;
 }
 
 /** An open conversation on one connection. */
@@ -60,12 +64,14 @@ export function createConnectionServices({
   models,
   notices,
   changes,
+  comments,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
     Models,
     Workspaces,
     Files,
     Changes,
+    Comments,
     Conversations,
     { service: Conversation, mode: "keyed" },
     { service: ProjectChanges, mode: "keyed" },
@@ -89,6 +95,8 @@ export function createConnectionServices({
           view,
           notices,
           models,
+          comments,
+          workspaceId: () => catalog.workspaceOf(id),
           onSubmitted: (_text, context) => catalog.noteMessage(id, context),
         }),
       );
@@ -176,6 +184,15 @@ export function createConnectionServices({
     },
   });
 
+  provider.provide(Comments, {
+    state: comments.state,
+    start: (input, context) => comments.start(input, context),
+    reply: (input, context) => comments.reply(input, context),
+    edit: (input, context) => comments.edit(input, context),
+    withdraw: (input, context) => comments.withdraw(input, context),
+    remove: (threadId, context) => comments.remove(threadId, context),
+  });
+
   provider.provide(Files, {
     list: (location, context) => files.list(location, context),
     read: (location, context) => files.read(location, context),
@@ -186,14 +203,22 @@ export function createConnectionServices({
     async start(input, context) {
       const { workspaceId, model, thinkingLevel } = (input ?? {}) as { [K in keyof StartInput]?: unknown };
       parseId(workspaceId, "Project");
-      const { text } = parseSubmitInput({ ...(input ?? {}), whenBusy: "followUp" });
-      const conversation = await catalog.create(
-        workspaceId,
-        text,
-        initialAgent(models, { model, thinkingLevel }),
-        context,
-      );
-      await submitMessage(conversation, notices, { text, whenBusy: "followUp" }, context);
+      const { text, comments: ids } = parseSubmitInput({ ...(input ?? {}), whenBusy: "followUp" });
+      const agent = initialAgent(models, { model, thinkingLevel });
+      const taken = comments.take(workspaceId, ids);
+      const message = joinMessage(taken.text, text);
+      let conversation: Awaited<ReturnType<ConversationCatalog["create"]>>;
+      try {
+        if (message === "") throw invalidInput("Write a message, or a comment to send");
+        // Titled after what the user typed; a conversation started by comments alone, after the first one's place.
+        const anchor = taken.first?.anchor;
+        const title = text.trim() !== "" || anchor === undefined ? text : `Review of ${anchor.path}:${anchor.line}`;
+        conversation = await catalog.create(workspaceId, title.trim() === "" ? message : title, agent, context);
+      } catch (error) {
+        taken.release();
+        throw error;
+      }
+      await sendWithComments(conversation, notices, taken, { text: message, whenBusy: "followUp" }, context);
       return conversation.id as number;
     },
     async open(id) {

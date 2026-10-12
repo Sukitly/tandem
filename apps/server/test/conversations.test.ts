@@ -192,7 +192,7 @@ describe("conversations", () => {
     await expect(conversations.start({ workspaceId: 999, text: "hi" }, context)).rejects.toThrow("does not exist");
     await expect(conversations.open(999, context)).rejects.toThrow("does not exist");
     const workspaceId = await project();
-    await expect(conversations.start({ workspaceId, text: " " }, context)).rejects.toThrow("non-empty");
+    await expect(conversations.start({ workspaceId, text: " " }, context)).rejects.toThrow("Write a message");
     await expect(
       conversations.start({ workspaceId, text: "hi", model: { provider: "nope", modelId: "x" } }, context),
     ).rejects.toThrow("not available");
@@ -200,7 +200,7 @@ describe("conversations", () => {
     expect(conversations.state.value?.conversations).toEqual([]);
 
     const { conversation } = await openConversation(await startIn("hi", workspaceId));
-    await expect(conversation.submit({ text: " ", whenBusy: "followUp" }, context)).rejects.toThrow("non-empty");
+    await expect(conversation.submit({ text: " ", whenBusy: "followUp" }, context)).rejects.toThrow("Write a message");
   });
 
   test("an answer interrupted by a restart completes, and the open client picks it up", async () => {

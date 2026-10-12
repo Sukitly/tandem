@@ -1,5 +1,14 @@
 import { BootstrapError, type ConnectionStatus, connect, OpenChanges, OpenConversations } from "@tandem/client";
-import { Changes, Conversation, Conversations, Files, Models, ProjectChanges, Workspaces } from "@tandem/contracts";
+import {
+  Changes,
+  Comments,
+  Conversation,
+  Conversations,
+  Files,
+  Models,
+  ProjectChanges,
+  Workspaces,
+} from "@tandem/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { readToken } from "./token.ts";
 import { useReplicatedState } from "./use-replicated-state.ts";
@@ -13,6 +22,8 @@ export interface Connected {
   models: Models;
   /** The projects' files. */
   files: Files;
+  /** The comment threads of every project. */
+  comments: Comments;
   /** The conversations this page has open. */
   open: OpenConversations;
   /** The projects whose changes this page shows. */
@@ -49,7 +60,7 @@ export function ConnectionProvider({
     connect({
       baseUrl: window.location.origin,
       token,
-      services: [Models, Workspaces, Files, Changes, ProjectChanges, Conversations, Conversation],
+      services: [Models, Workspaces, Files, Changes, ProjectChanges, Comments, Conversations, Conversation],
       onError: (error) => console.error(error),
     }).then(
       (connection) => {
@@ -73,6 +84,7 @@ export function ConnectionProvider({
               conversations: connection.services.use(Conversations),
               models: connection.services.use(Models),
               files: connection.services.use(Files),
+              comments: connection.services.use(Comments),
             },
           });
       },
@@ -107,6 +119,7 @@ function Connected({
         conversations: value.conversations,
         models: value.models,
         files: value.files,
+        comments: value.comments,
         open: value.open,
         openChanges: value.openChanges,
         status,

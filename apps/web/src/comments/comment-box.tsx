@@ -1,6 +1,20 @@
+import type { CommentMessage, CommentThread } from "@tandem/contracts";
 import { type RefObject, useEffect, useRef, useState } from "react";
+import { useWorkbench } from "@/app/workbench.tsx";
 import { plainCommentRow } from "@/changes/diff-plain-annotations.ts";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
 import {
   InputGroup,
   InputGroupAddon,
@@ -8,7 +22,8 @@ import {
   InputGroupText,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
-import { commentPlace, type LineComment } from "./line-comment.ts";
+import { commentPlace } from "./comment-anchor.ts";
+import type { ProjectComments } from "./project-comments.ts";
 import { useCommentWidth } from "./use-comment-width.ts";
 
 /**
@@ -17,12 +32,14 @@ import { useCommentWidth } from "./use-comment-width.ts";
  */
 const SURFACE = "m-2 rounded-lg border border-input font-sans dark:bg-input/30";
 
-/** The box a comment is written in, under the line it is about. */
+/** The box a comment is written in: a new thread, a reply, or an edit of a message that is still waiting. */
 export function CommentDraft({
   place,
   view,
   className,
   initial = "",
+  submitLabel = "Comment",
+  embedded = false,
   onSave,
   onCancel,
 }: {
@@ -33,14 +50,33 @@ export function CommentDraft({
   /** Layout only, such as where in the view the box begins. */
   className?: string;
   initial?: string;
-  onSave(text: string): void;
+  submitLabel?: string;
+  /** Inside a thread's box, which has the surface and the width already. */
+  embedded?: boolean;
+  /** Rejects when the server refuses it; the box then keeps the text. */
+  onSave(text: string): Promise<unknown>;
   onCancel(): void;
 }) {
   const [text, setText] = useState(initial);
-  const box = useCommentBox(view);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const box = useCommentBox(embedded ? undefined : view);
   const empty = text.trim() === "";
-  return (
-    <InputGroup ref={box.element} className={`${SURFACE} ${className ?? ""}`} style={box.style}>
+  // A refused note stays in the box with the reason under it, so it can be changed and saved again.
+  const save = (): void => {
+    if (empty || saving) return;
+    setSaving(true);
+    setError(null);
+    onSave(text.trim()).then(
+      () => setSaving(false),
+      (failure: unknown) => {
+        setSaving(false);
+        setError(failure instanceof Error ? failure.message : String(failure));
+      },
+    );
+  };
+  const group = (
+    <InputGroup ref={box.element} className={embedded ? undefined : `${SURFACE} ${className ?? ""}`} style={box.style}>
       {place !== undefined && (
         <InputGroupAddon align="block-start" className="border-b">
           <InputGroupText className="font-mono text-xs">{place}</InputGroupText>
@@ -56,66 +92,186 @@ export function CommentDraft({
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape") onCancel();
-          // Enter writes another line; the note is sent with the modifier, as a message box would.
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !empty) onSave(text.trim());
+          // Enter writes another line; the note is saved with the modifier, as a message box would send.
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) save();
         }}
       />
       <InputGroupAddon align="block-end" className="justify-end border-t">
         <InputGroupButton size="xs" variant="outline" onClick={onCancel}>
           Cancel
         </InputGroupButton>
-        <InputGroupButton size="xs" variant="default" disabled={empty} onClick={() => onSave(text.trim())}>
-          Comment
+        <InputGroupButton size="xs" variant="default" disabled={empty || saving} onClick={save}>
+          {submitLabel}
         </InputGroupButton>
       </InputGroupAddon>
+      {error !== null && (
+        <InputGroupAddon align="block-end">
+          <FieldError>{error}</FieldError>
+        </InputGroupAddon>
+      )}
     </InputGroup>
   );
+  // In a thread's box the group is the stock one, set off from the messages above it.
+  return embedded ? <div className="border-t p-2">{group}</div> : group;
 }
 
-/** A comment that has been written, editable in the place it is about. */
-export function CommentNote({
-  comment,
+/**
+ * A thread on its line: the discussion so far, oldest first. A message the user wrote can be changed or taken back
+ * until it is sent; after that it is part of what the agent read.
+ */
+export function CommentThreadBox({
+  thread,
+  comments,
   view,
   className,
-  onSave,
-  onRemove,
+  outdated = false,
 }: {
-  comment: LineComment;
+  thread: CommentThread;
+  comments: ProjectComments;
   /** The scrollable view the box sits in, whose right edge is where the box has to end. */
   view?: RefObject<HTMLDivElement | null>;
   /** Layout only, such as where in the view the box begins. */
   className?: string;
-  onSave(text: string): void;
-  onRemove(): void;
+  /** The line is not in the file any more: the box shows the code it was written on. */
+  outdated?: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [replying, setReplying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { reportFailure } = useWorkbench();
   const box = useCommentBox(view);
-  if (editing) {
-    return (
-      <CommentDraft
-        place={commentPlace(comment)}
-        view={view}
-        className={className}
-        initial={comment.text}
-        onSave={(text) => {
-          onSave(text);
-          setEditing(false);
-        }}
-        onCancel={() => setEditing(false)}
-      />
-    );
-  }
   return (
     <div ref={box.element} className={`${SURFACE} ${className ?? ""} flex flex-col text-sm`} style={box.style}>
-      <p className="px-2.5 py-2 break-words whitespace-pre-wrap">{comment.text}</p>
-      <div className="flex items-center justify-end gap-2 border-t px-2.5 py-2">
-        <Button type="button" size="xs" variant="outline" onClick={() => setEditing(true)}>
-          Edit
-        </Button>
-        <Button type="button" size="xs" variant="destructive" onClick={onRemove}>
-          Delete
-        </Button>
+      {outdated && <OutdatedCode thread={thread} />}
+      {thread.messages.map((message) =>
+        editing === message.id ? (
+          <CommentDraft
+            key={message.id}
+            initial={message.text}
+            submitLabel="Save"
+            embedded
+            onSave={async (text) => {
+              await comments.edit(thread.id, message.id, text);
+              setEditing(null);
+            }}
+            onCancel={() => setEditing(null)}
+          />
+        ) : (
+          <ThreadMessage
+            key={message.id}
+            message={message}
+            onEdit={() => setEditing(message.id)}
+            onWithdraw={() =>
+              comments
+                .withdraw(thread.id, message.id)
+                .catch((error: unknown) => reportFailure("Could not take back the comment", error))
+            }
+          />
+        ),
+      )}
+      {replying ? (
+        <CommentDraft
+          submitLabel="Reply"
+          embedded
+          onSave={async (text) => {
+            await comments.reply(thread.id, text);
+            setReplying(false);
+          }}
+          onCancel={() => setReplying(false)}
+        />
+      ) : (
+        <div className="flex items-center justify-end gap-2 border-t px-2.5 py-2">
+          <Button type="button" size="xs" variant="outline" onClick={() => setReplying(true)}>
+            Reply
+          </Button>
+          <Button type="button" size="xs" variant="destructive" onClick={() => setDeleting(true)}>
+            Delete
+          </Button>
+        </div>
+      )}
+      <AlertDialog open={deleting} onOpenChange={setDeleting}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this thread?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The thread on {commentPlace(thread.anchor)} and its messages are deleted. What was sent stays in the
+              conversations it was sent to.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setDeleting(false);
+                comments
+                  .remove(thread.id)
+                  .catch((error: unknown) => reportFailure("Could not delete the thread", error));
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+/** One message of a thread, with who wrote it and, for a user's message, whether it went to the agent. */
+function ThreadMessage({
+  message,
+  onEdit,
+  onWithdraw,
+}: {
+  message: CommentMessage;
+  onEdit(): void;
+  onWithdraw(): void;
+}) {
+  const waiting = message.author === "user" && message.sent === undefined;
+  return (
+    <div className="flex flex-col gap-1 border-b px-2.5 py-2 last:border-b-0">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span>{message.author === "user" ? "You" : "Agent"}</span>
+        {waiting && <Badge variant="outline">Not sent</Badge>}
+        {waiting && (
+          <span className="ml-auto flex gap-1">
+            <Button type="button" size="xs" variant="ghost" onClick={onEdit}>
+              Edit
+            </Button>
+            <Button type="button" size="xs" variant="ghost" onClick={onWithdraw}>
+              Take back
+            </Button>
+          </span>
+        )}
       </div>
+      <p className="break-words whitespace-pre-wrap">{message.text}</p>
+    </div>
+  );
+}
+
+/** The code a thread was written on, for a thread whose line is gone: the line marked, with the lines kept around it. */
+function OutdatedCode({ thread }: { thread: CommentThread }) {
+  const { anchor } = thread;
+  const first = anchor.line - anchor.before.length;
+  const lines = [...anchor.before, anchor.quote, ...anchor.after];
+  return (
+    <div className="flex flex-col gap-1 border-b px-2.5 py-2">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Badge variant="secondary">Outdated</Badge>
+        <span className="font-mono">{commentPlace(anchor)}</span>
+      </div>
+      <pre className="overflow-x-auto font-mono text-xs leading-relaxed">
+        {lines.map((line, index) => {
+          const number = first + index;
+          return (
+            <div key={number} className={number === anchor.line ? "bg-muted" : "text-muted-foreground"}>
+              <span className="inline-block w-10 pr-2 text-right select-none">{number}</span>
+              {line}
+            </div>
+          );
+        })}
+      </pre>
     </div>
   );
 }

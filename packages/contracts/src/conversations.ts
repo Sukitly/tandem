@@ -49,13 +49,22 @@ export const Conversations = defineService<Conversations>("tandem.conversations"
 
 export interface StartInput {
   workspaceId: number;
+  /** May be empty when the message carries comments. */
   text: string;
+  /** Waiting comment messages of the project that go with it, by ID; see `SubmitInput.comments`. */
+  comments?: number[];
   model?: ModelRef;
   thinkingLevel?: string;
 }
 
 export interface SubmitInput {
+  /** May be empty when the message carries comments. */
   text: string;
+  /**
+   * Waiting comment messages of the conversation's project that go with it, by ID. The server writes them into the
+   * message ahead of the text, each with the place it is about, and marks them sent once the message is taken.
+   */
+  comments?: number[];
   /** What happens when the agent is working: interrupt it at the next step, or wait until it finishes. */
   whenBusy: "steer" | "followUp";
 }

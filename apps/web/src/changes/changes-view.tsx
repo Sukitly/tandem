@@ -3,7 +3,7 @@ import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
 import { AlertCircleIcon, Columns2Icon, Rows2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
-import type { CommentDrafts } from "@/comments/comment-drafts.ts";
+import type { ProjectComments } from "@/comments/project-comments.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
@@ -45,8 +45,8 @@ export function ChangesView({
   changes: ProjectChanges | undefined;
   /** Why the project's changes are not there, if opening them failed. */
   failure: string | null;
-  /** Where the review's comments on these lines are written and kept. */
-  comments: CommentDrafts;
+  /** The project's comment threads, shown on the lines they are about. */
+  comments: ProjectComments;
   /** A place asked for—a comment of the review—to show as soon as the list holds its file. */
   reveal?: ChangeTarget;
 }) {
@@ -209,7 +209,7 @@ function ChangeView({
   failure: string | null;
   styled: "split" | "unified";
   onStyled(style: "split" | "unified"): void;
-  comments: CommentDrafts;
+  comments: ProjectComments;
   reveal?: ChangeTarget;
 }) {
   const next = styled === "split" ? "unified" : "split";
