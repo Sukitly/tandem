@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { plainCommentRow } from "@/changes/diff-plain-annotations.ts";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +9,7 @@ import {
   InputGroupTextarea,
 } from "@/components/ui/input-group";
 import { commentPlace, type LineComment } from "./line-comment.ts";
+import { useCommentWidth } from "./use-comment-width.ts";
 
 /**
  * The surface a comment sits in, written or being written. The writing one is an input group, so both take its
@@ -19,21 +20,27 @@ const SURFACE = "m-2 rounded-lg border border-input font-sans dark:bg-input/30";
 /** The box a comment is written in, under the line it is about. */
 export function CommentDraft({
   place,
+  view,
+  className,
   initial = "",
   onSave,
   onCancel,
 }: {
   /** The file and line it is about, named above the box as a code host names it. */
   place?: string;
+  /** The scrollable view the box sits in, whose right edge is where the box has to end. */
+  view?: RefObject<HTMLDivElement | null>;
+  /** Layout only, such as where in the view the box begins. */
+  className?: string;
   initial?: string;
   onSave(text: string): void;
   onCancel(): void;
 }) {
   const [text, setText] = useState(initial);
-  const box = usePlainRow();
+  const box = useCommentBox(view);
   const empty = text.trim() === "";
   return (
-    <InputGroup ref={box} className={SURFACE}>
+    <InputGroup ref={box.element} className={`${SURFACE} ${className ?? ""}`} style={box.style}>
       {place !== undefined && (
         <InputGroupAddon align="block-start" className="border-b">
           <InputGroupText className="font-mono text-xs">{place}</InputGroupText>
@@ -68,19 +75,27 @@ export function CommentDraft({
 /** A comment that has been written, editable in the place it is about. */
 export function CommentNote({
   comment,
+  view,
+  className,
   onSave,
   onRemove,
 }: {
   comment: LineComment;
+  /** The scrollable view the box sits in, whose right edge is where the box has to end. */
+  view?: RefObject<HTMLDivElement | null>;
+  /** Layout only, such as where in the view the box begins. */
+  className?: string;
   onSave(text: string): void;
   onRemove(): void;
 }) {
   const [editing, setEditing] = useState(false);
-  const box = usePlainRow();
+  const box = useCommentBox(view);
   if (editing) {
     return (
       <CommentDraft
         place={commentPlace(comment)}
+        view={view}
+        className={className}
         initial={comment.text}
         onSave={(text) => {
           onSave(text);
@@ -91,7 +106,7 @@ export function CommentNote({
     );
   }
   return (
-    <div ref={box} className={`${SURFACE} flex flex-col text-sm`}>
+    <div ref={box.element} className={`${SURFACE} ${className ?? ""} flex flex-col text-sm`} style={box.style}>
       <p className="px-2.5 py-2 break-words whitespace-pre-wrap">{comment.text}</p>
       <div className="flex items-center justify-end gap-2 border-t px-2.5 py-2">
         <Button type="button" size="xs" variant="outline" onClick={() => setEditing(true)}>
@@ -105,11 +120,16 @@ export function CommentNote({
   );
 }
 
-/** A comment's row in a diff carries the library's own background; this takes it away while a comment is shown there. */
-function usePlainRow() {
+/**
+ * The box's own element, with what it needs of its surroundings: a comment's row in a diff carries the library's
+ * background, which is taken away while a comment is shown there, and the box ends at the view's right edge rather
+ * than at the longest line's.
+ */
+function useCommentBox(view: RefObject<HTMLDivElement | null> | undefined) {
   const element = useRef<HTMLDivElement>(null);
+  const width = useCommentWidth(element, view);
   useEffect(() => {
     plainCommentRow(element.current);
   }, []);
-  return element;
+  return { element, style: width === undefined ? undefined : { width } };
 }

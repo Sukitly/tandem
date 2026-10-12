@@ -123,6 +123,8 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
                     <CommentNote
                       key={comment.id}
                       comment={comment}
+                      view={scroller}
+                      className="ml-14"
                       onSave={(text) => comments.update(comment.id, text)}
                       onRemove={() => comments.remove(comment.id)}
                     />
@@ -130,6 +132,8 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
                 {draft?.line === number && (
                   <CommentDraft
                     place={`${path}:${draft.line}`}
+                    view={scroller}
+                    className="ml-14"
                     onSave={(text) => {
                       comments.add({ path, line: draft.line, quote: draft.quote, text });
                       setDraft(null);
