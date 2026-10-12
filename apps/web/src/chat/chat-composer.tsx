@@ -39,8 +39,9 @@ export interface ChatComposerProps {
  * The box is a combobox, and its suggestion menu is Tandem's own, laid over the box rather than rendered by a popover
  * or a menu component: focus must stay in the box so that ordinary typing, spaces, and Shift+Enter keep working, and
  * such a component would take the keys for itself. It follows how pi's own input behaves: a message that begins with
- * `/` and holds no argument yet offers the project's slash commands, the arrows and Tab move through them and settle
- * one, Escape puts the menu away, and everything else is left to the browser.
+ * `/` and holds no argument yet offers the project's slash commands, the arrows move through them, Tab fills the
+ * highlighted one into the box so its arguments can be typed, Enter sends it, Escape puts the menu away, and
+ * everything else is left to the browser.
  */
 export function ChatComposer({
   busy,
@@ -90,18 +91,19 @@ export function ChatComposer({
   }, [menuOpen]);
 
   const accept = (command: PromptTemplateSummary): void => {
-    setValue(`/${command.name} `);
+    setValue(completion(command));
     setHighlight(0);
     setDismissed(false);
   };
 
-  const send = async (whenBusy: "steer" | "followUp"): Promise<void> => {
-    if (empty || sending) return;
+  const send = async (text: string, whenBusy: "steer" | "followUp"): Promise<void> => {
+    if (sending) return;
+    if (text.trim() === "" && comments.length === 0) return;
     setSending(true);
     setError(null);
     try {
       await onSend(
-        value,
+        text,
         comments.map((comment) => comment.messageId),
         whenBusy,
       );
@@ -133,7 +135,8 @@ export function ChatComposer({
       }
       if (event.key === "Tab") {
         event.preventDefault();
-        // Tab settles the highlighted command; Shift+Tab puts the menu away, so the two never disagree.
+        // Tab fills the command into the box and closes the menu, so its arguments can be typed; Shift+Tab puts the
+        // menu away, so the two never disagree.
         if (event.shiftKey) setDismissed(true);
         else {
           const command = matching[selected];
@@ -146,10 +149,13 @@ export function ChatComposer({
         setDismissed(true);
         return;
       }
-      if (event.key === "Enter" && !event.shiftKey && !event.altKey) {
+      // Enter settles the highlighted command and sends it in one gesture, as pi's editor does for slash commands.
+      if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         const command = matching[selected];
-        if (command !== undefined) accept(command);
+        const text = command === undefined ? value : completion(command);
+        if (text !== value) setValue(text);
+        void send(text, event.altKey ? "followUp" : "steer");
         return;
       }
     }
@@ -157,12 +163,12 @@ export function ChatComposer({
     // and Shift+Enter's line break.
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
-    void send(event.altKey ? "followUp" : "steer");
+    void send(value, event.altKey ? "followUp" : "steer");
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    void send("steer");
+    void send(value, "steer");
   };
 
   return (
@@ -269,6 +275,11 @@ export function ChatComposer({
       {error !== null && <FieldError>{error}</FieldError>}
     </div>
   );
+}
+
+/** What settling a command fills into the box, with the trailing space its arguments would follow. */
+function completion(command: PromptTemplateSummary): string {
+  return `/${command.name} `;
 }
 
 /**
