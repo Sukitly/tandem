@@ -159,6 +159,13 @@
   }
 }
 
+/* Tabs keep their active underline without a focus border, ring, or outline. */
+[data-slot="tabs-trigger"]:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
 /*
  * Text fields show no focus ring and keep their border when focused: the caret already marks where typing goes.
  * Invalid fields keep their red ring. Unlayered, so it wins over the components' utility classes.
