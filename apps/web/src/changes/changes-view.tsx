@@ -1,4 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { FileIcon } from "@react-symbols/icons/utils";
 import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
 import { AlertCircleIcon, Columns2Icon, Rows2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -153,6 +154,7 @@ export function ChangesView({
             {state.files.map((file) => (
               <SidebarMenuItem key={file.path}>
                 <SidebarMenuButton isActive={file.path === selected} onClick={() => setSelected(file.path)}>
+                  <FileIcon fileName={file.path.split("/").pop() ?? file.path} autoAssign />
                   <span className={cn("w-3 shrink-0 font-medium", statusColor(file.status))}>
                     {statusLetter(file.status)}
                   </span>
