@@ -4,6 +4,7 @@ import { AlertCircleIcon, ArrowDownIcon, PanelRightCloseIcon, PanelRightOpenIcon
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { useWorkbench } from "@/app/workbench.tsx";
+import { useCommentDrafts } from "@/comments/comment-drafts.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -45,7 +46,9 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
   const { workspaces, conversations, models } = useConnected();
   const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
   const available = useReplicatedState(models.state);
-  const { select } = useWorkbench();
+  const { select, comments } = useWorkbench();
+  const drafts = comments(workspaceId);
+  const waiting = useCommentDrafts(drafts);
   const [chosen, setChosen] = useState<AgentChoice>({});
   // What the server starts with when none is chosen: the default model, else the first available.
   const first = available?.models[0];
@@ -81,11 +84,14 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
         <ChatComposer
           busy={false}
           queued={[]}
+          comments={waiting}
+          onRemoveComment={(id) => drafts.remove(id)}
           autoFocus
           onSend={async (text) => {
             const id = await conversations.start({ workspaceId, text, ...agent }, BACKGROUND_CONTEXT);
             select(id);
           }}
+          onSent={() => drafts.clear()}
           onStop={() => {}}
           status={<StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />}
         />
@@ -96,9 +102,13 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
   const { conversations } = useConnected();
+  const { comments } = useWorkbench();
   const summary = useReplicatedState(conversations.state)?.conversations.find(
     (candidate) => candidate.id === conversationId,
   );
+  // The project may have been removed since; then there are no comments to write.
+  const drafts = summary === undefined ? undefined : comments(summary.workspaceId);
+  const waiting = useCommentDrafts(drafts);
   const view = useReplicatedState(conversation.view);
   const notices = useReplicatedState(conversation.notices)?.notices ?? [];
   const transcript = useMemo(() => (view === undefined ? undefined : toTranscript(view)), [view]);
@@ -129,8 +139,11 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
         <ChatComposer
           busy={transcript.busy}
           queued={transcript.queued}
+          comments={waiting}
+          onRemoveComment={(id) => drafts?.remove(id)}
           autoFocus
           onSend={(text, whenBusy) => conversation.submit({ text, whenBusy }, BACKGROUND_CONTEXT)}
+          onSent={() => drafts?.clear()}
           onStop={() => {
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}

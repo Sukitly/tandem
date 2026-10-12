@@ -30,9 +30,12 @@ type ToolPart = Extract<AssistantPart, { kind: "tool" }>;
 export function TranscriptEntry({ item }: { item: TranscriptItem }) {
   switch (item.kind) {
     case "user":
+      // Markdown, like an answer: a message that carries review comments names the places it is about as links.
       return (
         <div className="group/message flex flex-col items-end gap-1">
-          <div className="max-w-[85%] rounded-lg bg-muted px-4 py-2.5 break-words whitespace-pre-wrap">{item.text}</div>
+          <div className="max-w-[85%] rounded-lg bg-muted px-4 py-2.5 break-words">
+            <Markdown text={item.text} />
+          </div>
           <CopyButton text={item.text} />
         </div>
       );
