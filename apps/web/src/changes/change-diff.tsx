@@ -6,10 +6,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CommentDraft, CommentNote } from "@/comments/comment-box.tsx";
 import { type CommentDrafts, useCommentDrafts } from "@/comments/comment-drafts.ts";
 import type { LineComment } from "@/comments/line-comment.ts";
+import { Button } from "@/components/ui/button";
 import { useTheme } from "@/theme.tsx";
 import type { ChangeTarget } from "./change-target.ts";
 import { diffQuote } from "./diff-quote.ts";
-import { useHoveredLine } from "./hovered-line.ts";
+import { controlPlacement, useHoveredLine } from "./hovered-line.ts";
 
 type Side = "additions" | "deletions";
 
@@ -114,15 +115,17 @@ export function ChangeDiff({
     <div ref={box} className="relative h-full min-h-0">
       {/* The line the pointer is on, where a code host shows it: beside the number, half over the code. */}
       {hovered !== null && !taken && (
-        <button
+        <Button
           type="button"
+          variant="default"
+          size="icon-xs"
           aria-label={`Comment on line ${hovered.line}`}
-          className="absolute z-10 flex w-5 items-center justify-center rounded bg-primary text-primary-foreground"
-          style={{ top: hovered.top, left: hovered.right - 14, height: hovered.height }}
+          className="absolute z-10"
+          style={controlPlacement(hovered)}
           onClick={() => startDraft(hovered.side, hovered.line)}
         >
-          <PlusIcon className="size-3.5" />
-        </button>
+          <PlusIcon />
+        </Button>
       )}
       <CodeView
         ref={view}

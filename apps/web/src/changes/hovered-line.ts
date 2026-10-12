@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 type Side = "additions" | "deletions";
@@ -21,9 +22,21 @@ interface Control {
   bottom: number;
 }
 
-/** How wide the control is, and how far it reaches past the number cell it is beside. */
-const CONTROL_WIDTH = 20;
+/**
+ * How wide the control is (`Button size="icon-xs"`, `size-6`) and how far it reaches past the number cell it is
+ * beside. Both the placement of the control and the test for the pointer being on it use these, so that they agree.
+ */
+const CONTROL_WIDTH = 24;
 const CONTROL_OVERHANG = 6;
+
+/** Where the control for a hovered line goes, in the container's coordinates. */
+export function controlPlacement(hovered: HoveredLine): CSSProperties {
+  return {
+    top: hovered.top,
+    left: hovered.right - CONTROL_WIDTH + CONTROL_OVERHANG,
+    height: hovered.height,
+  };
+}
 
 /**
  * Follow the pointer over a diff, as a code host does for the button that writes a comment on a line.

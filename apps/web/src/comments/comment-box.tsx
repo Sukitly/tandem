@@ -1,8 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { plainCommentRow } from "@/changes/diff-plain-annotations.ts";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupText,
+  InputGroupTextarea,
+} from "@/components/ui/input-group";
 import { commentPlace, type LineComment } from "./line-comment.ts";
+
+/**
+ * The surface a comment sits in, written or being written. The writing one is an input group, so both take its
+ * surface; the border between the note and its buttons is ours.
+ */
+const SURFACE = "m-2 rounded-lg border border-input font-sans dark:bg-input/30";
 
 /** The box a comment is written in, under the line it is about. */
 export function CommentDraft({
@@ -21,17 +33,19 @@ export function CommentDraft({
   const box = usePlainRow();
   const empty = text.trim() === "";
   return (
-    <div ref={box} className="m-2 flex flex-col overflow-hidden rounded-md border bg-card font-sans text-sm">
+    <InputGroup ref={box} className={SURFACE}>
       {place !== undefined && (
-        <p className="border-b bg-muted/50 px-3 py-1.5 font-mono text-xs text-muted-foreground">{place}</p>
+        <InputGroupAddon align="block-start" className="border-b">
+          <InputGroupText className="font-mono text-xs">{place}</InputGroupText>
+        </InputGroupAddon>
       )}
-      <Textarea
+      <InputGroupTextarea
         autoFocus
         rows={3}
         value={text}
         aria-label="Comment"
         placeholder="What should change here?"
-        className="min-h-20 rounded-none border-0 bg-transparent px-3 py-2 focus-visible:ring-0 dark:bg-transparent"
+        className="min-h-20"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape") onCancel();
@@ -39,15 +53,15 @@ export function CommentDraft({
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !empty) onSave(text.trim());
         }}
       />
-      <div className="flex items-center justify-end gap-2 border-t px-2 py-2">
-        <Button type="button" size="sm" variant="outline" onClick={onCancel}>
+      <InputGroupAddon align="block-end" className="justify-end border-t">
+        <InputGroupButton size="xs" variant="outline" onClick={onCancel}>
           Cancel
-        </Button>
-        <Button type="button" size="sm" disabled={empty} onClick={() => onSave(text.trim())}>
+        </InputGroupButton>
+        <InputGroupButton size="xs" variant="default" disabled={empty} onClick={() => onSave(text.trim())}>
           Comment
-        </Button>
-      </div>
-    </div>
+        </InputGroupButton>
+      </InputGroupAddon>
+    </InputGroup>
   );
 }
 
@@ -77,13 +91,13 @@ export function CommentNote({
     );
   }
   return (
-    <div ref={box} className="m-2 flex flex-col overflow-hidden rounded-md border bg-card font-sans text-sm">
-      <p className="px-3 py-2 break-words whitespace-pre-wrap">{comment.text}</p>
-      <div className="flex items-center justify-end gap-2 border-t px-2 py-2">
-        <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
+    <div ref={box} className={`${SURFACE} flex flex-col text-sm`}>
+      <p className="px-2.5 py-2 break-words whitespace-pre-wrap">{comment.text}</p>
+      <div className="flex items-center justify-end gap-2 border-t px-2.5 py-2">
+        <Button type="button" size="xs" variant="outline" onClick={() => setEditing(true)}>
           Edit
         </Button>
-        <Button type="button" size="sm" variant="destructive" onClick={onRemove}>
+        <Button type="button" size="xs" variant="destructive" onClick={onRemove}>
           Delete
         </Button>
       </div>
