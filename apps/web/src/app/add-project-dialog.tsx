@@ -15,15 +15,7 @@ import { Input } from "@/components/ui/input";
 import { useConnected } from "@/rpc/connection.tsx";
 
 /** Asks for a directory on the server's machine and adds it as a project. */
-export function AddProjectDialog({
-  open,
-  onOpenChange,
-  onAdded,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onAdded: (workspaceId: number) => void;
-}) {
+export function AddProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { workspaces } = useConnected();
   const [path, setPath] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,10 +36,7 @@ export function AddProjectDialog({
     workspaces
       .add({ path }, BACKGROUND_CONTEXT)
       .then(
-        (id) => {
-          onAdded(id);
-          close(false);
-        },
+        () => close(false),
         (failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)),
       )
       .finally(() => setAdding(false));

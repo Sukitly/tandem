@@ -10,7 +10,6 @@ import {
   MoonIcon,
   PanelLeftIcon,
   PlusIcon,
-  SquarePenIcon,
   SunIcon,
 } from "lucide-react";
 import { useState } from "react";
@@ -68,7 +67,7 @@ export function AppSidebar() {
   const { workspaces, conversations } = useConnected();
   const projects = useReplicatedState(workspaces.state)?.workspaces ?? [];
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
-  const { selected, draft, addProject } = useWorkbench();
+  const { selected, addProject } = useWorkbench();
   const providers = useProvidersDialog();
   const names = new Map(projects.map((project) => [project.id, project.name]));
   return (
@@ -76,10 +75,6 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarBrand />
-        <NewConversation
-          projects={projects}
-          current={draft ?? list.find((summary) => summary.id === selected)?.workspaceId}
-        />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -302,29 +297,5 @@ function ThemeMenu() {
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-/**
- * Open a new conversation in the open conversation's project, else in the project one was last opened in, else in the
- * first project.
- */
-function NewConversation({ projects, current }: { projects: WorkspaceSummary[]; current: number | undefined }) {
-  const { newConversation, lastWorkspaceId } = useWorkbench();
-  const listed = (id: number | undefined) => projects.find((project) => project.id === id)?.id;
-  const target = listed(current) ?? listed(lastWorkspaceId) ?? projects[0]?.id;
-  return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          tooltip="New conversation"
-          disabled={target === undefined}
-          onClick={() => target !== undefined && newConversation(target)}
-        >
-          <SquarePenIcon />
-          <span>New conversation</span>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </SidebarMenu>
   );
 }
