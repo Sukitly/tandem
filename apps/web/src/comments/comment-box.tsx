@@ -125,7 +125,7 @@ export function CommentThreadBox({
   comments,
   view,
   className,
-  outdated = false,
+  detached,
 }: {
   thread: CommentThread;
   comments: ProjectComments;
@@ -133,8 +133,11 @@ export function CommentThreadBox({
   view?: RefObject<HTMLDivElement | null>;
   /** Layout only, such as where in the view the box begins. */
   className?: string;
-  /** The line is not in the file any more: the box shows the code it was written on. */
-  outdated?: boolean;
+  /**
+   * The box is not on a line, and shows the code it was written on: its line is not in the file any more (`outdated`),
+   * or it is on a line the changes removed, shown with the file as it is (`removed`).
+   */
+  detached?: "outdated" | "removed";
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const [replying, setReplying] = useState(false);
@@ -143,7 +146,7 @@ export function CommentThreadBox({
   const box = useCommentBox(view);
   return (
     <div ref={box.element} className={`${SURFACE} ${className ?? ""} flex flex-col text-sm`} style={box.style}>
-      {outdated && <OutdatedCode thread={thread} />}
+      {detached !== undefined && <WrittenOnCode thread={thread} why={detached} />}
       {thread.messages.map((message) =>
         editing === message.id ? (
           <CommentDraft
@@ -257,14 +260,14 @@ function ThreadMessage({
 }
 
 /** The code a thread was written on, for a thread whose line is gone: the line marked, with the lines kept around it. */
-function OutdatedCode({ thread }: { thread: CommentThread }) {
+function WrittenOnCode({ thread, why }: { thread: CommentThread; why: "outdated" | "removed" }) {
   const { anchor } = thread;
   const first = anchor.line - anchor.before.length;
   const lines = [...anchor.before, anchor.quote, ...anchor.after];
   return (
     <div className="flex flex-col gap-1 border-b px-2.5 py-2">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="secondary">Outdated</Badge>
+        <Badge variant="secondary">{why === "outdated" ? "Outdated" : "On a removed line"}</Badge>
         <span className="font-mono">{commentPlace(anchor)}</span>
       </div>
       <pre className="overflow-x-auto font-mono text-xs leading-relaxed">

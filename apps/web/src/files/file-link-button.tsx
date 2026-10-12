@@ -17,7 +17,7 @@ export function FileLink({ target, children }: { target: FileTarget; children: R
       type="button"
       className="cursor-pointer appearance-none text-left font-medium wrap-anywhere text-primary underline"
       title={target.line === undefined ? path : `${path}:${target.line}`}
-      onClick={() => openFile(path, target.line)}
+      onClick={() => openFile(path, target.line === undefined ? {} : { line: target.line })}
     >
       {children}
     </button>

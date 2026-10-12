@@ -1,6 +1,6 @@
 import type { CommentAnchor, CommentThread } from "@tandem/contracts";
 import { describe, expect, test } from "vitest";
-import { anchorAt, commentPlace, placeThreads, relocate } from "../src/comments/comment-anchor.ts";
+import { anchorAt, commentPlace, placeThreads, relocate, revealedLine } from "../src/comments/comment-anchor.ts";
 import { waitingComments } from "../src/comments/project-comments.ts";
 
 const FILE = [
@@ -126,5 +126,25 @@ describe("what the next message carries", () => {
       [1, 3, "reply"],
       [2, 20, "note 2"],
     ]);
+  });
+});
+
+describe("the line a place is shown at", () => {
+  const placed = [
+    { thread: thread(1), line: 9 },
+    { thread: thread(2), line: undefined },
+  ];
+
+  test("is the line a thread moved to, not the one it was written on", () => {
+    expect(revealedLine(placed, 1, 4)).toBe(9);
+  });
+
+  test("is none for an outdated thread, which is shown above the text", () => {
+    expect(revealedLine(placed, 2, 4)).toBeUndefined();
+  });
+
+  test("is the line asked for, without a thread or for one that is gone", () => {
+    expect(revealedLine(placed, undefined, 4)).toBe(4);
+    expect(revealedLine(placed, 3, 4)).toBe(4);
   });
 });
