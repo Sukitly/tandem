@@ -2,7 +2,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import type { ChangeTarget } from "@/changes/change-target.ts";
 import { ProjectComments } from "@/comments/project-comments.ts";
-import { ProjectFiles } from "@/files/project-files.ts";
+import { type OpenedFile, ProjectFiles } from "@/files/project-files.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
@@ -47,8 +47,8 @@ interface Workbench {
   projectFiles(workspaceId: number): ProjectFiles;
   /** The comment threads of a project. */
   comments(workspaceId: number): ProjectComments;
-  /** Show a file of the current project in the files panel, at a line if one is given. */
-  openFile(path: string, line?: number): void;
+  /** Show a file of the current project in the files panel, at a line or a comment thread if one is given. */
+  openFile(path: string, place?: Omit<OpenedFile, "path">): void;
   addProject(): void;
   /** Takes the project off the list, and closes its conversation if it is the open one. */
   removeProject(workspaceId: number): void;
@@ -147,12 +147,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     },
     projectFiles,
     comments: projectComments,
-    openFile(path, line) {
+    openFile(path, place) {
       if (workspaceId === null) return;
       showFiles(true);
       // A file is shown in the files tab: opening it under another tab would show nothing.
       showTab("files");
-      projectFiles(workspaceId).open(path, line);
+      projectFiles(workspaceId).open(path, place);
     },
     addProject: () => setAdding(true),
     removeProject(id) {

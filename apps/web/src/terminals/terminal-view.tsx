@@ -19,15 +19,21 @@ const TERMINAL_OPTIONS = {
   minimumContrastRatio: 4.5,
 } as const;
 
+/** Hides the cursor: the shell's own sequence for it, DECTCEM. */
+const HIDE_CURSOR = "\x1b[?25l";
+
 /**
  * One terminal of the server, drawn by xterm. It fits its box: the size it fits to is sent to the server, where the
- * newest size of any page wins. Its colors follow the theme.
+ * newest size of any page wins. Its colors follow the theme. Once its shell has ended, it shows no cursor and takes no
+ * keys, since nothing would read them.
  */
-export function TerminalView({ id, active }: { id: string; active: boolean }) {
+export function TerminalView({ id, active, ended }: { id: string; active: boolean; ended: boolean }) {
   const { openTerminal } = useConnected();
   const box = useRef<HTMLDivElement>(null);
   const [link, setLink] = useState<TerminalLink>("connecting");
   const parts = useRef<Parts | null>(null);
+  // Read by the screen's writes: a screen sent again after the shell ended draws its cursor, which is hidden again.
+  const endedRef = useRef(ended);
 
   useEffect(() => {
     const element = box.current;
@@ -47,7 +53,10 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
     const connection = openTerminal(
       id,
       {
-        write: (data) => terminal.write(data),
+        write: (data) => {
+          terminal.write(data);
+          if (endedRef.current) terminal.write(HIDE_CURSOR);
+        },
         reset: () => terminal.reset(),
         resize: (cols, rows) => {
           if (cols !== terminal.cols || rows !== terminal.rows) terminal.resize(cols, rows);
@@ -84,6 +93,15 @@ export function TerminalView({ id, active }: { id: string; active: boolean }) {
       parts.current = null;
     };
   }, [id, openTerminal]);
+
+  useEffect(() => {
+    endedRef.current = ended;
+    const terminal = parts.current?.terminal;
+    if (!ended || terminal === undefined) return;
+    terminal.options.disableStdin = true;
+    terminal.options.cursorBlink = false;
+    terminal.write(HIDE_CURSOR);
+  }, [ended]);
 
   // Shown again: this page's size becomes the terminal's, and keys go to it.
   useEffect(() => {

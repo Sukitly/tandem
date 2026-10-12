@@ -129,7 +129,11 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
       {list.map((summary) => (
         // Kept mounted: a hidden terminal keeps its screen and its connection, as a terminal app's tabs do.
         <TabsContent key={summary.id} value={summary.id} keepMounted className="min-h-0">
-          <TerminalView id={summary.id} active={active && summary.id === current.id} />
+          <TerminalView
+            id={summary.id}
+            active={active && summary.id === current.id}
+            ended={summary.exit !== undefined}
+          />
         </TabsContent>
       ))}
       <AlertDialog open={closing !== null} onOpenChange={(open) => !open && setClosing(null)}>

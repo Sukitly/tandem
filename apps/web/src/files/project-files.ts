@@ -15,6 +15,8 @@ const LOADING = { status: "loading" } as const;
 export interface OpenedFile {
   path: string;
   line?: number;
+  /** A comment thread asked for: shown where it is now, which `line` was when it was written. */
+  threadId?: number;
 }
 
 /**
@@ -77,10 +79,10 @@ export class ProjectFiles {
     return this.#content?.path === this.#opened.path ? this.#content.loaded : LOADING;
   }
 
-  /** Show a file, at a line if one is given, with its directories open in the tree. */
-  open(path: string, line?: number): void {
+  /** Show a file, at a line or a comment thread if one is given, with its directories open in the tree. */
+  open(path: string, place: Omit<OpenedFile, "path"> = {}): void {
     const again = this.#opened?.path === path;
-    this.#opened = line === undefined ? { path } : { path, line };
+    this.#opened = { path, ...place };
     const directories = ancestors(path).filter((directory) => directory !== "");
     if (directories.some((directory) => !this.#expanded.has(directory))) {
       this.#expanded = new Set([...this.#expanded, ...directories]);
