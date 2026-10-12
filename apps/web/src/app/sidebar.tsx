@@ -103,8 +103,9 @@ export function AppSidebar() {
                 {list.map((summary) => (
                   <SidebarMenuItem key={summary.id}>
                     <SidebarMenuButton
-                      render={<a href={`#${summary.id}`} />}
+                      render={<a href={`#${summary.id}`} aria-current={summary.id === selected ? "page" : undefined} />}
                       isActive={summary.id === selected}
+                      className={summary.id === selected ? "bg-sidebar-accent" : undefined}
                       title={summary.cwd}
                     >
                       <span className="truncate">{summary.title}</span>
@@ -140,7 +141,11 @@ export function AppSidebar() {
   );
 }
 
-/** A project that opens to show its conversations. On hover: start a conversation in it, or remove it. */
+// Scope hover and keyboard focus to the project row, not its conversation list. Touch devices keep actions visible.
+const PROJECT_ACTION_CLASS =
+  "opacity-0 group-hover/project-row:opacity-100 group-focus-within/project-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
+
+/** A project that opens to show its conversations. Its row reveals actions on hover or keyboard focus. */
 function ProjectItem({
   project,
   conversations,
@@ -161,38 +166,45 @@ function ProjectItem({
   const [confirming, setConfirming] = useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
-      {/* Room for both actions, which sit side by side at the row's end. */}
-      <CollapsibleTrigger
-        render={
-          <SidebarMenuButton title={project.path} className="group-has-data-[sidebar=menu-action]/menu-item:pr-14" />
-        }
-      >
-        {open ? <FolderOpenIcon /> : <FolderIcon />}
-        <span>{project.name}</span>
-      </CollapsibleTrigger>
-      <SidebarMenuAction
-        showOnHover
-        className="right-7"
-        title={`New conversation in ${project.name}`}
-        aria-label={`New conversation in ${project.name}`}
-        onClick={() => newConversation(project.id)}
-      >
-        <PlusIcon />
-      </SidebarMenuAction>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<SidebarMenuAction showOnHover title="More" aria-label={`More for ${project.name}`} />}
+      <div className="group/project-row relative">
+        {/* Room for both actions, which sit side by side at the row's end. */}
+        <CollapsibleTrigger
+          render={
+            <SidebarMenuButton title={project.path} className="group-has-data-[sidebar=menu-action]/menu-item:pr-14" />
+          }
         >
-          <EllipsisIcon />
-        </DropdownMenuTrigger>
-        {/* The content takes the trigger's width by default; the trigger is an icon, as in shadcn's sidebar blocks. */}
-        <DropdownMenuContent side="right" align="start" className="w-48">
-          <DropdownMenuItem variant="destructive" onClick={() => setConfirming(true)}>
-            <FolderMinusIcon />
-            Remove project
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          {open ? <FolderOpenIcon /> : <FolderIcon />}
+          <span>{project.name}</span>
+        </CollapsibleTrigger>
+        <SidebarMenuAction
+          className={`${PROJECT_ACTION_CLASS} right-7`}
+          title={`New conversation in ${project.name}`}
+          aria-label={`New conversation in ${project.name}`}
+          onClick={() => newConversation(project.id)}
+        >
+          <PlusIcon />
+        </SidebarMenuAction>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <SidebarMenuAction
+                className={PROJECT_ACTION_CLASS}
+                title="More"
+                aria-label={`More for ${project.name}`}
+              />
+            }
+          >
+            <EllipsisIcon />
+          </DropdownMenuTrigger>
+          {/* The content takes the trigger's width by default; the trigger is an icon, as in shadcn's sidebar blocks. */}
+          <DropdownMenuContent side="right" align="start" className="w-48">
+            <DropdownMenuItem variant="destructive" onClick={() => setConfirming(true)}>
+              <FolderMinusIcon />
+              Remove project
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -225,10 +237,15 @@ function ProjectItem({
       </AlertDialog>
       {conversations.length > 0 && (
         <CollapsibleContent>
-          <SidebarMenuSub>
+          <SidebarMenuSub className="mr-0 pr-0">
             {conversations.map((summary) => (
               <SidebarMenuSubItem key={summary.id}>
-                <SidebarMenuSubButton href={`#${summary.id}`} isActive={summary.id === selected}>
+                <SidebarMenuSubButton
+                  href={`#${summary.id}`}
+                  isActive={summary.id === selected}
+                  aria-current={summary.id === selected ? "page" : undefined}
+                  className={summary.id === selected ? "bg-sidebar-accent" : undefined}
+                >
                   <span className="truncate">{summary.title}</span>
                   {summary.running && <Spinner aria-label="Running" className="ml-auto" />}
                 </SidebarMenuSubButton>
