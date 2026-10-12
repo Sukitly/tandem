@@ -159,7 +159,8 @@ function ChatFrame({
 }) {
   return (
     <section className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col" aria-label="Conversation">
-      <header className="flex min-w-0 items-center gap-2 border-b px-3 py-2">
+      {/* As tall as the files panel's header beside it, so that their borders line up. */}
+      <header className="flex h-13 min-w-0 shrink-0 items-center gap-2 border-b px-3">
         {/* On a narrow screen the sidebar is a drawer, out of sight, so the header opens it. */}
         <SidebarTrigger className="md:hidden" />
         <div className="min-w-0 flex-1">

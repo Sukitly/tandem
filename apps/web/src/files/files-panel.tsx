@@ -31,9 +31,10 @@ export function FilesPanel({ workspaceId }: { workspaceId: number }) {
 
   return (
     <section className="flex h-full min-h-0 flex-col" aria-label="Files">
-      <header className="flex h-9 shrink-0 items-center gap-1 px-3">
-        <h2 className="min-w-0 flex-1 truncate text-sm font-medium" title={project?.path}>
-          {project?.name ?? "Files"}
+      {/* As tall as the conversation's header beside it, so that their borders line up. */}
+      <header className="flex h-13 shrink-0 items-center gap-1 border-b px-3">
+        <h2 className="min-w-0 flex-1 truncate font-mono text-xs" title={project?.path}>
+          {project?.path}
         </h2>
         <Tooltip>
           <TooltipTrigger
@@ -55,7 +56,7 @@ export function FilesPanel({ workspaceId }: { workspaceId: number }) {
         </Tooltip>
       </header>
       {error !== null && (
-        <div className="px-2 pb-2">
+        <div className="p-2">
           <Alert variant="destructive">
             <AlertCircleIcon />
             <AlertTitle>Cannot list a directory</AlertTitle>
