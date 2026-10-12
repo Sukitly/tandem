@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { formatSize } from "./format-size.ts";
 import { type OpenedFile, type ProjectFiles, useProjectFiles } from "./project-files.ts";
 
 /** Highlighting a longer file would hold up the page for a second or more; it shows as plain text instead. */
@@ -107,10 +108,4 @@ function FileText({ text, opened }: { text: string; opened: OpenedFile }) {
       </pre>
     </div>
   );
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

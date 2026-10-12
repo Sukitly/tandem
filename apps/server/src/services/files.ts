@@ -26,15 +26,15 @@ export class FileBrowser {
     const entries = await Promise.all(
       infos.map(async (info): Promise<FileEntry> => {
         const entry = { name: info.name, path: path === "" ? info.name : `${path}/${info.name}` };
-        if (info.kind !== "symlink") return { ...entry, kind: info.kind };
+        if (info.kind === "directory") return { ...entry, kind: "directory" };
+        if (info.kind === "file") return { ...entry, kind: "file", size: info.size };
         // `canonicalPath` follows the link; `fileInfo` does not, so it is asked about the target.
         const resolved = await env.canonicalPath(info.path, context);
         const pointee = resolved.ok ? await env.fileInfo(resolved.value, context) : undefined;
-        return {
-          ...entry,
-          kind: pointee?.ok === true && pointee.value.kind === "directory" ? "directory" : "file",
-          symlink: true,
-        };
+        if (pointee?.ok !== true) return { ...entry, kind: "file", symlink: true };
+        return pointee.value.kind === "directory"
+          ? { ...entry, kind: "directory", symlink: true }
+          : { ...entry, kind: "file", symlink: true, size: pointee.value.size };
       }),
     );
     return entries.sort(

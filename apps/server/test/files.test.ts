@@ -42,7 +42,7 @@ describe("files", () => {
     await mkdir(join(project, "src"));
     await mkdir(join(project, "node_modules"));
     await writeFile(join(project, ".env"), "SECRET=1\n");
-    await writeFile(join(project, "b.ts"), "");
+    await writeFile(join(project, "b.ts"), "abc");
     await writeFile(join(project, "a10.ts"), "");
     await writeFile(join(project, "a9.ts"), "");
     await writeFile(join(project, "src", "app.ts"), "");
@@ -55,7 +55,9 @@ describe("files", () => {
       "file a10.ts",
       "file b.ts",
     ]);
-    expect(await list("./src/")).toEqual([{ name: "app.ts", path: "src/app.ts", kind: "file" }]);
+    expect(await list("./src/")).toEqual([{ name: "app.ts", path: "src/app.ts", kind: "file", size: 0 }]);
+    expect((await list("")).find((entry) => entry.name === "b.ts")?.size).toBe(3);
+    expect((await list("")).find((entry) => entry.name === "src")?.size).toBeUndefined();
   });
 
   test("a file reads as text, binary, or too large to show", async () => {
@@ -83,7 +85,10 @@ describe("files", () => {
       "file broken-link true",
       "file secret-link true",
     ]);
-    expect(await list("lib-link")).toEqual([{ name: "util.ts", path: "lib-link/util.ts", kind: "file" }]);
+    expect(await list("lib-link")).toEqual([{ name: "util.ts", path: "lib-link/util.ts", kind: "file", size: 11 }]);
+    const links = await list("");
+    expect(links.find((entry) => entry.name === "secret-link")?.size).toBe(6);
+    expect(links.find((entry) => entry.name === "broken-link")?.size).toBeUndefined();
     expect(await read("lib-link/util.ts")).toMatchObject({ kind: "text", text: "export {};\n" });
     await expect(list("outside-link")).rejects.toThrow("outside the project");
     await expect(read("secret-link")).rejects.toThrow("outside the project");

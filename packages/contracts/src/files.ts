@@ -8,6 +8,8 @@ export interface FileEntry {
   /** For a symbolic link, what it points to; a broken link is a file. */
   kind: "file" | "directory";
   symlink?: true;
+  /** A file's size in bytes, of what a symbolic link points to; absent for directories and broken links. */
+  size?: number;
 }
 
 /** Files larger than this are not sent; the viewer says so instead. */

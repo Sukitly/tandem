@@ -9,6 +9,7 @@ import {
   SidebarMenuSkeleton,
   SidebarMenuSub,
 } from "@/components/ui/sidebar";
+import { formatSize } from "./format-size.ts";
 import { type ProjectFiles, useProjectFiles } from "./project-files.ts";
 
 /**
@@ -80,7 +81,10 @@ function File({ files, entry }: { files: ProjectFiles; entry: FileEntry }) {
         onClick={() => files.open(entry.path)}
       >
         {entry.symlink === true ? <FileSymlinkIcon /> : <FileIcon />}
-        <span>{entry.name}</span>
+        <span className="truncate">{entry.name}</span>
+        {entry.size !== undefined && (
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">{formatSize(entry.size)}</span>
+        )}
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
