@@ -9,6 +9,8 @@ import {
   SidebarMenuSkeleton,
   SidebarMenuSub,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
+import { isDimmed } from "./dimmed.ts";
 import { formatSize } from "./format-size.ts";
 import { type ProjectFiles, useProjectFiles } from "./project-files.ts";
 
@@ -25,8 +27,15 @@ export function FileTree({ files }: { files: ProjectFiles }) {
   );
 }
 
+/** `dimmed` comes from the directory an entry is in: everything below a hidden or ignored directory is dimmed too. */
+interface EntryProps {
+  files: ProjectFiles;
+  entry: FileEntry;
+  dimmed: boolean;
+}
+
 /** A directory's entries, listed when they are first shown. */
-function Entries({ files, path }: { files: ProjectFiles; path: string }) {
+function Entries({ files, path, dimmed = false }: { files: ProjectFiles; path: string; dimmed?: boolean }) {
   const listed = useProjectFiles(files, (current) => current.directory(path));
   useEffect(() => files.load(path), [files, path]);
   if (listed === undefined || listed.status === "loading") {
@@ -37,34 +46,35 @@ function Entries({ files, path }: { files: ProjectFiles; path: string }) {
     );
   }
   if (listed.status === "failed") return null;
-  return listed.value.map((entry) =>
-    entry.kind === "directory" ? (
-      <Directory key={entry.path} files={files} entry={entry} />
+  return listed.value.map((entry) => {
+    const entryDimmed = isDimmed(entry, dimmed);
+    return entry.kind === "directory" ? (
+      <Directory key={entry.path} files={files} entry={entry} dimmed={entryDimmed} />
     ) : (
-      <File key={entry.path} files={files} entry={entry} />
-    ),
-  );
+      <File key={entry.path} files={files} entry={entry} dimmed={entryDimmed} />
+    );
+  });
 }
 
-function Directory({ files, entry }: { files: ProjectFiles; entry: FileEntry }) {
+function Directory({ files, entry, dimmed }: EntryProps) {
   const open = useProjectFiles(files, (current) => current.isExpanded(entry.path));
   const Icon = entry.symlink === true ? FolderSymlinkIcon : open ? FolderOpenIcon : FolderClosedIcon;
   return (
     <Collapsible open={open} onOpenChange={(next) => files.setExpanded(entry.path, next)} render={<SidebarMenuItem />}>
-      <CollapsibleTrigger render={<SidebarMenuButton title={entry.path} />}>
+      <CollapsibleTrigger render={<SidebarMenuButton title={entry.path} className={cn(dimmed && "opacity-60")} />}>
         <Icon />
         <span>{entry.name}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <SidebarMenuSub>
-          <Entries files={files} path={entry.path} />
+          <Entries files={files} path={entry.path} dimmed={dimmed} />
         </SidebarMenuSub>
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
-function File({ files, entry }: { files: ProjectFiles; entry: FileEntry }) {
+function File({ files, entry, dimmed }: EntryProps) {
   // Only the opened file's row follows what is opened, so opening a file renders two rows, not the whole tree.
   const opened = useProjectFiles(files, (current) => (current.opened?.path === entry.path ? current.opened : null));
   const button = useRef<HTMLButtonElement>(null);
@@ -78,6 +88,7 @@ function File({ files, entry }: { files: ProjectFiles; entry: FileEntry }) {
         ref={button}
         title={entry.path}
         isActive={opened !== null}
+        className={cn(dimmed && "opacity-60")}
         onClick={() => files.open(entry.path)}
       >
         {entry.symlink === true ? <FileSymlinkIcon /> : <FileIcon />}

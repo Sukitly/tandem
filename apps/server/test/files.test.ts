@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { connect, type TandemConnection } from "@tandem/client";
 import { Files, MAX_FILE_VIEW_BYTES, Workspaces } from "@tandem/contracts";
@@ -93,6 +95,36 @@ describe("files", () => {
     await expect(list("outside-link")).rejects.toThrow("outside the project");
     await expect(read("secret-link")).rejects.toThrow("outside the project");
     await expect(read("broken-link")).rejects.toThrow("does not exist");
+  });
+
+  test("Git-ignored entries are marked, tracked ones are not", async () => {
+    const git = (...args: string[]) => promisify(execFile)("git", ["-C", project, ...args]);
+    await git("init", "-q");
+    await writeFile(join(project, ".gitignore"), "node_modules/\n*.log\n");
+    await mkdir(join(project, "node_modules", "pkg"), { recursive: true });
+    await writeFile(join(project, "node_modules", "pkg", "index.js"), "");
+    await writeFile(join(project, "notes.log"), "");
+    await writeFile(join(project, "kept.log"), "");
+    await git("add", "--force", "kept.log");
+    expect((await list("")).map((entry) => `${entry.path} ignored=${entry.ignored === true}`)).toEqual([
+      ".git ignored=false",
+      "node_modules ignored=true",
+      ".gitignore ignored=false",
+      "kept.log ignored=false",
+      "notes.log ignored=true",
+    ]);
+    // Inside an ignored directory, its entries are known by it: Git reports the directory, not its contents.
+    expect((await list("node_modules")).map((entry) => entry.path)).toEqual(["node_modules/pkg"]);
+    expect((await list("node_modules/pkg")).map((entry) => entry.ignored)).toEqual([undefined]);
+  });
+
+  test("without a repository nothing is marked, and every entry is listed", async () => {
+    await writeFile(join(project, ".gitignore"), "node_modules/\n");
+    await mkdir(join(project, "node_modules"));
+    expect(await list("")).toEqual([
+      { name: "node_modules", path: "node_modules", kind: "directory" },
+      { name: ".gitignore", path: ".gitignore", kind: "file", size: 14 },
+    ]);
   });
 
   test("paths stay inside the project, and errors say what is wrong", async () => {

@@ -10,6 +10,8 @@ export interface FileEntry {
   symlink?: true;
   /** A file's size in bytes, of what a symbolic link points to; absent for directories and broken links. */
   size?: number;
+  /** Git ignores it: a `.gitignore` rule, `.git/info/exclude`, or the global excludes file. Tracked files are not. */
+  ignored?: true;
 }
 
 /** Files larger than this are not sent; the viewer says so instead. */

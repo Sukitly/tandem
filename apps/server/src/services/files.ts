@@ -1,6 +1,12 @@
 import type { Context } from "@earendil-works/chord";
 import type { ExecutionEnv, FileError, Result } from "@earendil-works/pi-durable/env";
-import { type FileContent, type FileEntry, type FileLocation, MAX_FILE_VIEW_BYTES } from "@tandem/contracts";
+import {
+  type FileContent,
+  type FileEntry,
+  type FileLocation,
+  MAX_FILE_VIEW_BYTES,
+  type WorkspaceSummary,
+} from "@tandem/contracts";
 import { invalidInput } from "./errors.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
@@ -21,7 +27,7 @@ export class FileBrowser {
   }
 
   async list(location: FileLocation, context: Context): Promise<FileEntry[]> {
-    const { env, path, target } = await this.#resolve(location, context);
+    const { env, path, target, workspace } = await this.#resolve(location, context);
     const infos = unwrap(await env.listDir(target, context), path);
     const entries = await Promise.all(
       infos.map(async (info): Promise<FileEntry> => {
@@ -37,11 +43,45 @@ export class FileBrowser {
           : { ...entry, kind: "file", symlink: true, size: pointee.value.size };
       }),
     );
-    return entries.sort(
-      (a, b) =>
-        Number(b.kind === "directory") - Number(a.kind === "directory") ||
-        a.name.localeCompare(b.name, undefined, { numeric: true }),
+    const ignored = await this.#ignored(env, workspace.path, path, context);
+    return entries
+      .map((entry) => (ignored.has(entry.path) ? { ...entry, ignored: true as const } : entry))
+      .sort(
+        (a, b) =>
+          Number(b.kind === "directory") - Number(a.kind === "directory") ||
+          a.name.localeCompare(b.name, undefined, { numeric: true }),
+      );
+  }
+
+  /**
+   * The entries of a directory Git ignores, of the given ones. Ignored directories are reported as themselves, not as
+   * everything below them, so an ignored directory's contents are known by their parent being ignored.
+   */
+  async #ignored(env: ExecutionEnv, project: string, path: string, context: Context): Promise<ReadonlySet<string>> {
+    const ignored = new Set<string>();
+    let output = "";
+    const result = await env.exec(
+      [
+        "git",
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+        "-z",
+        "--",
+        path === "" ? "." : path,
+      ],
+      { cwd: project, onOutput: (text) => (output += text) },
+      context,
     );
+    // A directory that is not in a repository, or one with nothing ignored, both leave nothing to mark.
+    if (!result.ok || result.value.exitCode !== 0) return ignored;
+    for (const entry of output.split("\0")) {
+      if (entry === "") continue;
+      ignored.add(entry.endsWith("/") ? entry.slice(0, -1) : entry);
+    }
+    return ignored;
   }
 
   async read(location: FileLocation, context: Context): Promise<FileContent> {
@@ -61,7 +101,7 @@ export class FileBrowser {
   async #resolve(
     location: FileLocation,
     context: Context,
-  ): Promise<{ env: ExecutionEnv; path: string; target: string }> {
+  ): Promise<{ env: ExecutionEnv; path: string; target: string; workspace: WorkspaceSummary }> {
     const { workspaceId, path: input } = (location ?? {}) as { workspaceId?: unknown; path?: unknown };
     if (!Number.isSafeInteger(workspaceId)) throw invalidInput("Project ID must be an integer");
     const workspace = this.#workspaces.get(workspaceId as number);
@@ -72,7 +112,7 @@ export class FileBrowser {
     const inside = root.endsWith("/") ? root : `${root}/`;
     const target = unwrap(await env.canonicalPath(path === "" ? root : `${inside}${path}`, context), path);
     if (target !== root && !target.startsWith(inside)) throw invalidInput(`${path} is outside the project`);
-    return { env, path, target };
+    return { env, path, target, workspace };
   }
 }
 
