@@ -23,8 +23,6 @@ const RULES = [
   "- Read a file before editing it, and prefer edit over write for existing files",
   "- Be concise in your responses",
   "- Show file paths clearly when working with files",
-  "- A message may carry review comments, each headed `Comment #N` with the line it is about. Answer each one with " +
-    "reply_to_comment: what you changed for it, or what you need to know. Then sum up in your message",
 ].join("\n");
 
 /**
