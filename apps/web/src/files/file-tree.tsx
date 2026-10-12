@@ -61,7 +61,7 @@ function Directory({ files, entry, dimmed }: EntryProps) {
   const Icon = entry.symlink === true ? FolderSymlinkIcon : open ? FolderOpenIcon : FolderClosedIcon;
   return (
     <Collapsible open={open} onOpenChange={(next) => files.setExpanded(entry.path, next)} render={<SidebarMenuItem />}>
-      <CollapsibleTrigger render={<SidebarMenuButton title={entry.path} className={cn(dimmed && "opacity-60")} />}>
+      <CollapsibleTrigger render={<SidebarMenuButton title={entry.path} className={cn(dimmed && "opacity-30")} />}>
         <Icon />
         <span>{entry.name}</span>
       </CollapsibleTrigger>
@@ -88,7 +88,7 @@ function File({ files, entry, dimmed }: EntryProps) {
         ref={button}
         title={entry.path}
         isActive={opened !== null}
-        className={cn(dimmed && "opacity-60")}
+        className={cn(dimmed && "opacity-30")}
         onClick={() => files.open(entry.path)}
       >
         {entry.symlink === true ? <FileSymlinkIcon /> : <FileIcon />}
