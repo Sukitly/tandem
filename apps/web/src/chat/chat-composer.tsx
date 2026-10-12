@@ -71,15 +71,17 @@ export function ChatComposer({
   };
 
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 gap-2">
       <CommentList comments={comments} onWithdraw={(comment) => onWithdrawComment?.(comment)} />
       {queued.length > 0 && (
         <ItemGroup aria-label="Queued messages" className="gap-1">
           {queued.map((message) => (
             <Item key={message.id} size="xs" variant="muted">
               <Badge variant="outline">{message.mode === "steer" ? "Steering" : "Follow-up"}</Badge>
-              <ItemContent>
-                <ItemDescription className="truncate">{message.text}</ItemDescription>
+              <ItemContent className="min-w-0">
+                <ItemDescription className="line-clamp-none whitespace-pre-wrap wrap-anywhere">
+                  {message.text}
+                </ItemDescription>
               </ItemContent>
             </Item>
           ))}
