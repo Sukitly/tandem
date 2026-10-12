@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { AlertCircleIcon, RotateCwIcon, XIcon } from "lucide-react";
-import { useWorkbench } from "@/app/workbench.tsx";
+import { panelTabOf, useWorkbench } from "@/app/workbench.tsx";
 import { ChangesView } from "@/changes/changes-view.tsx";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,12 @@ import { FileTree } from "@/files/file-tree.tsx";
 import { FileView } from "@/files/file-view.tsx";
 import { useProjectFiles } from "@/files/project-files.ts";
 import { useProjectChanges, useProjectChangesFailure } from "@/rpc/use-project-changes.ts";
+import { TerminalsView } from "@/terminals/terminals-view.tsx";
 
 /**
  * The panel beside the conversation, with a tab per view of its project. Files: the tree, and under it the opened file,
  * both read from disk when they open and when the user refreshes. Changes: what differs from the project's integration
- * branch, followed as the files on disk change.
+ * branch, followed as the files on disk change. Terminal: the project's shells, which run on the server.
  */
 export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
   const workbench = useWorkbench();
@@ -27,33 +28,33 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
   const failure = useProjectFiles(files, (current) => current.failure);
   const opened = useProjectFiles(files, (current) => current.opened !== null);
   return (
-    <Tabs
-      value={panelTab}
-      onValueChange={(value) => showTab(value === "changes" ? "changes" : "files")}
-      className="h-full min-h-0 gap-0"
-    >
+    <Tabs value={panelTab} onValueChange={(value) => showTab(panelTabOf(value))} className="h-full min-h-0 gap-0">
       {/* As tall as the conversation's header beside it, so that their borders line up. */}
       <header className="flex h-13 shrink-0 items-center gap-1 border-b px-3">
         <TabsList variant="line">
           <TabsTrigger value="files">Files</TabsTrigger>
           <TabsTrigger value="changes">Changes</TabsTrigger>
+          <TabsTrigger value="terminal">Terminal</TabsTrigger>
         </TabsList>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Refresh"
-                className="ml-auto"
-                onClick={() => (panelTab === "files" ? files.refresh() : changes?.refresh(BACKGROUND_CONTEXT))}
-              />
-            }
-          >
-            <RotateCwIcon />
-          </TooltipTrigger>
-          <TooltipContent>Read again</TooltipContent>
-        </Tooltip>
+        {/* A terminal draws itself as the shell writes: there is nothing to read again. */}
+        {panelTab !== "terminal" && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Refresh"
+                  className="ml-auto"
+                  onClick={() => (panelTab === "files" ? files.refresh() : changes?.refresh(BACKGROUND_CONTEXT))}
+                />
+              }
+            >
+              <RotateCwIcon />
+            </TooltipTrigger>
+            <TooltipContent>Read again</TooltipContent>
+          </Tooltip>
+        )}
       </header>
       <TabsContent value="files" className="flex min-h-0 flex-col">
         {failure !== null && (
@@ -91,6 +92,10 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
           comments={comments}
           reveal={changeTarget?.workspaceId === workspaceId ? changeTarget : undefined}
         />
+      </TabsContent>
+      {/* Kept mounted, so the terminals keep their screens and connections while another tab shows. */}
+      <TabsContent value="terminal" keepMounted className="flex min-h-0 flex-col">
+        <TerminalsView workspaceId={workspaceId} active={panelTab === "terminal"} />
       </TabsContent>
     </Tabs>
   );

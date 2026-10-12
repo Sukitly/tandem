@@ -10,6 +10,7 @@ import {
   Models,
   ProjectChanges,
   type StartInput,
+  Terminals,
   Workspaces,
 } from "@tandem/contracts";
 import type { ConnectionServices } from "../rpc-host.ts";
@@ -27,6 +28,7 @@ import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
 import type { FileBrowser } from "./files.ts";
 import type { ModelCatalog } from "./models.ts";
+import type { TerminalHost } from "./terminals.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
 export interface AppServices {
@@ -39,6 +41,7 @@ export interface AppServices {
   readonly models: ModelCatalog;
   readonly notices: NoticeBoard;
   readonly comments: CommentBoard;
+  readonly terminals: TerminalHost;
 }
 
 /** An open conversation on one connection. */
@@ -65,6 +68,7 @@ export function createConnectionServices({
   notices,
   changes,
   comments,
+  terminals,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
     Models,
@@ -72,6 +76,7 @@ export function createConnectionServices({
     Files,
     Changes,
     Comments,
+    Terminals,
     Conversations,
     { service: Conversation, mode: "keyed" },
     { service: ProjectChanges, mode: "keyed" },
@@ -191,6 +196,12 @@ export function createConnectionServices({
     edit: (input, context) => comments.edit(input, context),
     withdraw: (input, context) => comments.withdraw(input, context),
     remove: (threadId, context) => comments.remove(threadId, context),
+  });
+
+  provider.provide(Terminals, {
+    state: terminals.state,
+    create: (input, context) => terminals.create(input, context),
+    close: async (id) => terminals.close(id),
   });
 
   provider.provide(Files, {

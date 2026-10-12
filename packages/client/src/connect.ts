@@ -8,6 +8,7 @@ import {
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Client, createClientServiceTransport } from "@earendil-works/pi-client";
 import { BOOTSTRAP_PATH, type BootstrapResponse, RPC_PATH, TOKEN_QUERY_PARAMETER } from "@tandem/contracts";
+import { TerminalConnection, type TerminalConnectionOptions, type TerminalScreen } from "./terminal-connection.ts";
 import { createWebSocketTransportFactory } from "./websocket-transport.ts";
 
 export type ConnectionStatus =
@@ -36,8 +37,12 @@ export interface TandemConnection {
   readonly services: RemoteServices;
   /** `connected` is reported once the services are bound and can be called. */
   readonly status: ReplicatedState<ConnectionStatus>;
+  /** Connect to a terminal's own socket, with this connection's server and token. */
+  terminal(id: string, screen: TerminalScreen, options?: TerminalOptions): TerminalConnection;
   close(): Promise<void>;
 }
+
+export type TerminalOptions = Pick<TerminalConnectionOptions, "onLink" | "onError" | "socket">;
 
 export class BootstrapError extends Error {
   readonly status: number;
@@ -139,6 +144,8 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
   return {
     services: binding,
     status,
+    terminal: (id, screen, terminalOptions = {}) =>
+      new TerminalConnection({ baseUrl, token: options.token, id, screen, ...terminalOptions }),
     async close() {
       if (closed) return;
       closed = true;

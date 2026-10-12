@@ -53,6 +53,24 @@ export {
   type ModelsState,
   type ProviderSummary,
 } from "./models.ts";
+export {
+  clampTerminalSize,
+  exitLabel,
+  MAX_TERMINALS_PER_PROJECT,
+  TERMINAL_BAD_MESSAGE,
+  TERMINAL_CLOSED,
+  TERMINAL_MAX_SIZE,
+  TERMINAL_MIN_SIZE,
+  TERMINAL_SCROLLBACK,
+  TERMINAL_START_SIZE,
+  type TerminalControl,
+  type TerminalEvent,
+  type TerminalSize,
+  type TerminalSummary,
+  Terminals,
+  type TerminalsState,
+  terminalPath,
+} from "./terminals.ts";
 export { type WorkspaceSummary, Workspaces, type WorkspacesState } from "./workspaces.ts";
 
 /** The server only listens on the loopback interface. */

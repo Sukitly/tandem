@@ -156,6 +156,12 @@ function ProjectItem({
   selected: number | null;
 }) {
   const { newConversation, removeProject } = useWorkbench();
+  const { terminals } = useConnected();
+  // The project's terminals whose shell still runs: removing the project ends them, and adding it again does not bring
+  // them back.
+  const running = (useReplicatedState(terminals.state)?.terminals ?? []).filter(
+    (summary) => summary.workspaceId === project.id && summary.exit === undefined,
+  );
   const [open, setOpen] = useState(true);
   const [confirming, setConfirming] = useState(false);
   return (
@@ -197,9 +203,16 @@ function ProjectItem({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {project.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              The project and its conversations leave the sidebar. Nothing is deleted: add the same directory again to
-              bring them back.
+              The project and its conversations leave the sidebar. No file or conversation is deleted: add the same
+              directory again to bring them back.
             </AlertDialogDescription>
+            {running.length > 0 && (
+              <AlertDialogDescription>
+                {running.length === 1 ? "A terminal is" : `${running.length} terminals are`} still running and will be
+                ended, with what runs in {running.length === 1 ? "it" : "them"}:{" "}
+                {running.map((summary) => summary.title).join(", ")}.
+              </AlertDialogDescription>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
