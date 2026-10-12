@@ -116,7 +116,7 @@ These are deliberate decisions. Do not break them without discussing it first:
 - **No pi-server Sessions.** Every service is served at pi-server's server scope, with one `RemoteServiceProvider` per client connection (`apps/server/src/rpc-host.ts`). Shared state, such as the conversation list, is one `ReplicatedState` object provided to every connection.
 - **Per-connection instances, not global keyed services.** A Chord keyed subscription snapshot carries the state of every instance, so a global keyed service would send every conversation to every client. Clients call `open(id)` and the server spawns that instance on their connection only.
 - **Clients render subscriptions.** UI state comes from replicated state the client subscribes to. Method results are only used to report errors. The client holds no authoritative state.
-- **One execution path per workspace.** File access and process execution inside a workspace only go through its Workspace Runtime (ExecutionEnv, PtyHost, ProcessManager). No other module touches a repository directly.
+- **One execution path per workspace.** File access and process execution inside a workspace only go through its Workspace Runtime: the execution environment (`ExecutionEnv`), the terminals (`TerminalHost`, `Pty`), and later the managed processes (ProcessManager). No other module touches a repository directly.
 - **Stop only stops the agent.** Aborting a conversation never kills terminals or managed processes.
 - **Terminals are raw byte streams** on their own WebSocket; they do not go through Chord.
 - **Upstream pi packages are experimental.** Pin their versions and keep calls into them in a small number of adapter modules.
