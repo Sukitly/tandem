@@ -1,6 +1,7 @@
+import { DefaultFolderOpenedIcon, FileIcon, FolderIcon, getIconForFolder } from "@react-symbols/icons/utils";
 import type { FileEntry } from "@tandem/contracts";
-import { FileIcon, FileSymlinkIcon, FolderClosedIcon, FolderOpenIcon, FolderSymlinkIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { FileSymlinkIcon } from "lucide-react";
+import { isValidElement, useEffect, useRef } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   SidebarMenu,
@@ -16,8 +17,10 @@ import { type ProjectFiles, useProjectFiles } from "./project-files.ts";
 
 /**
  * A project's files as a tree, built as shadcn's file tree block (`sidebar-11`) is: sidebar menu items, with
- * collapsible directories. As in the sidebar's project rows, an open or closed folder icon shows whether a directory is
- * expanded, without the block's arrow, so files and directories line up. A directory is listed when it first opens.
+ * collapsible directories. Icons come from the Symbols set (`@react-symbols/icons`), by file name and folder name: a
+ * file shows its language's icon, and a folder with an icon of its own keeps it whether it is open or closed. A folder
+ * without one shows the closed and open folders instead, so expanding stays visible. A directory is listed when it
+ * first opens.
  */
 export function FileTree({ files }: { files: ProjectFiles }) {
   return (
@@ -58,11 +61,13 @@ function Entries({ files, path, dimmed = false }: { files: ProjectFiles; path: s
 
 function Directory({ files, entry, dimmed }: EntryProps) {
   const open = useProjectFiles(files, (current) => current.isExpanded(entry.path));
-  const Icon = entry.symlink === true ? FolderSymlinkIcon : open ? FolderOpenIcon : FolderClosedIcon;
+  // A folder with an icon of its own keeps it open or closed; one without shows the closed and open folders.
+  const named = isValidElement(getIconForFolder({ folderName: entry.name }));
+  const opened = !named && open;
   return (
     <Collapsible open={open} onOpenChange={(next) => files.setExpanded(entry.path, next)} render={<SidebarMenuItem />}>
       <CollapsibleTrigger render={<SidebarMenuButton title={entry.path} className={cn(dimmed && "opacity-30")} />}>
-        <Icon />
+        {opened ? <DefaultFolderOpenedIcon /> : <FolderIcon folderName={entry.name} />}
         <span>{entry.name}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -91,11 +96,14 @@ function File({ files, entry, dimmed }: EntryProps) {
         className={cn(dimmed && "opacity-30")}
         onClick={() => files.open(entry.path)}
       >
-        {entry.symlink === true ? <FileSymlinkIcon /> : <FileIcon />}
+        <FileIcon fileName={entry.name} autoAssign />
         <span className="truncate">{entry.name}</span>
-        {entry.size !== undefined && (
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">{formatSize(entry.size)}</span>
-        )}
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          {entry.symlink === true && <FileSymlinkIcon className="text-muted-foreground" />}
+          {entry.size !== undefined && (
+            <span className="text-xs text-muted-foreground tabular-nums">{formatSize(entry.size)}</span>
+          )}
+        </span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
