@@ -1,4 +1,4 @@
-import type { ConversationView } from "@tandem/contracts";
+import type { ConversationView, ImageBlockRef } from "@tandem/contracts";
 
 type Message = NonNullable<ConversationView["entries"][number]["model"]>[number];
 type AssistantMessage = Extract<Message, { role: "assistant" }>;
@@ -19,13 +19,15 @@ export type AssistantPart =
       status: ToolStatus;
       /** Running output while it runs, then the result's text. */
       output: string;
+      /** Images the result holds, such as an image file `read` returned. */
+      images: ImageBlockRef[];
       /** The edit tool's diff of the change it made. */
       diff?: string;
     };
 
 /** What the transcript shows, in order. */
 export type TranscriptItem =
-  | { kind: "user"; key: string; text: string }
+  | { kind: "user"; key: string; text: string; images: ImageBlockRef[] }
   | {
       kind: "assistant";
       key: string;
@@ -43,6 +45,8 @@ export interface QueuedMessage {
   id: number;
   mode: "steer" | "followUp";
   text: string;
+  /** How many images go with it. */
+  images: number;
 }
 
 export interface ContextUsage {
@@ -112,7 +116,7 @@ export function toTranscript(view: ConversationView): TranscriptState {
     for (const [index, message] of (entry.model ?? []).entries()) {
       const key = `${entry.id}:${index}`;
       if (message.role === "user") {
-        items.push({ kind: "user", key, text: textOf(message.content) });
+        items.push({ kind: "user", key, text: textOf(message.content), images: imagesOf(message.content) });
       } else if (message.role === "assistant") {
         items.push({
           kind: "assistant",
@@ -148,7 +152,14 @@ export function toTranscript(view: ConversationView): TranscriptState {
   const inbox = view.docs["pi.inbox"] as InboxDoc | undefined;
   const queued = (inbox?.items ?? []).flatMap((item): QueuedMessage[] =>
     item.mode === "steer" || item.mode === "followUp"
-      ? [{ id: item.id, mode: item.mode, text: textOf(item.content as Message["content"]) }]
+      ? [
+          {
+            id: item.id,
+            mode: item.mode,
+            text: textOf(item.content as Message["content"]),
+            images: imagesOf(item.content as Message["content"]).length,
+          },
+        ]
       : [],
   );
 
@@ -187,6 +198,7 @@ function partsOf(
             args: block.arguments as Record<string, unknown>,
             status,
             output: result !== undefined ? textOf(result.content) : (slot?.output ?? ""),
+            images: result === undefined ? [] : imagesOf(result.content),
             ...(typeof details?.diff === "string" ? { diff: details.diff } : {}),
           },
         ];
@@ -201,6 +213,11 @@ function partsOf(
 function contextTokens(usage: Usage | undefined): number {
   if (usage === undefined) return 0;
   return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+}
+
+function imagesOf(content: Message["content"] | undefined): ImageBlockRef[] {
+  if (content === undefined || typeof content === "string") return [];
+  return content.flatMap((block) => (block.type === "image" ? [block as ImageBlockRef] : []));
 }
 
 function textOf(content: Message["content"] | undefined): string {

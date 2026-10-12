@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { CodeBlock } from "./code-block.tsx";
 import { Markdown } from "./markdown.tsx";
 import type { AssistantPart, ToolStatus, TranscriptItem } from "./transcript.ts";
+import { TranscriptImages } from "./transcript-images.tsx";
 
 type ToolPart = Extract<AssistantPart, { kind: "tool" }>;
 
@@ -34,10 +35,13 @@ export function TranscriptEntry({ item }: { item: TranscriptItem }) {
       // Markdown, like an answer: a message that carries review comments names the places it is about as links.
       return (
         <div className="group/message flex flex-col items-end gap-1">
-          <div className="max-w-[85%] rounded-lg bg-muted px-4 py-2.5 break-words">
-            <Markdown text={item.text} />
-          </div>
-          <CopyButton text={item.text} />
+          <TranscriptImages images={item.images} className="max-w-[85%] justify-end" />
+          {item.text !== "" && (
+            <div className="max-w-[85%] rounded-lg bg-muted px-4 py-2.5 break-words">
+              <Markdown text={item.text} />
+            </div>
+          )}
+          {item.text !== "" && <CopyButton text={item.text} />}
         </div>
       );
     case "assistant":
@@ -156,6 +160,7 @@ function ToolCall({ part }: { part: ToolPart }) {
       summary={<span className="font-mono">{summary}</span>}
       status={<StatusIcon status={part.status} />}
     >
+      {part.images.length > 0 && <TranscriptImages images={part.images} className="mb-2" />}
       {part.diff !== undefined ? (
         <Diff diff={part.diff} />
       ) : part.name === "reply_to_comment" &&
@@ -168,7 +173,7 @@ function ToolCall({ part }: { part: ToolPart }) {
         </div>
       ) : body !== "" ? (
         <CodeBlock code={body} language={languageOf(part)} streaming={part.status === "running"} tall />
-      ) : (
+      ) : part.images.length > 0 ? null : (
         <p className="text-sm text-muted-foreground">{part.status === "running" ? "Running…" : "No output"}</p>
       )}
     </Disclosure>

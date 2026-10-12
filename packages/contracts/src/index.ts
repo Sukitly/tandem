@@ -43,6 +43,15 @@ export {
 } from "./conversations.ts";
 export { type FileContent, type FileEntry, type FileLocation, Files, MAX_FILE_VIEW_BYTES } from "./files.ts";
 export {
+  IMAGE_INPUT_TYPES,
+  IMAGE_PATH,
+  type ImageBlockRef,
+  type ImageInput,
+  type ImageRef,
+  imagePath,
+  MAX_MESSAGE_IMAGE_BYTES,
+} from "./images.ts";
+export {
   type AuthType,
   type LoginEvent,
   type LoginPrompt,

@@ -263,6 +263,14 @@ function toSummary(model: Model<string>): ModelSummary {
     name: model.name,
     thinkingLevels: getSupportedThinkingLevels(model),
     contextWindow: model.contextWindow,
+    ...(model.input.includes("image")
+      ? {
+          images:
+            model.inputLimits?.images?.maxPerMessage === undefined
+              ? {}
+              : { maxPerMessage: model.inputLimits.images.maxPerMessage },
+        }
+      : {}),
   };
 }
 

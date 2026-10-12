@@ -23,6 +23,8 @@ export interface ModelSummary extends ModelRef {
   /** Thinking levels the model supports; `["off"]` when it does not reason. */
   thinkingLevels: string[];
   contextWindow: number;
+  /** Present when the model takes images: at most this many in one message, if it says. */
+  images?: { maxPerMessage?: number };
 }
 
 /** What a login flow shows. Events accumulate; the prompt is the one question waiting for an answer. */

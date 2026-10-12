@@ -7,7 +7,14 @@ import {
 } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Client, createClientServiceTransport } from "@earendil-works/pi-client";
-import { BOOTSTRAP_PATH, type BootstrapResponse, RPC_PATH, TOKEN_QUERY_PARAMETER } from "@tandem/contracts";
+import {
+  BOOTSTRAP_PATH,
+  type BootstrapResponse,
+  type ImageRef,
+  imagePath,
+  RPC_PATH,
+  TOKEN_QUERY_PARAMETER,
+} from "@tandem/contracts";
 import { TerminalConnection, type TerminalConnectionOptions, type TerminalScreen } from "./terminal-connection.ts";
 import { createWebSocketTransportFactory } from "./websocket-transport.ts";
 
@@ -39,6 +46,8 @@ export interface TandemConnection {
   readonly status: ReplicatedState<ConnectionStatus>;
   /** Connect to a terminal's own socket, with this connection's server and token. */
   terminal(id: string, screen: TerminalScreen, options?: TerminalOptions): TerminalConnection;
+  /** An image of a conversation's transcript, fetched with this connection's token. Rejects for anything but 200. */
+  image(ref: ImageRef, signal?: AbortSignal): Promise<Blob>;
   close(): Promise<void>;
 }
 
@@ -146,6 +155,14 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
     status,
     terminal: (id, screen, terminalOptions = {}) =>
       new TerminalConnection({ baseUrl, token: options.token, id, screen, ...terminalOptions }),
+    async image(ref, signal) {
+      const response = await fetch(new URL(imagePath(ref), baseUrl), {
+        headers: { authorization: `Bearer ${options.token}` },
+        ...(signal === undefined ? {} : { signal }),
+      });
+      if (!response.ok) throw new Error(`The image could not be loaded (status ${response.status})`);
+      return response.blob();
+    },
     async close() {
       if (closed) return;
       closed = true;

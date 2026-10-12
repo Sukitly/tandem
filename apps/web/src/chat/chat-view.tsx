@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
+import type { Conversation, ConversationNotice, ModelRef, ModelSummary } from "@tandem/contracts";
 import { AlertCircleIcon, ArrowDownIcon, PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -92,8 +92,12 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
               .catch((error: unknown) => reportFailure("Could not take back the comment", error))
           }
           autoFocus
-          onSend={async (text, sent) => {
-            const id = await conversations.start({ workspaceId, text, comments: sent, ...agent }, BACKGROUND_CONTEXT);
+          images={imagesOf(available?.models, agent.model)}
+          onSend={async (text, sent, images) => {
+            const id = await conversations.start(
+              { workspaceId, text, comments: sent, ...(images.length === 0 ? {} : { images }), ...agent },
+              BACKGROUND_CONTEXT,
+            );
             select(id);
           }}
           onStop={() => {}}
@@ -105,7 +109,8 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 }
 
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
-  const { conversations } = useConnected();
+  const { conversations, models } = useConnected();
+  const available = useReplicatedState(models.state);
   const { comments, reportFailure } = useWorkbench();
   const summary = useReplicatedState(conversations.state)?.conversations.find(
     (candidate) => candidate.id === conversationId,
@@ -151,7 +156,13 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
               .catch((error: unknown) => reportFailure("Could not take back the comment", error))
           }
           autoFocus
-          onSend={(text, sent, whenBusy) => conversation.submit({ text, comments: sent, whenBusy }, BACKGROUND_CONTEXT)}
+          images={imagesOf(available?.models, agent?.model)}
+          onSend={(text, sent, images, whenBusy) =>
+            conversation.submit(
+              { text, comments: sent, ...(images.length === 0 ? {} : { images }), whenBusy },
+              BACKGROUND_CONTEXT,
+            )
+          }
           onStop={() => {
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}
@@ -222,6 +233,16 @@ function FilesToggle() {
 /** Under the transcript: notices and the message box. */
 function ChatFooter({ children }: { children: ReactNode }) {
   return <div className="mx-auto grid w-full max-w-3xl gap-3 px-4 pt-2 pb-4">{children}</div>;
+}
+
+/** What the composer offers of images for `model`: nothing for a model known to take none. */
+function imagesOf(
+  models: readonly ModelSummary[] | undefined,
+  model: ModelRef | undefined,
+): false | { maxPerMessage?: number } {
+  const summary = models?.find((candidate) => sameModel(candidate, model));
+  if (summary === undefined) return {};
+  return summary.images ?? false;
 }
 
 function sameModel(a: ModelRef | undefined, b: ModelRef | undefined): boolean {

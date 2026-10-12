@@ -36,6 +36,8 @@ export interface Connected {
   terminals: Terminals;
   /** Connect to a terminal's own socket; the connection holds the server and the token. */
   openTerminal: TandemConnection["terminal"];
+  /** Fetch an image of a transcript; the connection holds the token. */
+  fetchImage: TandemConnection["image"];
   /** The conversations this page has open. */
   open: OpenConversations;
   /** The projects whose changes this page shows. */
@@ -99,6 +101,7 @@ export function ConnectionProvider({
               comments: connection.services.use(Comments),
               terminals: connection.services.use(Terminals),
               openTerminal: (id, screen, options) => connection.terminal(id, screen, options),
+              fetchImage: (ref, signal) => connection.image(ref, signal),
             },
           });
       },
@@ -136,6 +139,7 @@ function Connected({
         comments: value.comments,
         terminals: value.terminals,
         openTerminal: value.openTerminal,
+        fetchImage: value.fetchImage,
         open: value.open,
         openChanges: value.openChanges,
         status,

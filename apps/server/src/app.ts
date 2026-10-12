@@ -2,8 +2,10 @@ import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Provider } from "@earendil-works/pi-ai";
 import { commentTools } from "./comment-tool.ts";
+import { storedImage } from "./conversation-view.ts";
 import { FileCredentialStore } from "./credentials.ts";
 import { openHarness } from "./harness.ts";
+import { createNodePhotonImages } from "./images/node.ts";
 import { createAppModels, defaultProviders } from "./models.ts";
 import { type StartServerOptions, startServer, type TandemServer } from "./server.ts";
 import { ChangeTrackers } from "./services/changes.ts";
@@ -44,8 +46,10 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     const credentials = new FileCredentialStore(join(stateDir.path, "auth.json"));
     const models = createAppModels(credentials, options.providers ?? defaultProviders());
     const modelCatalog = await ModelCatalog.load(models, credentials, settings);
+    // Images are fitted in a worker thread, which starts with the first image and exits when idle.
+    const images = await createNodePhotonImages();
     const opened = await openHarness(
-      { databasePath: stateDir.databasePath, models, onReport: (error) => onError(toError(error)) },
+      { databasePath: stateDir.databasePath, models, images, onReport: (error) => onError(toError(error)) },
       context,
     );
     cleanups.push(() => opened.close(context));
@@ -82,8 +86,10 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           changes,
           comments,
           terminals,
+          images,
         }),
       terminal: (id) => terminals.get(id),
+      image: (ref) => storedImage(opened.harness, ref, context),
       onError,
     });
     cleanups.push(() => server.stop());

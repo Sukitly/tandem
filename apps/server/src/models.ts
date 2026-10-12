@@ -2,6 +2,7 @@ import type { AssistantMessage, CredentialStore, Message, MutableModels, Provide
 import { createModels } from "@earendil-works/pi-ai/models";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
 import {
+  type FauxModelDefinition,
   type FauxResponseFactory,
   fauxAssistantMessage,
   fauxProvider,
@@ -29,6 +30,8 @@ export interface FauxOptions {
   reply?: (text: string) => string;
   /** Answer with a scripted response instead, which may call tools; see `demoResponse`. Overrides `reply`. */
   respond?: (messages: readonly Message[]) => AssistantMessage;
+  /** The models it offers; one that takes text and images by default. */
+  models?: FauxModelDefinition[];
 }
 
 /** A model that answers locally without a network or credentials, for tests and for trying the UI. */
@@ -36,6 +39,7 @@ export function createFauxProvider(options: FauxOptions = {}): Provider {
   const reply = options.reply ?? ((text) => `You said: ${text}`);
   const faux = fauxProvider({
     ...(options.tokensPerSecond === undefined ? {} : { tokensPerSecond: options.tokensPerSecond }),
+    ...(options.models === undefined ? {} : { models: options.models }),
   });
   // Every response step is used once, so each answer queues the next one.
   const answer: FauxResponseFactory = (context) => {

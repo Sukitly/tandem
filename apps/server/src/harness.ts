@@ -5,6 +5,8 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { imageReading } from "./image-read.ts";
+import type { ImageProcessor } from "./images/image-processor.ts";
 import { TandemPrompt } from "./prompt.ts";
 
 export interface OpenedHarness {
@@ -19,6 +21,8 @@ export interface OpenedHarness {
 export interface OpenHarnessOptions {
   databasePath: string;
   models: Models;
+  /** Fits the images `read` returns to the model. */
+  images: ImageProcessor;
   onReport?: (error: unknown) => void;
 }
 
@@ -30,6 +34,7 @@ export async function openHarness(options: OpenHarnessOptions, context: Context)
   const envs = new ExecutionEnvs();
   const registry = createRegistry();
   registry.install(CodingTools);
+  registry.install(imageReading(options.images));
   registry.install(TandemPrompt);
   const harness = await Harness.open(
     await openNodeSqliteStorage(options.databasePath),
