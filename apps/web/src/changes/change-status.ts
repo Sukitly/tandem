@@ -28,6 +28,12 @@ export function statusLabel(status: ChangeStatus, from?: string): string {
   return from === undefined ? label : `${label} from ${from}`;
 }
 
+/** Added lines, and the files that are only lines added. */
+export const ADDITIONS_COLOR = "text-emerald-600 dark:text-emerald-400";
+
+/** Deleted lines, and the files that are only lines deleted. */
+export const DELETIONS_COLOR = "text-red-600 dark:text-red-400";
+
 /**
  * The letter's color: what the change does to the file, not how it differs from the base commit. A file that already
  * differs and is deleted again is still a deletion.
@@ -36,9 +42,9 @@ export function statusColor(status: ChangeStatus): string {
   switch (status) {
     case "added":
     case "untracked":
-      return "text-emerald-600 dark:text-emerald-400";
+      return ADDITIONS_COLOR;
     case "deleted":
-      return "text-red-600 dark:text-red-400";
+      return DELETIONS_COLOR;
     case "renamed":
     case "copied":
       return "text-sky-600 dark:text-sky-400";
@@ -49,10 +55,18 @@ export function statusColor(status: ChangeStatus): string {
   }
 }
 
-/** `+3 −1`, or nothing when Git counts no lines; a binary file has neither count. */
-export function countsLabel(additions?: number, deletions?: number): string {
-  const parts: string[] = [];
-  if (additions !== undefined && additions > 0) parts.push(`+${additions}`);
-  if (deletions !== undefined && deletions > 0) parts.push(`−${deletions}`);
-  return parts.join(" ");
+export interface CountPart {
+  kind: "additions" | "deletions";
+  text: string;
+}
+
+/**
+ * A file's line counts, each apart so that the added lines and the deleted ones are colored differently. A count of
+ * zero is left out; a binary file has neither.
+ */
+export function countParts(additions?: number, deletions?: number): CountPart[] {
+  const parts: CountPart[] = [];
+  if (additions !== undefined && additions > 0) parts.push({ kind: "additions", text: `+${additions}` });
+  if (deletions !== undefined && deletions > 0) parts.push({ kind: "deletions", text: `−${deletions}` });
+  return parts;
 }

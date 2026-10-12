@@ -13,7 +13,14 @@ import { cn } from "@/lib/utils";
 import { useProjectChanges } from "@/rpc/use-project-changes.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChangeDiff } from "./change-diff.tsx";
-import { countsLabel, statusColor, statusLabel, statusLetter } from "./change-status.ts";
+import {
+  ADDITIONS_COLOR,
+  countParts,
+  DELETIONS_COLOR,
+  statusColor,
+  statusLabel,
+  statusLetter,
+} from "./change-status.ts";
 
 const DIFF_STYLE_KEY = "tandem.diffStyle";
 
@@ -108,8 +115,12 @@ export function ChangesView({ workspaceId }: { workspaceId: number }) {
                   <span className="truncate" title={statusLabel(file.status, file.from)}>
                     {file.path}
                   </span>
-                  <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
-                    {countsLabel(file.additions, file.deletions)}
+                  <span className="ml-auto flex shrink-0 items-center gap-1 tabular-nums">
+                    {countParts(file.additions, file.deletions).map((part) => (
+                      <span key={part.kind} className={part.kind === "additions" ? ADDITIONS_COLOR : DELETIONS_COLOR}>
+                        {part.text}
+                      </span>
+                    ))}
                   </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
