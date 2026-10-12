@@ -4,6 +4,7 @@
 @import "@fontsource-variable/inter";
 @import "katex/dist/katex.min.css";
 @import "streamdown/styles.css";
+@import "./chat/markdown.css";
 
 /* Tailwind does not scan node_modules; Streamdown and its plugins render with utility classes. */
 @source "../node_modules/streamdown/dist/*.js";
