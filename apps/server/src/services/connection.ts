@@ -9,6 +9,7 @@ import {
   Files,
   Models,
   ProjectChanges,
+  Prompts,
   type StartInput,
   Terminals,
   Workspaces,
@@ -29,6 +30,7 @@ import { invalidInput } from "./errors.ts";
 import type { FileBrowser } from "./files.ts";
 import type { ModelCatalog } from "./models.ts";
 import type { ProjectDirectoryBrowser } from "./project-directories.ts";
+import type { PromptLibrary } from "./prompts.ts";
 import type { TerminalHost } from "./terminals.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
@@ -43,6 +45,7 @@ export interface AppServices {
   readonly models: ModelCatalog;
   readonly notices: NoticeBoard;
   readonly comments: CommentBoard;
+  readonly prompts: PromptLibrary;
   readonly terminals: TerminalHost;
 }
 
@@ -71,6 +74,7 @@ export function createConnectionServices({
   notices,
   changes,
   comments,
+  prompts,
   terminals,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
@@ -80,6 +84,7 @@ export function createConnectionServices({
     Changes,
     Comments,
     Terminals,
+    Prompts,
     Conversations,
     { service: Conversation, mode: "keyed" },
     { service: ProjectChanges, mode: "keyed" },
@@ -104,6 +109,7 @@ export function createConnectionServices({
           notices,
           models,
           comments,
+          prompts,
           workspaceId: () => catalog.workspaceOf(id),
           onSubmitted: (_text, context) => catalog.noteMessage(id, context),
         }),
@@ -213,6 +219,13 @@ export function createConnectionServices({
     read: (location, context) => files.read(location, context),
   });
 
+  provider.provide(Prompts, {
+    list: (workspaceId, context) => {
+      parseId(workspaceId, "Project");
+      return prompts.list(workspaceId, context);
+    },
+  });
+
   provider.provide(Conversations, {
     state: catalog.state,
     async start(input, context) {
@@ -220,8 +233,10 @@ export function createConnectionServices({
       parseId(workspaceId, "Project");
       const { text, comments: ids } = parseSubmitInput({ ...(input ?? {}), whenBusy: "followUp" });
       const agent = initialAgent(models, { model, thinkingLevel });
+      // Expanded before the comments are taken, so a failure leaves them waiting.
+      const expanded = await prompts.expand(workspaceId, text, context);
       const taken = comments.take(workspaceId, ids);
-      const message = joinMessage(taken.text, text);
+      const message = joinMessage(taken.text, expanded);
       let conversation: Awaited<ReturnType<ConversationCatalog["create"]>>;
       try {
         if (message === "") throw invalidInput("Write a message, or a comment to send");

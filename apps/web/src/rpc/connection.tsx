@@ -14,6 +14,7 @@ import {
   Files,
   Models,
   ProjectChanges,
+  Prompts,
   Terminals,
   Workspaces,
 } from "@tandem/contracts";
@@ -32,6 +33,8 @@ export interface Connected {
   files: Files;
   /** The comment threads of every project. */
   comments: Comments;
+  /** The prompt templates of the projects: the slash commands their messages may name. */
+  prompts: Prompts;
   /** The terminals of every project. */
   terminals: Terminals;
   /** Connect to a terminal's own socket; the connection holds the server and the token. */
@@ -72,7 +75,18 @@ export function ConnectionProvider({
     connect({
       baseUrl: window.location.origin,
       token,
-      services: [Models, Workspaces, Files, Changes, ProjectChanges, Comments, Terminals, Conversations, Conversation],
+      services: [
+        Models,
+        Workspaces,
+        Files,
+        Changes,
+        ProjectChanges,
+        Comments,
+        Terminals,
+        Prompts,
+        Conversations,
+        Conversation,
+      ],
       onError: (error) => console.error(error),
     }).then(
       (connection) => {
@@ -97,6 +111,7 @@ export function ConnectionProvider({
               models: connection.services.use(Models),
               files: connection.services.use(Files),
               comments: connection.services.use(Comments),
+              prompts: connection.services.use(Prompts),
               terminals: connection.services.use(Terminals),
               openTerminal: (id, screen, options) => connection.terminal(id, screen, options),
             },
@@ -134,6 +149,7 @@ function Connected({
         models: value.models,
         files: value.files,
         comments: value.comments,
+        prompts: value.prompts,
         terminals: value.terminals,
         openTerminal: value.openTerminal,
         open: value.open,

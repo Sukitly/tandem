@@ -17,6 +17,7 @@ import type { Conversation, ConversationNotices, ModelRef, SubmitInput } from "@
 import type { CommentBoard, TakenComments } from "./comments.ts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
+import type { PromptLibrary } from "./prompts.ts";
 
 /** Submissions that end without an answer for these reasons need no notice: the user asked for it, or it was replaced. */
 const QUIET_REASONS = new Set(["aborted", "reset", "stale"]);
@@ -54,6 +55,7 @@ export interface ConversationServiceOptions {
   notices: NoticeBoard;
   models: ModelCatalog;
   comments: CommentBoard;
+  prompts: PromptLibrary;
   /** The project the conversation belongs to, whose comments its messages may carry. */
   workspaceId: () => number | undefined;
   onSubmitted: (text: string, context: Context) => Promise<void>;
@@ -66,6 +68,7 @@ export function createConversationService({
   notices,
   models,
   comments,
+  prompts,
   workspaceId,
   onSubmitted,
 }: ConversationServiceOptions): Conversation {
@@ -76,8 +79,10 @@ export function createConversationService({
     async submit(input, context) {
       const { text, whenBusy, comments: ids } = parseSubmitInput(input);
       const project = workspaceId();
+      // Expanded before the comments are taken, so a failure leaves them waiting.
+      const expanded = project === undefined ? text : await prompts.expand(project, text, context);
       const taken = project === undefined ? undefined : comments.take(project, ids);
-      const message = joinMessage(taken?.text ?? "", text);
+      const message = joinMessage(taken?.text ?? "", expanded);
       if (message === "") {
         taken?.release();
         throw invalidInput("Write a message, or a comment to send");

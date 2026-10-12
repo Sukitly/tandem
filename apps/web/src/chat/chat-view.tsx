@@ -12,6 +12,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
+import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer } from "./chat-composer.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
@@ -49,6 +50,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
   const projectComments = comments(workspaceId);
   const threads = useCommentThreads(projectComments);
   const waiting = useMemo(() => waitingComments(threads), [threads]);
+  const { commands } = usePrompts(workspaceId);
   const [chosen, setChosen] = useState<AgentChoice>({});
   // What the server starts with when none is chosen: the default model, else the first available.
   const first = available?.models[0];
@@ -85,6 +87,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
           busy={false}
           queued={[]}
           comments={waiting}
+          commands={commands}
           onWithdrawComment={(comment) =>
             projectComments
               .withdraw(comment.thread.id, comment.messageId)
@@ -113,6 +116,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   const projectComments = summary === undefined ? undefined : comments(summary.workspaceId);
   const threads = useCommentThreads(projectComments);
   const waiting = useMemo(() => waitingComments(threads), [threads]);
+  const { commands } = usePrompts(summary?.workspaceId);
   const view = useReplicatedState(conversation.view);
   const notices = useReplicatedState(conversation.notices)?.notices ?? [];
   const transcript = useMemo(() => (view === undefined ? undefined : toTranscript(view)), [view]);
@@ -144,6 +148,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           busy={transcript.busy}
           queued={transcript.queued}
           comments={waiting}
+          commands={commands}
           onWithdrawComment={(comment) =>
             projectComments
               ?.withdraw(comment.thread.id, comment.messageId)
