@@ -130,4 +130,7 @@ export const TERMINAL_OPTIONS = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   cursorBlink: true,
   allowProposedApi: false,
+  // xterm's 16 colors are made for a dark background: on the light theme, cyan and green text is hard to read. Text
+  // below this contrast with its background is drawn lighter or darker until it reaches it; 4.5 is WCAG AA.
+  minimumContrastRatio: 4.5,
 } as const;
