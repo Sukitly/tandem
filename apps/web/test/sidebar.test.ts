@@ -37,14 +37,40 @@ vi.mock("../src/models/providers-dialog.tsx", () => ({
   useProvidersDialog: () => ({ open: vi.fn() }),
 }));
 
-function sidebar(): string {
-  return renderToStaticMarkup(createElement(SidebarProvider, null, createElement(AppSidebar)));
+function sidebar(defaultOpen = true): string {
+  return renderToStaticMarkup(createElement(SidebarProvider, { defaultOpen }, createElement(AppSidebar)));
 }
 
 beforeEach(() => {
   state.selected = null;
   state.workspaces.workspaces = [];
   state.conversations.conversations = [];
+});
+
+describe("sidebar toggle", () => {
+  test("uses a directional close icon and the same ghost icon button as the project panel", () => {
+    const toggle = sidebar().match(/<button\b[^>]*aria-label="Collapse the sidebar"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    expect(toggle).toBeDefined();
+    expect(toggle).toContain("lucide-chevron-left");
+    expect(toggle).toContain("group/button");
+    expect(toggle).toContain('data-slot="button"');
+    expect(toggle).not.toContain("tooltip-trigger");
+    expect(toggle).not.toContain("title=");
+    expect(toggle).toContain("size-7");
+    expect(toggle).toContain("hover:bg-muted");
+    expect(toggle).not.toContain('data-sidebar="menu-action"');
+  });
+
+  test("uses a directional open icon when the sidebar is collapsed", () => {
+    const toggle = sidebar(false).match(/<button\b[^>]*aria-label="Expand the sidebar"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    expect(toggle).toBeDefined();
+    expect(toggle).toContain("lucide-chevron-right");
+    expect(toggle).not.toContain("tooltip-trigger");
+    expect(toggle).not.toContain("title=");
+    expect(toggle).toContain("hover:bg-sidebar-accent");
+    expect(toggle).not.toContain("lucide-bike");
+    expect(sidebar(false)).not.toContain('aria-label="Collapse the sidebar"');
+  });
 });
 
 describe("conversation creation in the sidebar", () => {
