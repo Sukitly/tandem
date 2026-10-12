@@ -28,6 +28,11 @@ export class OpenChanges {
     return this.#instances.get(workspaceId);
   }
 
+  /** Why a project's changes are not there, if opening them failed. */
+  failure(workspaceId: number): string | null {
+    return this.#instances.failure(workspaceId)?.message ?? null;
+  }
+
   /** Keep a project's changes open until the returned function is called. */
   hold(workspaceId: number): () => void {
     return this.#instances.hold(workspaceId);

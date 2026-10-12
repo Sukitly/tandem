@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { FileTree } from "@/files/file-tree.tsx";
 import { FileView } from "@/files/file-view.tsx";
 import { useProjectFiles } from "@/files/project-files.ts";
-import { useProjectChanges } from "@/rpc/use-project-changes.ts";
+import { useProjectChanges, useProjectChangesFailure } from "@/rpc/use-project-changes.ts";
 
 const TAB_KEY = "tandem.panelTab";
 
@@ -23,6 +23,7 @@ const TAB_KEY = "tandem.panelTab";
 export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
   const files = useWorkbench().projectFiles(workspaceId);
   const changes = useProjectChanges(workspaceId);
+  const changesFailure = useProjectChangesFailure(workspaceId);
   const failure = useProjectFiles(files, (current) => current.failure);
   const opened = useProjectFiles(files, (current) => current.opened !== null);
   const [tab, setTab] = useState(storedTab);
@@ -87,7 +88,7 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
         </ResizablePanelGroup>
       </TabsContent>
       <TabsContent value="changes" className="flex min-h-0 flex-col">
-        <ChangesView workspaceId={workspaceId} />
+        <ChangesView changes={changes} failure={changesFailure} />
       </TabsContent>
     </Tabs>
   );

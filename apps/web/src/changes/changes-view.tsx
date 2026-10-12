@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { ChangedFile, FilePatch } from "@tandem/contracts";
+import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
 import { AlertCircleIcon, Columns2Icon, Rows2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -10,7 +10,6 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useProjectChanges } from "@/rpc/use-project-changes.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChangeDiff } from "./change-diff.tsx";
 import {
@@ -34,13 +33,19 @@ interface LoadedPatch {
  * The changes of a project against its integration branch, as Git reports them, and the selected file's patch. Both are
  * read again whenever the files on disk change, so an agent's edits arrive without asking.
  */
-export function ChangesView({ workspaceId }: { workspaceId: number }) {
-  const changes = useProjectChanges(workspaceId);
+export function ChangesView({
+  changes,
+  failure,
+}: {
+  changes: ProjectChanges | undefined;
+  /** Why the project's changes are not there, if opening them failed. */
+  failure: string | null;
+}) {
   const state = useReplicatedState(changes?.state);
   const [selected, setSelected] = useState<string | null>(null);
   const [styled, setStyled] = useState<"split" | "unified">(storedDiffStyle);
   const [loaded, setLoaded] = useState<LoadedPatch | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [readFailure, setReadFailure] = useState<string | null>(null);
 
   // The selection follows the list: a file that leaves it takes the patch with it.
   useEffect(() => {
@@ -53,13 +58,13 @@ export function ChangesView({ workspaceId }: { workspaceId: number }) {
     const file = state?.files.find((candidate) => candidate.path === selected);
     if (changes === undefined || file === undefined) return;
     let cancelled = false;
-    setFailure(null);
+    setReadFailure(null);
     changes.diff(file.path, BACKGROUND_CONTEXT).then(
       (patch) => {
         if (!cancelled) setLoaded({ path: file.path, patch });
       },
       (error: unknown) => {
-        if (!cancelled) setFailure(error instanceof Error ? error.message : String(error));
+        if (!cancelled) setReadFailure(error instanceof Error ? error.message : String(error));
       },
     );
     return () => {
@@ -69,6 +74,17 @@ export function ChangesView({ workspaceId }: { workspaceId: number }) {
     // `loaded` carries its path.
   }, [changes, state, selected]);
 
+  if (failure !== null) {
+    return (
+      <div className="p-3">
+        <Alert variant="destructive">
+          <AlertCircleIcon />
+          <AlertTitle>Cannot read the changes</AlertTitle>
+          <AlertDescription>{failure}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
   if (state === undefined) {
     return (
       <Empty>
@@ -134,7 +150,7 @@ export function ChangesView({ workspaceId }: { workspaceId: number }) {
               <ChangeView
                 file={selectedFile}
                 patch={loaded?.path === selectedFile.path ? loaded.patch : null}
-                failure={failure}
+                failure={readFailure}
                 styled={styled}
                 onStyled={setStyled}
               />

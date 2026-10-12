@@ -1,15 +1,18 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { connect, type TandemConnection } from "@tandem/client";
 import { Changes, type ChangesState, ProjectChanges, Workspaces } from "@tandem/contracts";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { createFauxProvider } from "../src/models.ts";
 import type { TandemServer } from "../src/server.ts";
+import { ProjectChangeTracker } from "../src/services/changes.ts";
+import type { ProjectPaths } from "../src/services/project-path.ts";
 
 const run = promisify(execFile);
 const context = BACKGROUND_CONTEXT;
@@ -117,6 +120,32 @@ describe("changes", () => {
     ]);
   });
 
+  test("an uncommitted merge is measured from the branch it merges, not from the fork point", async () => {
+    const git = (args: string[]) => run("git", args, { cwd: project });
+    await git(["init", "-q", "-b", "main"]);
+    await git(["config", "user.email", "tandem@example.com"]);
+    await git(["config", "user.name", "Tandem"]);
+    await writeFile(join(project, "base.ts"), "base\n");
+    await git(["add", "-A"]);
+    await git(["commit", "-qm", "base"]);
+    await git(["switch", "-qc", "feature"]);
+    await writeFile(join(project, "feature.ts"), "feature\n");
+    await git(["add", "-A"]);
+    await git(["commit", "-qm", "feature"]);
+    // The integration branch moves on after the fork, then the merge into `feature` stops before committing.
+    await git(["switch", "-q", "main"]);
+    await writeFile(join(project, "upstream.ts"), "upstream\n");
+    await git(["add", "-A"]);
+    await git(["commit", "-qm", "upstream"]);
+    await git(["switch", "-q", "feature"]);
+    await git(["merge", "--no-commit", "main"]);
+
+    const current = await state();
+    expect(current.base).toBe("main");
+    // The merged-in file belongs to the branch, not to this project's own work.
+    expect(current.files).toEqual([{ path: "feature.ts", status: "added", additions: 1, deletions: 0 }]);
+  });
+
   test("a repository without a commit yet lists what the index and the directory hold", async () => {
     await run("git", ["init", "-q", "-b", "main"], { cwd: project });
     await writeFile(join(project, "a.ts"), "a\n");
@@ -209,6 +238,47 @@ describe("changes", () => {
     const patch = await changes.diff("tracked.ts", context);
     expect(patch.kind === "patch" && patch.patch).toContain("a/tracked.ts");
     expect(patch.kind === "patch" && patch.patch).toContain("+TWO");
+  });
+
+  describe("the tracker on its own", () => {
+    test("a burst of changes is read once, and nothing follows a disposed tracker", async () => {
+      const project = await mkdtemp(join(tmpdir(), "tandem-tracker-"));
+      await run("git", ["init", "-q", "-b", "main"], { cwd: project });
+      const env = new NodeExecutionEnv({ cwd: project });
+      const paths: Pick<ProjectPaths, "resolve"> = {
+        resolve: async () => ({
+          env,
+          workspace: { id: 1, path: project, name: basename(project) },
+          path: "",
+          target: project,
+        }),
+      };
+      const errors: Error[] = [];
+      const tracker = await ProjectChangeTracker.open(1, paths, context, (error) => errors.push(error));
+      try {
+        let reads = 0;
+        tracker.state.subscribe(() => {
+          reads += 1;
+        });
+        // Let the subscription's first delivery pass before counting reads of its own.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const before = reads;
+
+        for (const name of ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"]) await writeFile(join(project, name), "x\n");
+        await waitFor(() => tracker.state.value.files.length === 5);
+        expect(reads - before).toBeLessThanOrEqual(2);
+
+        tracker.dispose();
+        const after = reads;
+        await writeFile(join(project, "f.ts"), "y\n");
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        expect(reads).toBe(after);
+        expect(errors).toEqual([]);
+      } finally {
+        tracker.dispose();
+        await env.cleanup(context);
+      }
+    });
   });
 
   test("closing a project stops its watcher", async () => {

@@ -1,3 +1,4 @@
+import { isAbsolute, join } from "node:path";
 import { type Context, type MutableReplicatedState, replicatedState } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ExecutionEnv, FileWatcher, WatchChange } from "@earendil-works/pi-durable/env";
@@ -26,8 +27,11 @@ const BASE_REFS = ["origin/main", "origin/master", "main", "master"];
 /** Git output kept for one command; what follows is dropped and makes the result incomplete. */
 const MAX_OUTPUT_BYTES = MAX_PATCH_BYTES * 2;
 
-/** Directories whose changes do not affect the list; other ignores come from Git itself. */
-const UNWATCHED = ["node_modules"];
+/**
+ * Names never watched: the repository's own bookkeeping, and installed packages. Hidden paths are watched like any
+ * other, because the list holds hidden files too.
+ */
+const UNWATCHED = [".git", "node_modules"];
 
 /**
  * One project's changes against its integration branch, watched while a client holds the project open. The base is the
@@ -36,17 +40,25 @@ const UNWATCHED = ["node_modules"];
  */
 export class ProjectChangeTracker {
   readonly state: MutableReplicatedState<ChangesState>;
-  readonly #paths: ProjectPaths;
+  readonly #paths: Pick<ProjectPaths, "resolve">;
   readonly #env: ExecutionEnv;
   readonly #workspaceId: number;
   /** Where Git runs: the project's directory. */
   readonly #root: string;
+  readonly #onError: (error: Error) => void;
   #base = "HEAD";
   #watcher: FileWatcher | undefined;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #closed = false;
 
-  private constructor(workspaceId: number, root: string, env: ExecutionEnv, paths: ProjectPaths) {
+  private constructor(
+    workspaceId: number,
+    root: string,
+    env: ExecutionEnv,
+    paths: Pick<ProjectPaths, "resolve">,
+    onError: (error: Error) => void,
+  ) {
+    this.#onError = onError;
     this.#workspaceId = workspaceId;
     this.#root = root;
     this.#env = env;
@@ -54,10 +66,18 @@ export class ProjectChangeTracker {
     this.state = replicatedState<ChangesState>({ workspaceId, status: "ready", files: [] });
   }
 
-  /** Read the changes once, then follow them. */
-  static async open(workspaceId: number, paths: ProjectPaths, context: Context): Promise<ProjectChangeTracker> {
+  /**
+   * Read the changes once, then follow them. Errors of the later reads, ones no client asked for, go to `onError`: the
+   * state carries what Git says, not what the server itself failed at.
+   */
+  static async open(
+    workspaceId: number,
+    paths: Pick<ProjectPaths, "resolve">,
+    context: Context,
+    onError: (error: Error) => void = () => {},
+  ): Promise<ProjectChangeTracker> {
     const { env, target } = await paths.resolve({ workspaceId, path: "" }, context);
-    const tracker = new ProjectChangeTracker(workspaceId, target, env, paths);
+    const tracker = new ProjectChangeTracker(workspaceId, target, env, paths, onError);
     await tracker.refresh(context);
     return tracker;
   }
@@ -84,9 +104,16 @@ export class ProjectChangeTracker {
     return { kind: "patch", patch: run.stdout };
   }
 
-  /** Read the list again, and watch again if watching had stopped. */
+  /**
+   * Read the list again, and watch again if watching had stopped. A failure is published in the state rather than
+   * thrown, so that a client that reads again to catch up need not handle one.
+   */
   async refresh(context: Context): Promise<void> {
-    await this.#read(context);
+    try {
+      await this.#read(context);
+    } catch (error) {
+      this.#unavailable("error", error instanceof Error ? error.message : String(error));
+    }
     await this.#watch();
   }
 
@@ -193,7 +220,7 @@ export class ProjectChangeTracker {
   async #watch(): Promise<void> {
     if (this.#closed || this.#watcher !== undefined || this.state.value.status !== "ready") return;
     const result = await this.#env.watch(
-      [{ path: this.#root, recursive: true, exclude: { hidden: true, names: UNWATCHED } }],
+      [{ path: this.#root, recursive: true, exclude: { names: UNWATCHED } }],
       (change) => this.#changed(change),
       BACKGROUND_CONTEXT,
     );
@@ -225,7 +252,9 @@ export class ProjectChangeTracker {
     if (this.#closed || this.#timer !== undefined) return;
     this.#timer = setTimeout(() => {
       this.#timer = undefined;
-      this.#read(BACKGROUND_CONTEXT).catch(() => {});
+      this.#read(BACKGROUND_CONTEXT).catch((error: unknown) => {
+        this.#onError(error instanceof Error ? error : new Error(String(error)));
+      });
     }, REFRESH_DELAY_MS);
   }
 
@@ -312,11 +341,38 @@ async function git(
   return { code: result.value.exitCode, stdout, stderr, truncated };
 }
 
-/** The merge base with the integration branch, or `HEAD` when the two have no common ancestor. */
+/**
+ * The commit the changes are measured from: the merge base with the integration branch, advanced over the heads of an
+ * in-progress merge. `HEAD` stays at the pre-merge tip until that merge is committed, while the working tree already
+ * holds the merged work, which must not count as local additions. `HEAD` when there is no common ancestor.
+ */
 async function mergeBase(env: ExecutionEnv, cwd: string, baseRef: string, context: Context): Promise<string> {
   const base = await git(env, cwd, ["merge-base", baseRef, "HEAD"], context);
   const value = base?.stdout.trim() ?? "";
-  return base !== undefined && base.code === 0 && value !== "" ? value : "HEAD";
+  if (base === undefined || base.code !== 0 || value === "") return "HEAD";
+  let advanced = value;
+  for (const head of await mergedHeads(env, cwd, context)) {
+    const candidate = await git(env, cwd, ["merge-base", baseRef, head], context);
+    const commit = candidate?.stdout.trim() ?? "";
+    // Incomparable candidates have no single newest base: keep the one in hand.
+    if (candidate === undefined || candidate.code !== 0 || commit === "" || commit === advanced) continue;
+    const ancestor = await git(env, cwd, ["merge-base", "--is-ancestor", advanced, commit], context);
+    if (ancestor !== undefined && ancestor.code === 0) advanced = commit;
+  }
+  return advanced;
+}
+
+/** Every head of an in-progress merge, including octopus merges and worktrees. */
+async function mergedHeads(env: ExecutionEnv, cwd: string, context: Context): Promise<string[]> {
+  const path = await git(env, cwd, ["rev-parse", "--git-path", "MERGE_HEAD"], context);
+  const file = path?.stdout.trim() ?? "";
+  if (path === undefined || path.code !== 0 || file === "") return [];
+  const text = await env.readTextFile(isAbsolute(file) ? file : join(cwd, file), context);
+  if (!text.ok) return [];
+  return text.value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
 }
 
 /** `git diff --name-status -z`: a status, then the path; a rename or copy adds the path it came from. */

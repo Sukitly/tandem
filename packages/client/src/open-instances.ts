@@ -22,6 +22,7 @@ export class OpenInstances<TKey, TInstance> {
   readonly #options: OpenInstancesOptions<TKey, TInstance>;
   readonly #onError: (error: Error) => void;
   readonly #instances = new Map<TKey, TInstance>();
+  readonly #failures = new Map<TKey, Error>();
   readonly #holds = new Map<TKey, number>();
   readonly #listeners = new Set<() => void>();
   readonly #stop: (() => void)[] = [];
@@ -50,6 +51,11 @@ export class OpenInstances<TKey, TInstance> {
   /** The instance of an open key, once it has arrived. */
   get(key: TKey): TInstance | undefined {
     return this.#instances.get(key);
+  }
+
+  /** Why the instance of a key has not arrived, if opening it failed. */
+  failure(key: TKey): Error | undefined {
+    return this.#failures.get(key);
   }
 
   /** Keep an instance open until the returned function is called. */
@@ -82,6 +88,7 @@ export class OpenInstances<TKey, TInstance> {
   dispose(): void {
     for (const stop of this.#stop.splice(0)) stop();
     this.#instances.clear();
+    this.#failures.clear();
     this.#listeners.clear();
   }
 
@@ -89,15 +96,18 @@ export class OpenInstances<TKey, TInstance> {
     this.#options.open(key, BACKGROUND_CONTEXT).catch((error: unknown) => {
       // While disconnected, the next connection opens it again.
       if (this.#connection.status.value?.status !== "connected") return;
-      this.#onError(error instanceof Error ? error : new Error(String(error)));
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.#failures.set(key, failure);
+      this.#notify();
+      this.#onError(failure);
     });
   }
 
   async #track(instance: TInstance, context: Context): Promise<void> {
     const key = await this.#options.keyOf(instance, context);
     if (key === undefined) return;
+    this.#failures.delete(key);
     this.#instances.set(key, instance);
-    this.#notify();
     const remove = (): void => {
       if (this.#instances.get(key) !== instance) return;
       this.#instances.delete(key);

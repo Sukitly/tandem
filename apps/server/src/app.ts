@@ -62,7 +62,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           files,
           models: modelCatalog,
           notices,
-          openTracker: (workspaceId, context) => ProjectChangeTracker.open(workspaceId, paths, context),
+          openTracker: (workspaceId, context) => ProjectChangeTracker.open(workspaceId, paths, context, onError),
         }),
       onError,
     });
