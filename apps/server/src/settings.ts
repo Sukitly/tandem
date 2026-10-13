@@ -6,6 +6,8 @@ import { readJsonFile, SerialQueue, writeJsonFile } from "./json-file.ts";
 export interface SettingsValue {
   publicUrl?: string;
   defaultModel?: ModelRef;
+  /** The thinking level new conversations start with; the model clamps it when it does not support it. */
+  defaultThinkingLevel?: string;
   /** Stable ID of this installation; some providers ask for it during login. */
   deviceId?: string;
 }

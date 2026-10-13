@@ -169,6 +169,10 @@ export function createConnectionServices({
       if (typeof providerId !== "string" || typeof modelId !== "string") throw invalidInput("Invalid model");
       await models.setDefaultModel({ provider: providerId, modelId });
     },
+    async setDefaultThinkingLevel(level) {
+      if (typeof level !== "string") throw invalidInput("thinkingLevel must be a string");
+      await models.setDefaultThinkingLevel(level);
+    },
   });
 
   provider.provide(Workspaces, {

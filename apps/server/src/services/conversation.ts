@@ -234,16 +234,18 @@ export function initialAgent(
   const model = chosen ?? models.defaultModel();
   if (thinkingLevel !== undefined && typeof thinkingLevel !== "string")
     throw invalidInput("thinkingLevel must be a string");
+  // No level chosen: start with the remembered default, which the model clamps to what it supports.
+  const level = thinkingLevel ?? models.defaultThinkingLevel();
   const summary = model === undefined ? undefined : models.available(model);
   return {
     ...(model === undefined ? {} : { model }),
-    ...(thinkingLevel === undefined
+    ...(level === undefined
       ? {}
       : {
           thinkingLevel:
             summary === undefined
-              ? (thinkingLevel as ModelThinkingLevel)
-              : clampThinkingLevel(summary, thinkingLevel as ModelThinkingLevel),
+              ? (level as ModelThinkingLevel)
+              : clampThinkingLevel(summary, level as ModelThinkingLevel),
         }),
   };
 }

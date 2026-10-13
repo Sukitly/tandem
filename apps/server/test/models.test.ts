@@ -170,6 +170,34 @@ describe("models", () => {
     );
   });
 
+  test("new conversations start with the remembered thinking level, clamped to the model", async () => {
+    const { models, startIn, connection } = await start([
+      createFauxProvider({ models: [{ id: "faux-thinking", name: "Faux thinking", reasoning: true }] }),
+    ]);
+    await waitFor(() => models.state.value?.models.length === 1);
+    expect(models.state.value?.models[0]?.thinkingLevels).toContain("high");
+
+    await models.setDefaultThinkingLevel("high", context);
+    await waitFor(() => models.state.value?.defaultThinkingLevel === "high");
+
+    const open = new OpenConversations(connection);
+    const id = await startIn({ text: "hello" });
+    open.hold(id);
+    await waitFor(() => open.get(id)?.view.value !== undefined);
+    const agent = () => open.get(id)?.view.value?.docs["pi.agent"] as { thinkingLevel?: string } | undefined;
+    expect(agent()?.thinkingLevel).toBe("high");
+
+    // A level the model does not offer is clamped to the nearest one it does, as the server does elsewhere.
+    await models.setDefaultThinkingLevel("xhigh", context);
+    await waitFor(() => models.state.value?.defaultThinkingLevel === "xhigh");
+    const clamped = await startIn({ text: "hello" });
+    open.hold(clamped);
+    await waitFor(() => open.get(clamped)?.view.value !== undefined);
+    expect(
+      (open.get(clamped)?.view.value?.docs["pi.agent"] as { thinkingLevel?: string } | undefined)?.thinkingLevel,
+    ).toBe("high");
+  });
+
   test("a message without a model gets a notice instead of an answer", async () => {
     const { startIn, connection } = await start([loginProvider("test")]);
     const open = new OpenConversations(connection);

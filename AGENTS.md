@@ -59,7 +59,7 @@ The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/s
 | `devices.json` | Paired-device metadata, session hashes, and recovery-code hashes, mode `0600`. Never contains raw credentials |
 | `server.lock` | Held while a server runs: pi-durable allows one process per database |
 | `auth.json` | Model credentials (OAuth tokens, API keys), mode `0600`. Never sent to clients. Tandem does not share pi's `~/.pi/agent/auth.json`: OAuth refresh tokens rotate, so sharing one would sign the other program out |
-| `settings.json` | Preferences such as the default model, and the installation's device ID |
+| `settings.json` | Preferences such as the default model and thinking level, and the installation's device ID |
 
 ## Code style
 

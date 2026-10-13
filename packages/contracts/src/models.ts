@@ -56,6 +56,8 @@ export interface ModelsState {
   models: ModelSummary[];
   /** The model new conversations start with. */
   defaultModel?: ModelRef;
+  /** The thinking level new conversations start with. */
+  defaultThinkingLevel?: string;
   /** The current or last login flow. One runs at a time. */
   login?: LoginState;
 }
@@ -71,6 +73,8 @@ export interface Models {
   /** Remove the provider's stored credential. */
   logout(providerId: string, context: Context): Promise<void>;
   setDefaultModel(model: ModelRef, context: Context): Promise<void>;
+  /** Remember the thinking level new conversations start with. */
+  setDefaultThinkingLevel(level: string, context: Context): Promise<void>;
 }
 
 export const Models = defineService<Models>("tandem.models");
