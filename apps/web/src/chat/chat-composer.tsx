@@ -20,7 +20,9 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } fro
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type AttachedImage, attachImages, IMAGE_ACCEPT, imageFiles } from "./attached-images.ts";
+import { emacsColumn, emacsEdit } from "./emacs-edit.ts";
 import type { QueuedMessage } from "./transcript.ts";
+import { useComposerText } from "./use-composer-text.ts";
 
 /**
  * What the composer knows of the current model's images: it takes them (at most `maxPerMessage` in a message, if it
@@ -71,7 +73,7 @@ export interface ChatComposerProps {
  * such a component would take the keys for itself. It follows how pi's own input behaves: a message that begins with
  * `/` and holds no argument yet offers the project's slash commands, the arrows move through them, Tab fills the
  * highlighted one into the box so its arguments can be typed, Enter sends it, Escape puts the menu away, and
- * everything else is left to the browser.
+ * Emacs editing keys are handled by the box; everything else is left to the browser.
  */
 export function ChatComposer({
   busy,
@@ -85,7 +87,6 @@ export function ChatComposer({
   status,
   imageSupport,
 }: ChatComposerProps) {
-  const [value, setValue] = useState("");
   const [attached, setAttached] = useState<AttachedImage[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,8 +96,16 @@ export function ChatComposer({
   const [dismissed, setDismissed] = useState(false);
   const listId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
+  const killedText = useRef("");
+  const verticalGoal = useRef<{ column: number; position: number } | null>(null);
   const composing = useRef(false);
   const composingUntil = useRef(0);
+  const editor = useComposerText(() => {
+    verticalGoal.current = null;
+    setHighlight(0);
+    setDismissed(false);
+  });
+  const { value, textareaRef } = editor;
   const empty = value.trim() === "" && comments.length === 0 && attached.length === 0;
 
   // The thumbnails' URLs go with the box.
@@ -173,7 +182,7 @@ export function ChatComposer({
   }, [menuOpen]);
 
   const accept = (command: PromptTemplateSummary): void => {
-    setValue(completion(command));
+    editor.setText(completion(command));
     setHighlight(0);
     setDismissed(false);
   };
@@ -191,7 +200,7 @@ export function ChatComposer({
         sent.map((image) => image.input),
         whenBusy,
       );
-      setValue("");
+      editor.reset();
       setAttached((current) => current.filter((image) => !sent.includes(image)));
       for (const image of sent) URL.revokeObjectURL(image.url);
     } catch (failure) {
@@ -206,15 +215,23 @@ export function ChatComposer({
     // A key the input method owns, picking one of its candidates, is never ours: acting on it would fight the IME.
     if (native.isComposing || native.keyCode === 229 || composing.current || Date.now() < composingUntil.current)
       return;
+    if (event.getModifierState("AltGraph")) return;
+    if (editor.keyDown(event)) {
+      verticalGoal.current = null;
+      return;
+    }
+    const emacsControl = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
 
     if (menuOpen) {
       const count = matching.length;
-      if (event.key === "ArrowDown") {
+      if (event.key === "ArrowDown" || (emacsControl && event.key.toLowerCase() === "n")) {
+        verticalGoal.current = null;
         event.preventDefault();
         setHighlight((current) => (current + 1) % count);
         return;
       }
-      if (event.key === "ArrowUp") {
+      if (event.key === "ArrowUp" || (emacsControl && event.key.toLowerCase() === "p")) {
+        verticalGoal.current = null;
         event.preventDefault();
         setHighlight((current) => (current - 1 + count) % count);
         return;
@@ -239,14 +256,48 @@ export function ChatComposer({
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         const command = matching[selected];
-        const text = command === undefined ? value : completion(command);
-        if (text !== value) setValue(text);
-        void send(text, event.altKey ? "followUp" : "steer");
+        const message = command === undefined ? value : completion(command);
+        if (message !== value) editor.setText(message);
+        void send(message, event.altKey ? "followUp" : "steer");
         return;
       }
     }
-    // Everything else is the browser's: ordinary characters and spaces, which close the menu by changing the message,
-    // and Shift+Enter's line break.
+    const textarea = event.currentTarget;
+    const vertical = emacsControl && (event.key.toLowerCase() === "p" || event.key.toLowerCase() === "n");
+    const cursor = textarea.selectionDirection === "backward" ? textarea.selectionStart : textarea.selectionEnd;
+    const goal = verticalGoal.current;
+    const column = vertical
+      ? goal !== null && textarea.selectionStart === goal.position && textarea.selectionEnd === goal.position
+        ? goal.column
+        : emacsColumn(value, cursor)
+      : undefined;
+    const modifier = event.key === "Control" || event.key === "Alt" || event.key === "Meta" || event.key === "Shift";
+    if (!vertical && !modifier) verticalGoal.current = null;
+    const edit = emacsEdit(
+      textarea.value,
+      textarea.selectionStart,
+      textarea.selectionEnd,
+      textarea.selectionDirection,
+      event,
+      killedText.current,
+      column,
+    );
+    if (edit !== null) {
+      event.preventDefault();
+      if (edit.kind === "move") {
+        textarea.setSelectionRange(edit.position, edit.position);
+        if (column !== undefined) verticalGoal.current = { column, position: edit.position };
+      } else if (edit.start !== edit.end || edit.text !== "") {
+        if (edit.kill) killedText.current = textarea.value.slice(edit.start, edit.end);
+        editor.setText(
+          textarea.value.slice(0, edit.start) + edit.text + textarea.value.slice(edit.end),
+          edit.start + edit.text.length,
+        );
+      }
+      return;
+    }
+    // Ordinary characters and spaces, which close the menu by changing the message, and Shift+Enter's line break
+    // remain the browser's.
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
     void send(value, event.altKey ? "followUp" : "steer");
@@ -372,18 +423,21 @@ export function ChatComposer({
               </InputGroupAddon>
             )}
             <InputGroupTextarea
+              ref={textareaRef}
               value={value}
-              onChange={(event) => {
-                setValue(event.target.value);
-                setHighlight(0);
-                setDismissed(false);
+              onChange={(event) => editor.change(event.target)}
+              onSelect={editor.rememberSelection}
+              onPointerDown={() => {
+                verticalGoal.current = null;
               }}
               onKeyDown={onKeyDown}
               onPaste={onPaste}
               onCompositionStart={() => {
                 composing.current = true;
+                editor.compositionStart();
               }}
-              onCompositionEnd={() => {
+              onCompositionEnd={(event) => {
+                editor.compositionEnd(event.currentTarget);
                 composing.current = false;
                 composingUntil.current = Date.now() + IME_SETTLE_MS;
               }}
