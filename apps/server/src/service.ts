@@ -144,7 +144,9 @@ async function install(options: { print: boolean }): Promise<void> {
 
 /** Rebuilds the web app and starts the server again, which is what new code needs. */
 async function restart(): Promise<void> {
-  if (!loaded()) throw new Error("The service is not loaded. Install it with `bun run service install`.");
+  // The file is the service: it may be installed and stopped, which is still something to start again.
+  if (!existsSync(serviceFile(platform)))
+    throw new Error("The service is not installed. Install it with `bun run service install`.");
   run("bun", ["run", "build"]);
   if (platform === "darwin") run("launchctl", ["kickstart", "-k", target()]);
   else run("systemctl", ["--user", "restart", SERVICE_UNIT]);
