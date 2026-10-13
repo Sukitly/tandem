@@ -77,7 +77,7 @@ test("action failures are shown in the dialog", async () => {
 test("replacing recovery codes requires confirmation and the secrets disappear when the dialog closes", async () => {
   mock.regenerateRecoveryCodes.mockResolvedValue(["saved-once"]);
   setup();
-  fireEvent.click(screen.getByRole("button", { name: "Generate recovery codes" }));
+  fireEvent.click(screen.getByRole("button", { name: "Replace recovery codes" }));
   expect(mock.regenerateRecoveryCodes).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
   await waitFor(() => expect(screen.getByText("saved-once")).toBeDefined());
@@ -109,4 +109,18 @@ test("a failed rename keeps the typed name and says why", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.getByText("Device does not exist")).toBeDefined());
   expect((screen.getByLabelText("Name of Laptop") as HTMLInputElement).value).toBe("Phone");
+});
+
+test("says what replacing does when codes already exist", () => {
+  setup();
+  expect(screen.getByRole("button", { name: "Replace recovery codes" })).toBeDefined();
+  expect(screen.getByText(/makes every code you have saved stop working/)).toBeDefined();
+});
+test("offers plain generation when no code exists", () => {
+  mock.value.recoveryCodesRemaining = 0;
+  render(createElement(DevicesDialogProvider, null, createElement(OpenDevices)));
+  // With none saved, the dialog that asks for them opens first; its action opens this one.
+  fireEvent.click(screen.getByRole("button", { name: "Manage devices and recovery codes" }));
+  expect(screen.getByRole("button", { name: "Generate recovery codes" })).toBeDefined();
+  expect(screen.queryByText(/makes every code you have saved stop working/)).toBeNull();
 });

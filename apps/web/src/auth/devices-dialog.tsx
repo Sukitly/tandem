@@ -67,6 +67,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
   const state = useReplicatedState(devices.state);
   const [pair, setPair] = useState<PairingCode>();
   const [recovery, setRecovery] = useState<string[]>();
+  const remaining = state?.recoveryCodesRemaining ?? 0;
   const [renaming, setRenaming] = useState<string>();
   const [draft, setDraft] = useState("");
   const [failure, setFailure] = useState<string>();
@@ -217,13 +218,18 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
             <div className="flex flex-col gap-2">
               <h3 className="font-medium">Recovery codes</h3>
               <p className="text-sm text-muted-foreground">
-                {state?.recoveryCodesRemaining ?? 0} codes remaining. Each code pairs one device once.
+                {remaining} codes remaining. Each code pairs one device once.
               </p>
+              {remaining > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Replacing them makes every code you have saved stop working.
+                </p>
+              )}
               <Button
                 variant="outline"
                 disabled={busy}
                 onClick={() => {
-                  if ((state?.recoveryCodesRemaining ?? 0) === 0) void run(regenerate);
+                  if (remaining === 0) void run(regenerate);
                   else
                     setConfirmation({
                       title: "Replace recovery codes?",
@@ -232,7 +238,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                     });
                 }}
               >
-                Generate recovery codes
+                {remaining === 0 ? "Generate recovery codes" : "Replace recovery codes"}
               </Button>
               {recovery !== undefined && (
                 <>
