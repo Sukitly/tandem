@@ -1,6 +1,5 @@
 import { type Context, defineService, type ReplicatedState } from "@earendil-works/chord";
-// Types only: the pi-durable runtime must not reach clients.
-import type { ConversationView } from "@earendil-works/pi-durable";
+import type { ConversationView, ImageInput } from "./images.ts";
 import type { ModelRef } from "./models.ts";
 
 export type { ConversationView };
@@ -49,22 +48,29 @@ export const Conversations = defineService<Conversations>("tandem.conversations"
 
 export interface StartInput {
   workspaceId: number;
-  /** May be empty when the message carries comments. */
+  /** May be empty when the message carries comments or images. */
   text: string;
   /** Waiting comment messages of the project that go with it, by ID; see `SubmitInput.comments`. */
   comments?: number[];
+  /** See `SubmitInput.images`. */
+  images?: ImageInput[];
   model?: ModelRef;
   thinkingLevel?: string;
 }
 
 export interface SubmitInput {
-  /** May be empty when the message carries comments. */
+  /** May be empty when the message carries comments or images. */
   text: string;
   /**
    * Waiting comment messages of the conversation's project that go with it, by ID. The server writes them into the
    * message ahead of the text, each with the place it is about, and marks them sent once the message is taken.
    */
   comments?: number[];
+  /**
+   * Images after the text, as the files are: the server fits each to the model, so a page sends them unchanged. Refused
+   * when the model takes no images, or more than it takes in a message, or above `MAX_MESSAGE_IMAGE_BYTES` together.
+   */
+  images?: ImageInput[];
   /** What happens when the agent is working: interrupt it at the next step, or wait until it finishes. */
   whenBusy: "steer" | "followUp";
 }

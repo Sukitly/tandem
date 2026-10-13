@@ -43,6 +43,17 @@
     {
       "includes": ["apps/web/src/components/ui/**"],
       "linter": { "enabled": false }
+    },
+    {
+      "includes": [
+        "apps/server/src/images/exif.ts",
+        "apps/server/src/images/image-processor.ts",
+        "apps/server/src/images/image-type.ts",
+        "apps/server/src/images/node.ts",
+        "apps/server/src/images/node-worker.ts",
+        "apps/server/src/images/photon.ts"
+      ],
+      "linter": { "enabled": false }
     }
   ]
 }

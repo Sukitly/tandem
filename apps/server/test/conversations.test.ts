@@ -293,7 +293,10 @@ describe("conversations", () => {
     const pathB = await mkdtemp(join(tmpdir(), "tandem-b-"));
     const pathC = await mkdtemp(join(tmpdir(), "tandem-c-"));
     const models = createAppModels(new FileCredentialStore(join(stateDir, "auth.json")), [createFauxProvider()]);
-    const opened = await openHarness({ databasePath: join(stateDir, "app.sqlite"), models }, context);
+    const opened = await openHarness(
+      { databasePath: join(stateDir, "app.sqlite"), models, images: { prepare: async () => undefined } },
+      context,
+    );
     // Conversations used to be created before their first message, and titled after it.
     for (const [cwd, createdAt, title] of [
       [pathA, 1, "one"],

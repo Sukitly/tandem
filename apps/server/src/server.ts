@@ -11,6 +11,8 @@ import {
   DEFAULT_PORT,
   HEALTH_PATH,
   type HealthResponse,
+  IMAGE_PATH,
+  type ImageRef,
   PTY_PATH,
   RPC_PATH,
   TOKEN_QUERY_PARAMETER,
@@ -36,6 +38,8 @@ export interface StartServerOptions {
   createConnectionServices?: () => ConnectionServices;
   /** The terminal a `/pty/<id>` connection is for. */
   terminal?: (id: string) => HostedTerminal | undefined;
+  /** The image a `/image/...` request is for, as stored: base64 and its type. */
+  image?: (ref: ImageRef) => Promise<{ data: string; mimeType: string } | undefined>;
   onError?: (error: Error) => void;
 }
 
@@ -60,7 +64,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
 
   const allowedOrigins = new Set(options.allowedOrigins ?? []);
   const terminalSockets = new TerminalSockets();
-  const http = createServer((request, response) => handleRequest(request, response, { serverId, token }));
+  const http = createServer((request, response) => {
+    handleRequest(request, response, { serverId, token, image: options.image }).catch((error: unknown) => {
+      onError(error instanceof Error ? error : new Error(String(error)));
+      if (!response.headersSent) sendJson(response, 500, { error: "internal" });
+      else response.destroy();
+    });
+  });
   // Both sockets are authorized alike: a terminal is a shell, as much as the agent's tools are.
   http.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", "http://localhost");
@@ -111,13 +121,38 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   };
 }
 
-function handleRequest(
+/** The types an image is served as: what browsers show in `<img>`, never anything they would run. */
+const SERVED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  server: { serverId: string; token: string },
-): void {
+  server: Pick<StartServerOptions, "image"> & { serverId: string; token: string },
+): Promise<void> {
   const { pathname } = new URL(request.url ?? "/", "http://localhost");
-  if (pathname === HEALTH_PATH) {
+  if (pathname.startsWith(`${IMAGE_PATH}/`)) {
+    // Authorized by the header, not a query parameter: the token stays out of URLs, logs, and the browser's history.
+    if (!tokensMatch(server.token, bearerToken(request.headers.authorization))) {
+      sendJson(response, 401, { error: "unauthorized" });
+      return;
+    }
+    // An image of another state directory, which has its own server ID, is not this server's to serve.
+    const ref = imageRefOf(pathname.slice(IMAGE_PATH.length + 1), server.serverId);
+    const image = ref === undefined || request.method !== "GET" ? undefined : await server.image?.(ref);
+    if (image === undefined || !SERVED_IMAGE_TYPES.has(image.mimeType)) {
+      sendJson(response, 404, { error: "not_found" });
+      return;
+    }
+    const body = Buffer.from(image.data, "base64");
+    response.writeHead(200, {
+      "content-type": image.mimeType,
+      "content-length": body.length,
+      "x-content-type-options": "nosniff",
+      // An entry never changes once written, and the path names the state directory it is in (`imagePath`).
+      "cache-control": "private, max-age=31536000, immutable",
+    });
+    response.end(body);
+  } else if (pathname === HEALTH_PATH) {
     const body: HealthResponse = { status: "ok", version: packageJson.version };
     sendJson(response, 200, body);
   } else if (pathname === BOOTSTRAP_PATH) {
@@ -136,6 +171,15 @@ function handleRequest(
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
+}
+
+/** `<server>/<conversation>/<entry>/<messageIndex>/<blockIndex>` of this server, the rest non-negative whole numbers. */
+function imageRefOf(path: string, serverId: string): ImageRef | undefined {
+  const [server, ...rest] = path.split("/");
+  if (server === undefined || decodedSegment(server) !== serverId) return undefined;
+  if (rest.length !== 4 || !rest.every((part) => /^\d{1,15}$/.test(part))) return undefined;
+  const [conversationId, entryId, messageIndex, blockIndex] = rest.map(Number) as [number, number, number, number];
+  return { conversationId, entryId, messageIndex, blockIndex };
 }
 
 /** A path segment as it was encoded, or `undefined` for one that is not valid percent-encoding. */

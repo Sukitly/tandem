@@ -14,11 +14,14 @@ import {
   Terminals,
   Workspaces,
 } from "@tandem/contracts";
+import { pageView } from "../conversation-view.ts";
+import type { ImageProcessor } from "../images/image-processor.ts";
 import type { ConnectionServices } from "../rpc-host.ts";
 import { type ChangeHold, type ChangeTrackers, createProjectChanges } from "./changes.ts";
 import type { CommentBoard } from "./comments.ts";
 import {
   createConversationService,
+  imagesFor,
   initialAgent,
   joinMessage,
   type NoticeBoard,
@@ -47,6 +50,8 @@ export interface AppServices {
   readonly comments: CommentBoard;
   readonly prompts: PromptLibrary;
   readonly terminals: TerminalHost;
+  /** Fits images to a model: those a page sends with a message. */
+  readonly images: ImageProcessor;
 }
 
 /** An open conversation on one connection. */
@@ -76,6 +81,7 @@ export function createConnectionServices({
   comments,
   prompts,
   terminals,
+  images,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
     Models,
@@ -97,7 +103,9 @@ export function createConnectionServices({
   const openConversation = async (id: number): Promise<OpenConversation> => {
     const conversation = await harness.conversation(id as ConversationId, BACKGROUND_CONTEXT);
     if (conversation === undefined) throw new Error(`Conversation ${id} does not exist`);
-    const view = await conversation.viewState(BACKGROUND_CONTEXT);
+    const durable = await conversation.viewState(BACKGROUND_CONTEXT);
+    // Pages fetch images on their own; the view they receive holds where, not the data.
+    const view = pageView(durable);
     try {
       if (disposed) throw new Error("Connection is closed");
       const withdraw = provider.spawn(
@@ -109,6 +117,7 @@ export function createConnectionServices({
           notices,
           models,
           comments,
+          images,
           prompts,
           workspaceId: () => catalog.workspaceOf(id),
           onSubmitted: (_text, context) => catalog.noteMessage(id, context),
@@ -118,10 +127,12 @@ export function createConnectionServices({
         close() {
           withdraw();
           view.dispose();
+          durable.dispose();
         },
       };
     } catch (error) {
       view.dispose();
+      durable.dispose();
       throw error;
     }
   };
@@ -231,24 +242,37 @@ export function createConnectionServices({
     async start(input, context) {
       const { workspaceId, model, thinkingLevel } = (input ?? {}) as { [K in keyof StartInput]?: unknown };
       parseId(workspaceId, "Project");
-      const { text, comments: ids } = parseSubmitInput({ ...(input ?? {}), whenBusy: "followUp" });
+      const { text, comments: ids, images: sent } = parseSubmitInput({ ...(input ?? {}), whenBusy: "followUp" });
       const agent = initialAgent(models, { model, thinkingLevel });
+      // Fitted before anything is created: a model that takes no images refuses the message, not half of it.
+      const attached = await imagesFor(
+        sent,
+        agent.model === undefined ? undefined : models.available(agent.model),
+        images,
+      );
       // Expanded before the comments are taken, so a failure leaves them waiting.
       const expanded = await prompts.expand(workspaceId, text, context);
       const taken = comments.take(workspaceId, ids);
       const message = joinMessage(taken.text, expanded);
       let conversation: Awaited<ReturnType<ConversationCatalog["create"]>>;
       try {
-        if (message === "") throw invalidInput("Write a message, or a comment to send");
+        if (message === "" && attached.length === 0) throw invalidInput("Write a message, or a comment to send");
         // Titled after what the user typed; a conversation started by comments alone, after the first one's place.
         const anchor = taken.first?.anchor;
         const title = text.trim() !== "" || anchor === undefined ? text : `Review of ${anchor.path}:${anchor.line}`;
-        conversation = await catalog.create(workspaceId, title.trim() === "" ? message : title, agent, context);
+        const named = title.trim() !== "" ? title : message !== "" ? message : "Image";
+        conversation = await catalog.create(workspaceId, named, agent, context);
       } catch (error) {
         taken.release();
         throw error;
       }
-      await sendWithComments(conversation, notices, taken, { text: message, whenBusy: "followUp" }, context);
+      await sendWithComments(
+        conversation,
+        notices,
+        taken,
+        { text: message, images: attached, whenBusy: "followUp" },
+        context,
+      );
       return conversation.id as number;
     },
     async open(id) {

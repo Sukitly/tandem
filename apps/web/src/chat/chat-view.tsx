@@ -14,7 +14,7 @@ import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
 import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { ChatComposer } from "./chat-composer.tsx";
+import { ChatComposer, imageSupportOf } from "./chat-composer.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
 import { toTranscript } from "./transcript.ts";
 import { TranscriptEntry, WaitingDots } from "./transcript-items.tsx";
@@ -94,8 +94,12 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
               .catch((error: unknown) => reportFailure("Could not take back the comment", error))
           }
           autoFocus
-          onSend={async (text, sent) => {
-            const id = await conversations.start({ workspaceId, text, comments: sent, ...agent }, BACKGROUND_CONTEXT);
+          imageSupport={imageSupportOf(available?.models, agent.model)}
+          onSend={async (text, sent, images) => {
+            const id = await conversations.start(
+              { workspaceId, text, comments: sent, ...(images.length === 0 ? {} : { images }), ...agent },
+              BACKGROUND_CONTEXT,
+            );
             select(id);
           }}
           onStop={() => {}}
@@ -107,7 +111,8 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 }
 
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
-  const { conversations } = useConnected();
+  const { conversations, models } = useConnected();
+  const available = useReplicatedState(models.state);
   const { comments, reportFailure } = useWorkbench();
   const summary = useReplicatedState(conversations.state)?.conversations.find(
     (candidate) => candidate.id === conversationId,
@@ -155,7 +160,13 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
               .catch((error: unknown) => reportFailure("Could not take back the comment", error))
           }
           autoFocus
-          onSend={(text, sent, whenBusy) => conversation.submit({ text, comments: sent, whenBusy }, BACKGROUND_CONTEXT)}
+          imageSupport={imageSupportOf(available?.models, agent?.model)}
+          onSend={(text, sent, images, whenBusy) =>
+            conversation.submit(
+              { text, comments: sent, ...(images.length === 0 ? {} : { images }), whenBusy },
+              BACKGROUND_CONTEXT,
+            )
+          }
           onStop={() => {
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}

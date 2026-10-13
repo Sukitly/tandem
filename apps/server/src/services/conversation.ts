@@ -6,14 +6,23 @@ import {
   replicatedState,
 } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { clampThinkingLevel, type ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, type ImageContent, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type {
   AgentChange,
-  ConversationView,
   Conversation as HarnessConversation,
   SettledSubmissionRecord,
+  UserInput,
 } from "@earendil-works/pi-durable";
-import type { Conversation, ConversationNotices, ModelRef, SubmitInput } from "@tandem/contracts";
+import type {
+  Conversation,
+  ConversationNotices,
+  ConversationView,
+  ImageInput,
+  ModelRef,
+  SubmitInput,
+} from "@tandem/contracts";
+import type { ImageProcessor } from "../images/image-processor.ts";
+import { checkImageTotal, ImageRefused, imageModel, prepareImages } from "../images/message-images.ts";
 import type { CommentBoard, TakenComments } from "./comments.ts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
@@ -55,6 +64,7 @@ export interface ConversationServiceOptions {
   notices: NoticeBoard;
   models: ModelCatalog;
   comments: CommentBoard;
+  images: ImageProcessor;
   prompts: PromptLibrary;
   /** The project the conversation belongs to, whose comments its messages may carry. */
   workspaceId: () => number | undefined;
@@ -68,6 +78,7 @@ export function createConversationService({
   notices,
   models,
   comments,
+  images,
   prompts,
   workspaceId,
   onSubmitted,
@@ -77,17 +88,20 @@ export function createConversationService({
     view,
     notices: notices.get(id),
     async submit(input, context) {
-      const { text, whenBusy, comments: ids } = parseSubmitInput(input);
+      const { text, whenBusy, comments: ids, images: sent } = parseSubmitInput(input);
+      // The model is looked up only for a message with images: it is what they are fitted to.
+      const current = sent === undefined || sent.length === 0 ? undefined : (await conversation.agent(context)).model;
+      const attached = await imagesFor(sent, current === undefined ? undefined : models.available(current), images);
       const project = workspaceId();
       // Expanded before the comments are taken, so a failure leaves them waiting.
       const expanded = project === undefined ? text : await prompts.expand(project, text, context);
       const taken = project === undefined ? undefined : comments.take(project, ids);
       const message = joinMessage(taken?.text ?? "", expanded);
-      if (message === "") {
+      if (message === "" && attached.length === 0) {
         taken?.release();
         throw invalidInput("Write a message, or a comment to send");
       }
-      await sendWithComments(conversation, notices, taken, { text: message, whenBusy }, context);
+      await sendWithComments(conversation, notices, taken, { text: message, images: attached, whenBusy }, context);
       await onSubmitted(message, context);
     },
     abort: (context) => conversation.abort(context),
@@ -129,7 +143,7 @@ export async function sendWithComments(
   conversation: HarnessConversation,
   notices: NoticeBoard,
   taken: TakenComments | undefined,
-  input: Pick<SubmitInput, "text" | "whenBusy">,
+  input: MessageInput,
   context: Context,
 ): Promise<void> {
   const requestId = randomUUID();
@@ -149,18 +163,46 @@ export function joinMessage(comments: string, text: string): string {
   return [comments, text.trim()].filter((part) => part !== "").join("\n\n");
 }
 
+/** What a message is made of once its comments are written in and its images fitted to the model. */
+export interface MessageInput {
+  text: string;
+  images?: ImageContent[];
+  whenBusy: SubmitInput["whenBusy"];
+}
+
+/**
+ * The images of a message, fitted to `model`, the conversation's: refused with a message the page shows when the
+ * model cannot take them.
+ */
+export async function imagesFor(
+  sent: ImageInput[] | undefined,
+  model: Parameters<typeof imageModel>[0],
+  processor: ImageProcessor,
+): Promise<ImageContent[]> {
+  if (sent === undefined || sent.length === 0) return [];
+  try {
+    return await prepareImages(sent, model === undefined ? undefined : imageModel(model), processor);
+  } catch (error) {
+    if (error instanceof ImageRefused) throw invalidInput(error.message);
+    throw error;
+  }
+}
+
 /** Submit a message. The answer arrives in the view; a message that gets none leaves a notice saying why. */
 export async function submitMessage(
   conversation: HarnessConversation,
   notices: NoticeBoard,
-  { text, whenBusy }: Pick<SubmitInput, "text" | "whenBusy">,
+  { text, images = [], whenBusy }: MessageInput,
   context: Context,
   requestId?: string,
 ): Promise<void> {
   const id = conversation.id as number;
   notices.clear(id);
+  // Text alone stays a string, as before images: the transcript of such a message is unchanged.
+  const content: UserInput =
+    images.length === 0 ? text : [...(text === "" ? [] : [{ type: "text" as const, text }]), ...images];
   const submission = await conversation.submit(
-    { type: "input", content: text, whenBusy, ...(requestId === undefined ? {} : { requestId }) },
+    { type: "input", content, whenBusy, ...(requestId === undefined ? {} : { requestId }) },
     context,
   );
   void submission.wait(BACKGROUND_CONTEXT).then(
@@ -215,12 +257,37 @@ function unansweredMessage(settled: SettledSubmissionRecord): string | undefined
   return `The message got no answer (${reason}).`;
 }
 
+/** `images` of a submission: its shape, a page's to get right, then its size together, the user's to keep within. */
+function parseImages(images: unknown): ImageInput[] | undefined {
+  if (images === undefined) return undefined;
+  if (!Array.isArray(images)) throw invalidInput("images must be a list");
+  const parsed = images.map((item): ImageInput => {
+    const { data, mimeType } = (item ?? {}) as Partial<ImageInput>;
+    if (typeof data !== "string" || typeof mimeType !== "string")
+      throw invalidInput("Each image needs its data and type");
+    return { data, mimeType };
+  });
+  try {
+    checkImageTotal(parsed);
+  } catch (error) {
+    if (error instanceof ImageRefused) throw invalidInput(error.message);
+    throw error;
+  }
+  return parsed;
+}
+
 /** The message's parts. The text may be empty here; the message as a whole may not, which is checked once it is put together. */
 export function parseSubmitInput(input: unknown): SubmitInput {
-  const { text, whenBusy, comments } = (input ?? {}) as Partial<SubmitInput>;
+  const { text, whenBusy, comments, images } = (input ?? {}) as Partial<SubmitInput>;
   if (typeof text !== "string") throw invalidInput("text must be a string");
   if (whenBusy !== "steer" && whenBusy !== "followUp") throw invalidInput('whenBusy must be "steer" or "followUp"');
   if (comments !== undefined && !(Array.isArray(comments) && comments.every((id) => Number.isSafeInteger(id))))
     throw invalidInput("comments must be a list of message IDs");
-  return { text, whenBusy, ...(comments === undefined ? {} : { comments }) };
+  const parsed = parseImages(images);
+  return {
+    text,
+    whenBusy,
+    ...(comments === undefined ? {} : { comments }),
+    ...(parsed === undefined ? {} : { images: parsed }),
+  };
 }

@@ -29,6 +29,7 @@ function composer() {
       commands,
       onSend,
       onStop: vi.fn(),
+      imageSupport: { kind: "accepted" },
     }),
   );
   return { textarea: screen.getByLabelText("Message") as HTMLTextAreaElement, onSend };
@@ -75,7 +76,7 @@ describe("chat composer commands", () => {
     type(textarea, "/rev");
     expect(press(textarea, { key: "Enter" })).toBe(true);
     // The settled command is what goes out, not the half-typed `/rev` the server could not expand.
-    expect(onSend).toHaveBeenCalledWith("/review ", [], "steer");
+    expect(onSend).toHaveBeenCalledWith("/review ", [], [], "steer");
     expect(textarea.value).toBe("/review ");
     await waitFor(() => expect(textarea.value).toBe(""));
   });

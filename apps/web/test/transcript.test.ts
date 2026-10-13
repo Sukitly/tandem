@@ -33,7 +33,7 @@ describe("toTranscript", () => {
     );
     expect(transcript).toEqual({
       items: [
-        { kind: "user", key: "1:0", text: "hi" },
+        { kind: "user", key: "1:0", text: "hi", images: [] },
         { kind: "assistant", key: "3:0", parts: [{ kind: "text", text: "hello" }], ending: "complete" },
       ],
       busy: false,
@@ -135,8 +135,8 @@ describe("toTranscript", () => {
     ]);
     expect(transcript.busy).toBe(true);
     expect(transcript.queued).toEqual([
-      { id: 4, mode: "steer", text: "look here" },
-      { id: 5, mode: "followUp", text: "then this" },
+      { id: 4, mode: "steer", text: "look here", imageCount: 0 },
+      { id: 5, mode: "followUp", text: "then this", imageCount: 0 },
     ]);
   });
 
@@ -172,5 +172,55 @@ describe("toTranscript", () => {
     const compacted = toTranscript(view([...entries, { id: 3, kind: "pi.compaction", model: [] }], docs));
     expect(compacted.usage.tokens).toBe(0);
     expect(compacted.items.at(-1)).toEqual({ kind: "compaction", key: "3" });
+  });
+
+  test("keeps the images of user messages, tool results, and queued messages", () => {
+    const ref = (blockIndex: number) => ({ conversationId: 1, entryId: 1, messageIndex: 0, blockIndex });
+    const transcript = toTranscript(
+      view(
+        [
+          {
+            id: 1,
+            kind: "pi.user",
+            model: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "see" },
+                  { type: "image", mimeType: "image/png", ref: ref(1) },
+                ],
+              },
+            ],
+          },
+          {
+            id: 2,
+            kind: "pi.assistant",
+            model: [assistant([{ type: "toolCall", id: "r", name: "read", arguments: { path: "a.png" } }], "toolUse")],
+          },
+          {
+            id: 3,
+            kind: "pi.tool-result",
+            model: [
+              {
+                role: "toolResult",
+                toolCallId: "r",
+                toolName: "read",
+                content: [{ type: "image", mimeType: "image/jpeg", ref: ref(0) }],
+                isError: false,
+              },
+            ],
+          },
+        ],
+        { "pi.inbox": { items: [{ id: 9, mode: "followUp", content: [{ type: "image", mimeType: "image/png" }] }] } },
+      ),
+    );
+    expect(transcript.items[0]).toMatchObject({
+      kind: "user",
+      text: "see",
+      images: [{ mimeType: "image/png", ref: ref(1) }],
+    });
+    const [tool] = (transcript.items[1] as Extract<(typeof transcript.items)[number], { kind: "assistant" }>).parts;
+    expect(tool).toMatchObject({ kind: "tool", status: "done", images: [{ mimeType: "image/jpeg" }] });
+    expect(transcript.queued).toEqual([{ id: 9, mode: "followUp", text: "", imageCount: 1 }]);
   });
 });

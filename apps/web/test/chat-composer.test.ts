@@ -19,9 +19,10 @@ describe("queued chat messages", () => {
     const { container } = render(
       createElement(ChatComposer, {
         busy: true,
-        queued: [{ id: 1, mode, text }],
+        queued: [{ id: 1, mode, text, imageCount: 0 }],
         onSend: vi.fn(),
         onStop: vi.fn(),
+        imageSupport: { kind: "accepted" },
       }),
     );
     const queue = screen.getByRole("list", { name: "Queued messages" });
@@ -35,15 +36,16 @@ describe("queued chat messages", () => {
     expect(description?.classList.contains("truncate")).toBe(false);
     expect(description?.parentElement?.classList.contains("min-w-0")).toBe(true);
     expect(container.firstElementChild?.classList.contains("min-w-0")).toBe(true);
-    expect(screen.getByRole("textbox", { name: "Message" })).toBeDefined();
+    // The box is a combobox, for its slash command menu.
+    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
   });
 
   test("updates the queue without retaining messages already consumed by the agent", () => {
-    const props = { busy: true, onSend: vi.fn(), onStop: vi.fn() };
+    const props = { busy: true, onSend: vi.fn(), onStop: vi.fn(), imageSupport: { kind: "accepted" } as const };
     const queued: QueuedMessage[] = [
-      { id: 1, mode: "steer", text: "First message" },
-      { id: 2, mode: "followUp", text: "Second message" },
+      { id: 1, mode: "steer", text: "First message", imageCount: 0 },
+      { id: 2, mode: "followUp", text: "Second message", imageCount: 0 },
     ];
     const { rerender } = render(createElement(ChatComposer, { ...props, queued }));
     expect(screen.getByText("First message")).toBeDefined();
