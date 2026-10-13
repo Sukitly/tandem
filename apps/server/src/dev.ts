@@ -1,57 +1,38 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { DEFAULT_HOST, DEFAULT_PORT, HEALTH_PATH } from "@tandem/contracts";
+import { type DevChild, runChild, terminate } from "./dev-children.ts";
 import { pairingUrl, runningPair, showPairing } from "./launch.ts";
 
 const { values } = parseArgs({ options: { "no-open": { type: "boolean", default: false } } });
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const serverUrl = new URL(`http://${DEFAULT_HOST}:${DEFAULT_PORT}`);
 const webUrl = new URL(`http://${DEFAULT_HOST}:5173`);
-const children: ChildProcess[] = [];
+const children: DevChild[] = [];
 let stopping = false;
 async function stop(code: number): Promise<void> {
   if (stopping) return;
   stopping = true;
-  for (const child of children) {
-    if (child.pid === undefined) continue;
-    try {
-      if (process.platform === "win32") child.kill("SIGTERM");
-      else process.kill(-child.pid, "SIGTERM");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-    }
-  }
-  await Promise.all(
-    children.map((child) =>
-      child.exitCode !== null ? Promise.resolve() : new Promise<void>((resolve) => child.once("exit", () => resolve())),
-    ),
-  );
+  await terminate(children, console.error);
   process.exit(code);
 }
-function run(label: string, command: string, args: string[]): void {
-  const child = spawn(command, args, {
-    cwd: root,
-    detached: process.platform !== "win32",
-    env: { ...process.env, TANDEM_WEB_ORIGIN: webUrl.origin },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  children.push(child);
-  for (const stream of [child.stdout, child.stderr])
-    if (stream !== null) {
-      const lines = createInterface({ input: stream });
-      lines.on("line", (line) => console.log(`[${label}] ${line}`));
-    }
-  child.once("error", (error) => {
-    console.error(error);
-    void stop(1);
-  });
-  child.once("exit", (code) => {
-    if (!stopping) void stop(code ?? 1);
-  });
+function start(label: string, command: string, args: string[]): void {
+  children.push(
+    runChild(label, command, args, {
+      cwd: root,
+      env: { ...process.env, TANDEM_WEB_ORIGIN: webUrl.origin },
+      onLine: (line) => console.log(`[${label}] ${line}`),
+      onError: (error) => {
+        console.error(error);
+        void stop(1);
+      },
+      onExit: (code) => {
+        if (!stopping) void stop(code ?? 1);
+      },
+    }),
+  );
 }
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.on(signal, () => {
@@ -61,8 +42,8 @@ const requireWeb = createRequire(new URL("../../web/package.json", import.meta.u
 const viteEntry = join(dirname(requireWeb.resolve("vite/package.json")), "bin/vite.js");
 if ((await runningPair(serverUrl)) !== undefined)
   throw new Error("Tandem is already running. Stop it before development, or use bun run start to open it.");
-run("server", process.execPath, ["--watch", "apps/server/src/main.ts", "--no-open"]);
-run("web", process.execPath, [viteEntry, "--config", "apps/web/vite.config.ts", "apps/web"]);
+start("server", process.execPath, ["--watch", "apps/server/src/main.ts", "--no-open"]);
+start("web", process.execPath, [viteEntry, "--config", "apps/web/vite.config.ts", "apps/web"]);
 try {
   const deadline = Date.now() + 60_000;
   for (;;) {

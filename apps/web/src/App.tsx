@@ -12,16 +12,14 @@ import { ProjectPanel } from "./app/project-panel.tsx";
 import { AppSidebar } from "./app/sidebar.tsx";
 import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
 import { DevicesDialogProvider } from "./auth/devices-dialog.tsx";
-import { PairScreen, takePairingCode } from "./auth/pair-screen.tsx";
+import { PairScreen } from "./auth/pair-screen.tsx";
 import { ChatView, NewChat } from "./chat/chat-view.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 import { useReplicatedState } from "./rpc/use-replicated-state.ts";
 import { ThemeProvider } from "./theme.tsx";
 
-const initialPairCode = takePairingCode();
-
-export function App() {
+export function App({ initialPairCode }: { initialPairCode?: string } = {}) {
   return (
     <ThemeProvider>
       <TooltipProvider>

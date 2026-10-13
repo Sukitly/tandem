@@ -24,13 +24,17 @@ const existing = await runningPair(local);
 if (existing !== undefined) {
   if (publicUrl !== undefined && publicUrl !== existing.publicUrl)
     throw new Error("The running server uses a different public-url. Stop it before changing the public origin.");
-  await showPairing(pairingUrl(webOrigin ?? local, existing.code), !values["no-open"]);
+  // A running server reports where its page is served: reusing a development server must open the Vite page, not one
+  // this server does not serve.
+  await showPairing(pairingUrl(existing.entry ?? webOrigin ?? local, existing.code), !values["no-open"]);
+  if (existing.publicUrl !== undefined) console.log(`Remote pairing: ${pairingUrl(existing.publicUrl, existing.code)}`);
 } else {
   configureModelHttp();
   const faux = process.env.TANDEM_FAUX === "1";
   const server = await startApp({
     port,
     publicUrl,
+    ...(webOrigin === undefined ? {} : { webEntry: webOrigin }),
     ...(webOrigin === undefined
       ? { webRoot: fileURLToPath(new URL("../../web/dist", import.meta.url)) }
       : { allowedOrigins: [webOrigin] }),

@@ -77,7 +77,12 @@ test("a revoked browser returns to unauthorized rather than retrying forever, an
     "WebSocket",
     new Proxy(WebSocket, {
       construct(target, args) {
-        return Reflect.construct(target, [args[0], { headers: { cookie, origin: server.url.origin } }]);
+        // Keep what a caller already set, such as a master key: only the browser proxy is unauthenticated.
+        const [url, options] = args as [string, { headers?: Record<string, string> }?];
+        return Reflect.construct(target, [
+          url,
+          { headers: { ...options?.headers, cookie, origin: server.url.origin } },
+        ]);
       },
     }),
   );
@@ -98,14 +103,11 @@ test("a revoked browser returns to unauthorized rather than retrying forever, an
   sockets.push(terminal);
   await new Promise((resolve) => terminal.once("open", resolve));
   const closed = new Promise((resolve) => terminal.once("close", resolve));
-  vi.unstubAllGlobals();
+  // One transport stub for the whole test. The owner keeps its bearer header, which authorization checks before the
+  // cookie, so it needs no separate one.
   const owner = await connect({ baseUrl: server.url, token: server.token, services: [Devices] });
   connections.push(owner);
   await owner.services.ready(context);
-  // Restore the cookie jar for the browser's reconnect bootstrap only.
-  vi.stubGlobal("fetch", (url: string | URL, init: RequestInit = {}) =>
-    fetchOriginal(url, { ...init, headers: { ...init.headers, cookie } }),
-  );
   await owner.services.use(Devices).revoke(browser.deviceId as string, context);
   await closed;
   await waitFor(() => browser.status.value?.status === "unauthorized");

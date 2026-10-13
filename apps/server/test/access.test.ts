@@ -1,8 +1,17 @@
+import { createHmac } from "node:crypto";
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BOOTSTRAP_PATH, PAIR_CODE_PATH, PAIR_PATH, RPC_PATH, SIGN_OUT_PATH } from "@tandem/contracts";
+import {
+  BOOTSTRAP_PATH,
+  PAIR_CODE_PATH,
+  PAIR_PATH,
+  PROOF_PATH,
+  type ProofResponse,
+  RPC_PATH,
+  SIGN_OUT_PATH,
+} from "@tandem/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { WebSocket } from "ws";
 import { DeviceSessions } from "../src/device-sessions.ts";
@@ -198,4 +207,47 @@ test("public-url must be a fixed HTTPS origin", () => {
     "https://example.com/?x=y",
   ])
     expect(() => publicOrigin(url)).toThrow();
+});
+
+describe("the launcher's handshake", () => {
+  const nonce = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const proof = (server: TandemServer, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(new URL(PROOF_PATH, server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  test("proves the master key without the key being sent, so a launcher can tell our server from another listener", async () => {
+    const { server } = await start();
+    const response = await proof(server, { nonce });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ProofResponse;
+    expect(body.serverId).toBe(server.serverId);
+    expect(body.proof).toBe(createHmac("sha256", server.token).update(nonce).digest("hex"));
+    expect(body.proof).not.toContain(server.token);
+  });
+  test("refuses a proof request without a usable nonce, or from an origin that is not allowed", async () => {
+    const { server } = await start();
+    expect((await proof(server, { nonce: "short" })).status).toBe(400);
+    expect((await proof(server, { nonce: 42 })).status).toBe(400);
+    expect((await proof(server, { nonce }, { origin: "https://evil.example" })).status).toBe(403);
+  });
+  test("tells a launcher where the page is served, whether this server serves it or not", async () => {
+    const { server: dev } = await start({
+      allowedOrigins: ["http://127.0.0.1:5173"],
+      webEntry: "http://127.0.0.1:5173",
+    });
+    const asked = (server: TandemServer) =>
+      fetch(new URL(PAIR_CODE_PATH, server.url), {
+        method: "POST",
+        headers: { authorization: `Bearer ${server.token}` },
+      });
+    expect((await (await asked(dev)).json()).entry).toBe("http://127.0.0.1:5173");
+    const root = await mkdtemp(join(tmpdir(), "tandem-web-entry-"));
+    await writeFile(join(root, "index.html"), "<html></html>");
+    const { server: serving } = await start({ webRoot: root });
+    expect((await (await asked(serving)).json()).entry).toBe(serving.url.origin);
+    const { server: bare } = await start();
+    expect((await (await asked(bare)).json()).entry).toBeUndefined();
+  });
 });

@@ -49,6 +49,9 @@ export {
   PAIR_CODE_PATH,
   PAIR_PATH,
   type PairingCode,
+  PROOF_PATH,
+  type ProofRequest,
+  type ProofResponse,
   SIGN_OUT_PATH,
 } from "./devices.ts";
 export { type FileContent, type FileEntry, type FileLocation, Files, MAX_FILE_VIEW_BYTES } from "./files.ts";

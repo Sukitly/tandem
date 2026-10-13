@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
+import { createHmac, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { BOOTSTRAP_PATH, type BootstrapResponse, PAIR_CODE_PATH, type PairingCode } from "@tandem/contracts";
+import { PAIR_CODE_PATH, type PairingCode, PROOF_PATH, type ProofRequest, type ProofResponse } from "@tandem/contracts";
+import { tokensMatch } from "./auth.ts";
 import { defaultStateDirPath } from "./state-dir.ts";
 
 export function pairingUrl(base: string | URL, code: string): URL {
@@ -21,19 +23,33 @@ export async function runningPair(base: URL): Promise<PairingCode | undefined> {
   }
   if (typeof identity.serverId !== "string" || typeof identity.token !== "string")
     throw new Error("Invalid server identity");
-  const headers = { authorization: `Bearer ${identity.token}` };
-  let response: Response;
+  // Ask the listener to prove it holds this installation's key before sending that key anywhere: any program can
+  // occupy the port, and the key must not reach one that is not ours.
+  const nonce = randomBytes(32).toString("base64url");
+  let answered: ProofResponse | undefined;
   try {
-    response = await fetch(new URL(BOOTSTRAP_PATH, base), { headers, signal: AbortSignal.timeout(1500) });
+    const response = await fetch(new URL(PROOF_PATH, base), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nonce } satisfies ProofRequest),
+      signal: AbortSignal.timeout(1500),
+    });
+    if (response.ok) answered = (await response.json()) as ProofResponse;
   } catch {
     return undefined;
   }
-  if (!response.ok || ((await response.json()) as BootstrapResponse).serverId !== identity.serverId) return undefined;
+  const expected = createHmac("sha256", identity.token).update(nonce).digest("hex");
+  if (answered === undefined || answered.serverId !== identity.serverId || !tokensMatch(expected, answered.proof))
+    return undefined;
   const issued = await fetch(new URL(PAIR_CODE_PATH, base), {
     method: "POST",
-    headers,
+    headers: { authorization: `Bearer ${identity.token}` },
     signal: AbortSignal.timeout(3000),
   });
+  if (issued.status === 404)
+    throw new Error(
+      "The server on this port runs another Tandem, or a version without pairing codes. Stop it, then start again.",
+    );
   if (!issued.ok) throw new Error(`Cannot request a pairing link (status ${issued.status})`);
   return (await issued.json()) as PairingCode;
 }

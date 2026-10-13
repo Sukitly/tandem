@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
@@ -16,6 +16,9 @@ import {
   PAIR_CODE_PATH,
   PAIR_PATH,
   type PairingCode,
+  PROOF_PATH,
+  type ProofRequest,
+  type ProofResponse,
   PTY_PATH,
   RPC_PATH,
   SIGN_OUT_PATH,
@@ -37,6 +40,8 @@ export interface StartServerOptions {
   token?: string;
   allowedOrigins?: readonly string[];
   publicUrl?: string;
+  /** Origin a browser opens the page at, when this server does not serve it, as in development. */
+  webEntry?: string;
   webRoot?: string;
   devices?: DeviceSessions;
   createConnectionServices?: () => ConnectionServices;
@@ -62,6 +67,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   const web = options.webRoot === undefined ? undefined : await StaticFiles.load(options.webRoot);
   const publicUrl = options.publicUrl === undefined ? undefined : publicOrigin(options.publicUrl);
   const cookieName = `tandem_${serverId}`;
+  let ownOrigin: string | undefined;
   const allowedOrigins = new Set(
     (options.allowedOrigins ?? []).map((value) => {
       const url = new URL(value);
@@ -120,6 +126,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       const body: HealthResponse = { status: "ok", version: packageJson.version };
       return sendJson(response, 200, body);
     }
+    if (pathname === PROOF_PATH && request.method === "POST") {
+      const input = await readBody(request);
+      const nonce = (input as Partial<ProofRequest> | null)?.nonce;
+      if (typeof nonce !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(nonce))
+        return sendJson(response, 400, { error: "A nonce is required" });
+      // The master key proves itself without being sent: a listener that cannot answer is never given it.
+      const body: ProofResponse = { serverId, proof: createHmac("sha256", token).update(nonce).digest("hex") };
+      return sendJson(response, 200, body);
+    }
     if (pathname === PAIR_PATH && request.method === "POST") {
       // A browser POST must come from an explicitly configured origin, never merely a matching Host.
       if (request.headers.origin === undefined)
@@ -148,7 +163,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       }
       if (pathname === PAIR_CODE_PATH && request.method === "POST") {
         if (!auth.master) return sendJson(response, 403, { error: "The installation master key is required" });
-        return sendJson(response, 200, devices.issue(publicUrl));
+        const issued = devices.issue(publicUrl);
+        // Where a launcher that reuses this server must open the browser: its own page, or the one configured for it.
+        const entry = options.webEntry ?? (web === undefined ? undefined : ownOrigin);
+        return sendJson(response, 200, entry === undefined ? issued : { ...issued, entry });
       }
       if (pathname === SIGN_OUT_PATH && request.method === "POST") {
         if (request.headers.origin === undefined)
@@ -237,6 +255,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     throw error;
   }
   const { port } = http.address() as AddressInfo;
+  ownOrigin = `http://${hostname}:${port}`;
   for (const host of [hostname, "localhost"]) allowedOrigins.add(`http://${host}:${port}`);
   for (const origin of allowedOrigins) hosts.add(new URL(origin).host);
   const activityTimer = setInterval(

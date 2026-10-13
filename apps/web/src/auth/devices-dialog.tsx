@@ -67,6 +67,8 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
   const state = useReplicatedState(devices.state);
   const [pair, setPair] = useState<PairingCode>();
   const [recovery, setRecovery] = useState<string[]>();
+  const [renaming, setRenaming] = useState<string>();
+  const [draft, setDraft] = useState("");
   const [failure, setFailure] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>();
@@ -84,6 +86,14 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
   const regenerate = async (): Promise<void> => {
     setRecovery(await devices.regenerateRecoveryCodes(BACKGROUND_CONTEXT));
   };
+  /** Renaming keeps the typed name and the reason it failed in the row, until it succeeds. */
+  const rename = async (id: string): Promise<void> => {
+    const name = draft.trim();
+    await run(async () => {
+      await devices.rename(id, name, BACKGROUND_CONTEXT);
+      setRenaming(undefined);
+    });
+  };
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -97,30 +107,66 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
           <div className="flex flex-col gap-4">
             {state?.devices.map((device) => (
               <div key={device.id} className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <MonitorSmartphoneIcon className="size-4" />
-                    <span>{device.name}</span>
-                    {device.id === deviceId && <Badge variant="secondary">This device</Badge>}
-                  </div>
+                <div className="min-w-0 flex-1">
+                  {renaming === device.id ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        aria-label={`Name of ${device.name}`}
+                        autoFocus
+                        value={draft}
+                        disabled={busy}
+                        onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void rename(device.id);
+                          if (event.key === "Escape") setRenaming(undefined);
+                        }}
+                      />
+                      <Button size="sm" disabled={busy || draft.trim() === ""} onClick={() => void rename(device.id)}>
+                        Save
+                      </Button>
+                      <Button variant="outline" size="sm" disabled={busy} onClick={() => setRenaming(undefined)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <MonitorSmartphoneIcon className="size-4" />
+                      <span>{device.name}</span>
+                      {device.id === deviceId && <Badge variant="secondary">This device</Badge>}
+                    </div>
+                  )}
                   <p className="text-sm text-muted-foreground">
                     Last active {new Date(device.lastSeenAt).toLocaleString()}
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() =>
-                    setConfirmation({
-                      title: "Revoke this device?",
-                      description: "Its active connections will be closed immediately. It will need to pair again.",
-                      action: () => devices.revoke(device.id, BACKGROUND_CONTEXT),
-                    })
-                  }
-                >
-                  Revoke
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setFailure(undefined);
+                      setDraft(device.name);
+                      setRenaming(device.id);
+                    }}
+                  >
+                    Rename
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      setConfirmation({
+                        title: "Revoke this device?",
+                        description: "Its active connections will be closed immediately. It will need to pair again.",
+                        action: () => devices.revoke(device.id, BACKGROUND_CONTEXT),
+                      })
+                    }
+                  >
+                    Revoke
+                  </Button>
+                </div>
               </div>
             ))}
             <div className="flex flex-wrap gap-2">
