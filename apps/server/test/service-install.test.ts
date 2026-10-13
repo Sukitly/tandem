@@ -130,7 +130,9 @@ describe.skipIf(process.platform !== "darwin" || !free)("installing the service"
     const where = await bench();
     const installed = service(["install"], where);
     expect(installed.output).toMatch(/Tandem answers on http/);
-    expect(installed.code).toBe(0);
+    // The stand-in has no identity: installation succeeds but pairing fails separately.
+    expect(installed.code).toBe(1);
+    expect(installed.output).toContain("The service is running, but generating a pairing link failed");
     // The state directory holds the master key, so its mode is the project's, not whatever the service manager makes.
     expect((await stat(where.state)).mode & 0o777).toBe(0o700);
     const plist = await readFile(where.file, "utf8");

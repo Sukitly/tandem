@@ -1,5 +1,5 @@
 /**
- * `bun run service install|restart|status|uninstall`: runs the server as a service, so that closing the terminal does
+ * `bun run service install|pair|restart|status|uninstall`: runs the server as a service, so that closing the terminal does
  * not end it. macOS gets a launchd agent, Linux a systemd user unit; an init system reads no shell configuration, so
  * every path here is computed, and every value that goes into the file is escaped for the syntax of that file.
  */
@@ -20,6 +20,7 @@ import {
   serviceLogPath,
   servicePath,
 } from "./service-file.ts";
+import { printInstalledPairing, printServicePairing } from "./service-pair.ts";
 import {
   type Invocation,
   installRefusal,
@@ -170,6 +171,7 @@ async function install(options: { print: boolean }): Promise<void> {
   if (config.publicUrl !== undefined) console.log(`Kept TANDEM_PUBLIC_URL=${config.publicUrl} from this environment.`);
   await apply(serviceRecipe(platform, targets()).load);
   await expectUp(logHints(platform, config.logPath, targets()));
+  await printInstalledPairing(new URL(base));
 }
 
 /** Rebuilds the web app and starts the server again, which is what new code needs. */
@@ -193,7 +195,7 @@ async function expectUp(hints: { follow: string; status: string }): Promise<void
     await pause(500);
   }
   console.log(`Tandem answers on ${base}`);
-  console.log("Pair a browser with `bun run start`: it finds the running server and prints a fresh link.");
+  console.log("For a fresh pairing link: bun run service pair");
   console.log(`Follow it with: ${hints.follow}`);
   if (platform !== "darwin")
     console.log(`To keep it running while logged out: loginctl enable-linger ${process.env.USER ?? "$USER"}`);
@@ -236,15 +238,17 @@ async function status(): Promise<void> {
 const [action = "", ...rest] = process.argv.slice(2);
 if (platform === "win32") throw new Error("A service is set up on macOS and Linux; on Windows, run `bun run start`.");
 else if (action === "install") await install({ print: rest.includes("--print") });
+else if (action === "pair") await printServicePairing(new URL(base));
 else if (action === "restart") await restart();
 else if (action === "uninstall") await uninstall();
 else if (action === "status") await status();
 else
   console.log(
     [
-      "usage: bun run service <install|restart|status|uninstall>",
+      "usage: bun run service <install|pair|restart|status|uninstall>",
       "",
       `  install [--print]   write ${targets().file} and load it; --print only shows the file`,
+      "  pair                print a fresh pairing link without building or restarting",
       "  restart             build the web app and start the server again, after new code",
       "  status              what the service manager says, and whether the server answers",
       "  uninstall           unload the service and remove its file",
