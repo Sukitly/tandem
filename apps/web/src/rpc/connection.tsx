@@ -88,6 +88,7 @@ export function ConnectionProvider({
       services: [
         Models,
         Devices,
+        PublicAccess,
         Workspaces,
         Files,
         Changes,
