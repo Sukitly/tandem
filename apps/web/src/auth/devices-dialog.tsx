@@ -154,7 +154,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                     Rename
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     size="sm"
                     disabled={busy}
                     onClick={() =>
@@ -182,7 +182,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
               {deviceId !== undefined && (
                 <>
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     disabled={busy}
                     onClick={() =>
                       setConfirmation({
@@ -195,7 +195,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                     Revoke other devices
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     disabled={busy}
                     onClick={() =>
                       setConfirmation({
@@ -226,7 +226,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                 </p>
               )}
               <Button
-                variant="outline"
+                variant="destructive"
                 disabled={busy}
                 onClick={() => {
                   if (remaining === 0) void run(regenerate);
@@ -276,6 +276,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               disabled={busy}
               onClick={() => {
                 const action = confirmation?.action;
