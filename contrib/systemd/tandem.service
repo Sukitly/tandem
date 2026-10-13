@@ -2,9 +2,9 @@
 #
 # Copy to ~/.config/systemd/user/ after replacing the absolute paths below:
 #   - /absolute/path/to/tandem   this repository (`pwd`)
-#   - /usr/bin/node              the Node the backend should run on, at its real installation, not a version
-#                                manager's per-shell shim (fnm: ~/.local/share/fnm/node-versions/<version>/installation/bin/node;
-#                                nvm: ~/.nvm/versions/node/<version>/bin/node)
+#   - /usr/bin/node              the Node the backend should run on; `node -p 'process.execPath'` prints the path to
+#                                write, however Node was installed. Not a version manager's per-shell shim, which is
+#                                gone by the next login
 #
 # Keep PATH close to the one you work with: the agent and the terminals it opens inherit this, not your shell's.
 # Output goes to the journal: journalctl --user -u tandem -f

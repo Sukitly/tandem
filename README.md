@@ -33,7 +33,7 @@ Stop a running server before switching to development mode. `bun run dev:server`
 
 `bun run start` runs in the foreground, so closing the terminal window ends the server: a closing terminal sends `SIGHUP`, and Node does not keep the `SIG_IGN` that `nohup` sets, so `nohup bun run start` ends the same way. (On Node 24, `nohup sleep` survives a hangup and `nohup node` does not.) A service manager is the answer, and it brings start-at-login and restart-after-a-crash with it.
 
-Templates are in `contrib/`: `launchd/com.tandem.server.plist` for macOS and `systemd/tandem.service` for Linux. Replace the absolute paths with your own: Node's real installation, not the shim a version manager puts on your `PATH` for the current shell (with fnm, `~/.local/share/fnm/node-versions/<version>/installation/bin/node`; a shim is gone by the next login); this repository; and on macOS the log path. Run `bun run build` once first, since the backend serves `apps/web/dist` and a service cannot build it for you.
+Templates are in `contrib/`: `launchd/com.tandem.server.plist` for macOS and `systemd/tandem.service` for Linux. Replace the absolute paths with your own: the Node binary (`node -p 'process.execPath'` prints the path to write, however Node was installed — never a version manager's per-shell shim, which is gone by the next login), this repository, and on macOS the log path. Run `bun run build` once first, since the backend serves `apps/web/dist` and a service cannot build it for you.
 
 ```bash
 # macOS

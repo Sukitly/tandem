@@ -4,10 +4,9 @@
   Runs the Tandem server as a user LaunchAgent: no terminal, starts at login, and restarts after a crash.
 
   Copy to ~/Library/LaunchAgents/ after replacing the absolute paths below:
-    - /absolute/path/to/node          the Node the backend should run on, at its real installation, not a
-                                      version manager's per-shell shim: with fnm,
-                                      ~/.local/share/fnm/node-versions/<version>/installation/bin/node; with nvm,
-                                      ~/.nvm/versions/node/<version>/bin/node
+    - /absolute/path/to/node          the Node the backend should run on; `node -p 'process.execPath'` prints the
+                                      path to write, however Node was installed. Not a version manager's per-shell
+                                      shim, which is gone by the next login
     - /absolute/path/to/tandem        this repository (`pwd`)
     - /Users/you/.tandem/tandem.log   where its output goes (launchd expands no `~`)
 
