@@ -50,21 +50,33 @@ After `install`, open the printed pairing link to authorize your first browser. 
 
 The server still binds only to `127.0.0.1`, so reaching it from outside this machine means a Cloudflare Tunnel in front of it. Tandem runs the tunnel itself, as a child of the server, so it starts and stops with the server and one service covers both.
 
-**Create the tunnel in the Cloudflare dashboard** and give Tandem its connector token. The token runs that one tunnel: it cannot create tunnels or change DNS, and the dashboard revokes it. That is the whole credential this machine holds, which is what a machine that is not yours alone should hold.
+Creating a tunnel needs authority over the Cloudflare account. Running a tunnel needs only the connector token of that one tunnel. Those are two different things, so they are two commands, and they are meant for two different machines:
 
 ```bash
-pbpaste | bun run tunnel configure --public-url https://tandem.example.com
+# Where authority is acceptable: your own machine.
+bun run tunnel create --public-url https://tandem.example.com
+# → authorizes cloudflared once in a browser, creates the tunnel, points the
+#   hostname at it, and prints the token.
+
+# On the machine that runs Tandem, which never needs that authority:
+pbpaste | bun run tunnel configure --public-url https://tandem.example.com --token-file -
 bun run service restart
-bun run tunnel status --verify    # configured origin, and whether the tunnel really connects
+bun run tunnel status --verify
 ```
 
-In the dashboard: **Networks → Tunnels → Create a tunnel**, choose `Cloudflared`, name it, then copy the token from the install page, and add a **Public hostname** pointing at `http://127.0.0.1:4820`. `configure` reads the token from standard input or from `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600. Install `cloudflared` with `brew install cloudflared`; Tandem does not download it.
+A connector token runs that one tunnel: it cannot create tunnels or change DNS records, the dashboard revokes it, and it is the only credential the machine running Tandem holds. `create` writes nothing locally; `configure` reads the token from standard input or `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600.
 
-The origin it records becomes Tandem's public origin, so pairing links carry it and its cookies are `Secure`; `--public-url`, `TANDEM_PUBLIC_URL`, and `publicUrl` in `settings.json` still override it.
+**If the machine running Tandem is yours alone**, the two roles collapse into one command, and no token is copied:
 
-**The other way is only for a machine that is yours alone.** `bun run tunnel setup --public-url <origin>` has Tandem create the tunnel itself: it runs `cloudflared tunnel login`, which authorizes cloudflared to manage this account's tunnels and the DNS records of the domain you pick, then creates the tunnel, points the hostname at it, and writes `~/.tandem/cloudflared.yml`. No token is copied, but `~/.cloudflared/cert.pem` is then a credential that can create and delete tunnels and edit that domain's DNS, so do not put it on a shared machine, in a sync folder, or anywhere its home directory is readable by others. `--force` replaces a DNS record that is already there; without it, `setup` stops and says so. A configuration file wins over a token, so taking that route replaces one with the other.
+```bash
+bun run tunnel setup --public-url https://tandem.example.com
+```
 
-The same two routes are in the app: **Public access** in the sidebar footer takes the address and the tunnel token, and reports what the tunnel is doing, so publishing needs no terminal. Everything the tunnel needs — the approval URL, whether it connected, why it did not — is in the `PublicAccess` service and in `/health`.
+`setup` does the same work as `create` and then writes `~/.tandem/cloudflared.yml`, whose one ingress rule sends that hostname to `http://127.0.0.1:4820` and whose second rule refuses everything else. It leaves `~/.cloudflared/cert.pem` behind, which can create and delete this account's tunnels and edit that domain's DNS, so do not run it on a shared machine, in a sync folder, or anywhere its home directory is readable by others. `--force` replaces a DNS record that is already there; without it, `create` and `setup` stop and say so. Taking either route replaces the file the other one uses.
+
+Install `cloudflared` first (`brew install cloudflared`); Tandem does not download it. Both commands name the address, so a second run reuses the same tunnel.
+
+The same two roles are in the app: **Public access** in the sidebar footer takes the address and the tunnel token, and reports what the tunnel is doing, so the machine that runs Tandem needs no terminal either.
 
 The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
 

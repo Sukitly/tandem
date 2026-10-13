@@ -135,14 +135,54 @@ test("stops the tunnel it started", { timeout: 20_000 }, async () => {
   vi.unstubAllEnvs();
 });
 
+/** No test may look at the real service file: one that did once reloaded a running service. */
+function isolated(root: string) {
+  const reloads: number[] = [];
+  return {
+    reloads,
+    options: {
+      serviceFile: join(root, "no-such-service-file"),
+      reload: async () => {
+        reloads.push(1);
+        return 0;
+      },
+    },
+  };
+}
+
 test("configure reads the token from a file, and refuses to guess the public origin", { timeout: 20_000 }, async () => {
   const state = await mkdtemp(join(tmpdir(), "tandem-state-"));
   const root = await mkdtemp(join(tmpdir(), "tandem-token-"));
   const tokenFile = join(root, "token");
   await writeFile(tokenFile, `  ${CONFIG.token}\n`);
-  await expect(runTunnel(["configure", "--token-file", tokenFile], state)).rejects.toThrow(/needs --public-url/);
-  await runTunnel(["configure", "--public-url", CONFIG.publicUrl, "--token-file", tokenFile], state);
+  const isolated1 = isolated(root);
+  await expect(runTunnel(["configure", "--token-file", tokenFile], state, isolated1.options)).rejects.toThrow(
+    /needs --public-url/,
+  );
+  await runTunnel(["configure", "--public-url", CONFIG.publicUrl, "--token-file", tokenFile], state, isolated1.options);
   expect(await loadTunnelConfig(state)).toEqual(CONFIG);
+  // No service is installed where this test looks, so nothing was reloaded.
+  expect(isolated1.reloads).toHaveLength(0);
+});
+
+test("configure reloads an installed service, so that one command leaves the tunnel running", {
+  timeout: 20_000,
+}, async () => {
+  const state = await mkdtemp(join(tmpdir(), "tandem-state-"));
+  const root = await mkdtemp(join(tmpdir(), "tandem-token-"));
+  const tokenFile = join(root, "token");
+  await writeFile(tokenFile, `${CONFIG.token}\n`);
+  const serviceFile = join(root, "com.tandem.server.plist");
+  await writeFile(serviceFile, "installed");
+  const reloads: number[] = [];
+  await runTunnel(["configure", "--public-url", CONFIG.publicUrl, "--token-file", tokenFile], state, {
+    serviceFile,
+    reload: async () => {
+      reloads.push(1);
+      return 0;
+    },
+  });
+  expect(reloads).toHaveLength(1);
 });
 
 test("status says so when nothing is configured", { timeout: 20_000 }, async () => {
@@ -150,7 +190,7 @@ test("status says so when nothing is configured", { timeout: 20_000 }, async () 
   const lines: string[] = [];
   vi.spyOn(console, "log").mockImplementation((line: string) => void lines.push(line));
   try {
-    await runTunnel(["status"], state);
+    await runTunnel(["status"], state, isolated(state).options);
   } finally {
     vi.restoreAllMocks();
   }

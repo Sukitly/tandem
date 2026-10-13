@@ -5,7 +5,7 @@ import { expect, test, vi } from "vitest";
 import { runTunnel } from "../src/tunnel-command.ts";
 import { loadTunnelConfig } from "../src/tunnel-config.ts";
 import { originCertPath, tunnelFileYamlPath } from "../src/tunnel-file.ts";
-import { setupTunnel } from "../src/tunnel-setup.ts";
+import { createTunnelHere, setupTunnel } from "../src/tunnel-setup.ts";
 
 const PUBLIC_URL = "https://tandem.example.com";
 const TUNNEL_ID = "c4648dd8-acd3-48f5-9004-3f3dc20192c2";
@@ -60,6 +60,9 @@ case "$1 $2" in
          fi ;;
     esac
     echo "Added CNAME record"
+    ;;
+  "tunnel token")
+    printf 'eyJhIjoi-connector-token'
     ;;
   *) echo "unexpected: $*" >&2; exit 2 ;;
 esac
@@ -163,7 +166,10 @@ test("the command does the same thing, with no flags beyond the origin", { timeo
   const search = `${b.root}:${process.env.PATH ?? ""}`;
   vi.stubEnv("PATH", search);
   try {
-    await runTunnel(["setup", "--public-url", PUBLIC_URL], b.state);
+    await runTunnel(["setup", "--public-url", PUBLIC_URL], b.state, {
+      serviceFile: join(b.root, "no-such-service-file"),
+      reload: async () => 0,
+    });
   } finally {
     vi.restoreAllMocks();
   }
@@ -171,4 +177,34 @@ test("the command does the same thing, with no flags beyond the origin", { timeo
   expect(lines.join("\n")).toContain("Tunnel " + TUNNEL_ID + " is ready.");
   // The origin is the only thing the person supplies: the tool is found on PATH, as the server would find it.
   expect(await readFile(b.calls, "utf8")).toContain("tunnel create tandem");
+});
+
+test("create hands back the token and writes nothing on this machine", { timeout: 20_000 }, async () => {
+  const b = await bench();
+  const result = await createTunnelHere({ publicUrl: PUBLIC_URL, executable: b.executable, report: () => {} });
+  expect(result.tunnelId).toBe(TUNNEL_ID);
+  expect(result.token).toBe("eyJhIjoi-connector-token");
+  // The point of this role: the authority stays here and the token goes there, so nothing local is written.
+  expect(await stat(tunnelFileYamlPath(b.state)).catch(() => undefined)).toBeUndefined();
+  expect(await loadTunnelConfig(b.state)).toBeUndefined();
+  const calls = await readFile(b.calls, "utf8");
+  expect(calls).toContain(`tunnel token ${TUNNEL_ID}`);
+  expect(calls).not.toContain("tunnel --config");
+});
+
+test("the create command prints the token and what to do with it", { timeout: 20_000 }, async () => {
+  const b = await bench();
+  const lines: string[] = [];
+  vi.spyOn(console, "log").mockImplementation((line: string) => void lines.push(line));
+  vi.stubEnv("PATH", `${b.root}:${process.env.PATH ?? ""}`);
+  try {
+    await runTunnel(["create", "--public-url", PUBLIC_URL], b.state);
+  } finally {
+    vi.restoreAllMocks();
+  }
+  const output = lines.join("\n");
+  expect(output).toContain("eyJhIjoi-connector-token");
+  expect(output).toContain("bun run tunnel configure --public-url https://tandem.example.com --token-file -");
+  expect(output).toContain("Do not run `tunnel setup` on that machine");
+  expect(await loadTunnelConfig(b.state)).toBeUndefined();
 });

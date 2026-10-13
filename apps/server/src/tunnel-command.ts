@@ -2,30 +2,49 @@
  * `bun run tunnel configure|status`: keeps the Cloudflare tunnel this machine publishes Tandem behind. The tunnel
  * itself runs as a child of the server, so one service covers both and `bun run service status` reports it.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { DEFAULT_HOST, DEFAULT_PORT, HEALTH_PATH, type HealthResponse } from "@tandem/contracts";
+import { serviceFile } from "./service-file.ts";
 import { defaultStateDirPath } from "./state-dir.ts";
 import { loadTunnelConfig, saveTunnelConfig, tunnelConfigPath } from "./tunnel-config.ts";
 import { tunnelFileYamlPath } from "./tunnel-file.ts";
 import { CLOUDFLARED, startTunnel } from "./tunnel-runner.ts";
-import { setupTunnel } from "./tunnel-setup.ts";
+import { createTunnelHere, setupTunnel } from "./tunnel-setup.ts";
+
+export interface TunnelCommandOptions {
+  /** The service file to reuse a running server from. A test points this at nothing, so no test reloads a service. */
+  serviceFile?: string;
+  /** How the service is reloaded. A test watches this instead of running the command line. */
+  reload?: () => Promise<number>;
+}
 
 /** Internal entry point; tests supply an isolated state directory, not a public CLI option. */
-export async function runTunnel(args: readonly string[], stateDir = defaultStateDirPath()): Promise<void> {
+export async function runTunnel(
+  args: readonly string[],
+  stateDir = defaultStateDirPath(),
+  options: TunnelCommandOptions = {},
+): Promise<void> {
   const [action = "", ...rest] = args;
-  if (action === "setup") return setup(rest, stateDir);
-  if (action === "configure") return configure(rest, stateDir);
+  if (action === "create") return create(rest);
+  if (action === "setup") return setup(rest, stateDir, options);
+  if (action === "configure") return configure(rest, stateDir, options);
   if (action === "status") return status(stateDir, rest.includes("--verify"));
   console.log(
     [
-      "usage: bun run tunnel <setup|configure|status>",
+      "usage: bun run tunnel <create|configure|setup|status>",
       "",
-      "  setup --public-url <https origin>       authorize this machine, create the tunnel, point the hostname at it,",
-      "        [--force]                         and write the configuration. --force replaces an existing DNS record",
-      "  configure --public-url <https origin>   a tunnel a dashboard describes: record its origin and its token",
+      "Two machines, two roles. Where account authority is acceptable — your own machine — create the tunnel and hand",
+      "the token to the machine that runs it. On a machine you share, only ever do the second half.",
+      "",
+      "  create --public-url <https origin>      here: authorize this machine, create the tunnel, point the hostname",
+      "         [--force]                        at it, and print the token the other machine runs it with",
+      "  configure --public-url <https origin>   there: record the origin and the token of that tunnel",
       "            [--token-file <path|->]       the token, from a file or from standard input",
+      "  setup --public-url <https origin>       one machine that is yours alone: create it, and run it here",
       "  status [--verify]                       what is configured, and what the running server reports",
       "",
       "The tunnel starts and stops with the server: `bun run service restart` starts one that is already configured.",
@@ -33,8 +52,36 @@ export async function runTunnel(args: readonly string[], stateDir = defaultState
   );
 }
 
+/**
+ * The owner side. It prints the token rather than writing it anywhere, because the machine that should hold it is
+ * the one this command is not running on.
+ */
+async function create(args: readonly string[]): Promise<void> {
+  const { values } = parseArgs({
+    args: [...args],
+    options: { "public-url": { type: "string" }, force: { type: "boolean", default: false } },
+  });
+  const publicUrl = values["public-url"];
+  if (publicUrl === undefined) throw new Error("create needs --public-url, the HTTPS origin the tunnel publishes");
+  const result = await createTunnelHere({
+    publicUrl,
+    force: values.force,
+    report: (line) => console.log(line),
+  });
+  console.log(`Tunnel ${result.tunnelId} is ready, and will publish ${publicUrl}.`);
+  console.log("");
+  console.log("On the machine that runs Tandem, paste this token:");
+  console.log("");
+  console.log(`  bun run tunnel configure --public-url ${publicUrl} --token-file -`);
+  console.log("");
+  console.log(result.token);
+  console.log("");
+  console.log("Then `bun run service restart` there. Do not run `tunnel setup` on that machine: it would need");
+  console.log("authority over this account, which is the one thing it should not have.");
+}
+
 /** The path with no token and no dashboard: authorize once, then let cloudflared do the rest. */
-async function setup(args: readonly string[], stateDir: string): Promise<void> {
+async function setup(args: readonly string[], stateDir: string, options: TunnelCommandOptions): Promise<void> {
   const { values } = parseArgs({
     args: [...args],
     options: { "public-url": { type: "string" }, force: { type: "boolean", default: false } },
@@ -48,10 +95,10 @@ async function setup(args: readonly string[], stateDir: string): Promise<void> {
     report: (line) => console.log(line),
   });
   console.log(`Tunnel ${result.tunnelId} is ready.`);
-  console.log("Start it with `bun run service restart`, then check it with `bun run tunnel status --verify`.");
+  await apply(options);
 }
 
-async function configure(args: readonly string[], stateDir: string): Promise<void> {
+async function configure(args: readonly string[], stateDir: string, options: TunnelCommandOptions): Promise<void> {
   const { values } = parseArgs({
     args: [...args],
     options: { "public-url": { type: "string" }, "token-file": { type: "string" } },
@@ -65,7 +112,35 @@ async function configure(args: readonly string[], stateDir: string): Promise<voi
   const path = await saveTunnelConfig({ publicUrl, token }, stateDir);
   console.log(`Wrote ${path}`);
   console.log(`Tandem's public origin is ${publicUrl} from now on.`);
-  console.log("Start the tunnel with `bun run service restart`.");
+  await apply(options);
+}
+
+/**
+ * A running server reads this configuration once, when it starts, and the tunnel is its child. Writing the files is
+ * therefore only half the work: the service is reloaded here, so that one command leaves the tunnel running. A
+ * service that is not installed is someone else's to start, and starting one here would be a surprise.
+ */
+async function apply(options: TunnelCommandOptions): Promise<void> {
+  const file = options.serviceFile ?? serviceFile(process.platform);
+  if (!existsSync(file)) {
+    console.log("No service is installed: start Tandem with `bun run start`, and the tunnel comes with it.");
+    return;
+  }
+  console.log("Reloading the service so it picks this up; anything the agent is running stops.");
+  const code = await (options.reload ?? reloadService)();
+  if (code !== 0)
+    console.log("The service did not reload. Run `bun run service install`, then `bun run tunnel status --verify`.");
+  else console.log("Check it with `bun run tunnel status --verify`.");
+}
+
+/** Writes the service file from this environment and loads it again. */
+function reloadService(): Promise<number> {
+  const entry = fileURLToPath(new URL("./service.ts", import.meta.url));
+  return new Promise<number>((resolve, reject) => {
+    const child = spawn(process.execPath, [entry, "install"], { stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code) => resolve(code ?? 1));
+  });
 }
 
 async function status(stateDir: string, verify: boolean): Promise<void> {

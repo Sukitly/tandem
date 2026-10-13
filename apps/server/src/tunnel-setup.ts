@@ -1,7 +1,11 @@
 /**
- * Everything `cloudflared` needs before a tunnel can run, done here rather than by hand: authorize this machine once
- * in a browser, create the tunnel, point a hostname at it, and write the configuration that sends that hostname to
- * this server. No token is copied, because a tunnel this machine manages itself has no token to copy.
+ * The Cloudflare half of publishing this machine, done here rather than by hand. Two roles, deliberately separate,
+ * because only one of them needs authority over the account:
+ *
+ * - `createTunnelHere` runs where account authority is acceptable — your own machine. It authorizes cloudflared
+ *   once, creates the tunnel, points a hostname at it, and hands back the token that runs that one tunnel.
+ * - `setupTunnel` does all of that and then writes this machine's own configuration, for when the machine running
+ *   Tandem is yours alone. On a machine you share, the host gets the token instead, and never the authority.
  */
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -15,10 +19,10 @@ import { credentialsPath, originCertPath, tunnelFileYaml, tunnelFileYamlPath } f
 /** The name the tunnel is created under, and the name it is found by on a second run. */
 export const TUNNEL_NAME = "tandem";
 
-export interface SetupOptions {
+/** What either role needs: where it is published, and how to talk about it. */
+export interface TunnelSetupOptions {
   /** The HTTPS origin the tunnel publishes; its host is the hostname pointed at the tunnel. */
   readonly publicUrl: string;
-  readonly stateDir?: string;
   readonly name?: string;
   readonly executable?: string;
   /** Point a hostname that already has a record at this tunnel, replacing what that record says now. */
@@ -29,6 +33,10 @@ export interface SetupOptions {
   readonly onAuthorizationUrl?: (url: string) => void;
 }
 
+export interface SetupOptions extends TunnelSetupOptions {
+  readonly stateDir?: string;
+}
+
 export interface SetupResult {
   readonly tunnelId: string;
   /** Tandem's own record of the public origin. */
@@ -37,27 +45,26 @@ export interface SetupResult {
   readonly tunnelFile: string;
 }
 
+export interface CreatedTunnel {
+  readonly tunnelId: string;
+  /** The connector token: it runs this one tunnel and grants nothing else. */
+  readonly token: string;
+}
+
+/**
+ * Creates the tunnel and its DNS record, and returns the token that runs it. Nothing about this machine is written:
+ * the point of this role is to hand a token to the machine that will run the tunnel, and keep the authority here.
+ */
+export async function createTunnelHere(options: TunnelSetupOptions): Promise<CreatedTunnel> {
+  const { executable, tunnelId, hostname } = await ensureTunnel(options);
+  routeDns(executable, tunnelId, hostname, options.force ?? false, options.report);
+  return { tunnelId, token: readToken(executable, tunnelId) };
+}
+
+/** The same work, and then this machine's own configuration: the tunnel runs here, so it needs the credentials. */
 export async function setupTunnel(options: SetupOptions): Promise<SetupResult> {
-  const executable = options.executable ?? CLOUDFLARED;
   const stateDir = options.stateDir ?? defaultStateDirPath();
-  const name = options.name ?? TUNNEL_NAME;
-  if (cloudflaredMissing(executable))
-    throw new Error(`${executable} is not installed. Install it with \`brew install cloudflared\`, then try again.`);
-  const publicUrl = checkedPublicUrl(options.publicUrl);
-  const hostname = new URL(publicUrl).hostname;
-
-  if (!existsSync(originCertPath(options.home))) {
-    options.report("Authorizing this machine with Cloudflare: a browser window opens, and the rest is automatic.");
-    await cloudflaredRun(executable, ["tunnel", "login"], (line) => {
-      options.report(line);
-      const url = /https:\/\/\S+/.exec(line)?.[0];
-      if (url !== undefined) options.onAuthorizationUrl?.(url);
-    });
-  }
-
-  const existing = listTunnels(executable, name);
-  const tunnelId = existing[0] ?? (await createTunnel(executable, name, options.report));
-  options.report(existing[0] === undefined ? `Created the tunnel ${name}.` : `Using the tunnel ${name}.`);
+  const { executable, tunnelId, hostname } = await ensureTunnel(options);
   routeDns(executable, tunnelId, hostname, options.force ?? false, options.report);
 
   const tunnelFile = tunnelFileYamlPath(stateDir);
@@ -71,9 +78,34 @@ export async function setupTunnel(options: SetupOptions): Promise<SetupResult> {
       port: DEFAULT_PORT,
     }),
   );
-  const configPath = await saveTunnelConfig({ publicUrl }, stateDir);
+  const configPath = await saveTunnelConfig({ publicUrl: options.publicUrl }, stateDir);
   options.report(`Wrote ${configPath} and ${tunnelFile}`);
   return { tunnelId, configPath, tunnelFile };
+}
+
+/** Authorize this machine if it is not already, then find the tunnel of that name or make one. */
+async function ensureTunnel(
+  options: TunnelSetupOptions,
+): Promise<{ executable: string; tunnelId: string; hostname: string }> {
+  const executable = options.executable ?? CLOUDFLARED;
+  const name = options.name ?? TUNNEL_NAME;
+  if (cloudflaredMissing(executable))
+    throw new Error(`${executable} is not installed. Install it with \`brew install cloudflared\`, then try again.`);
+  const hostname = new URL(checkedPublicUrl(options.publicUrl)).hostname;
+
+  if (!existsSync(originCertPath(options.home))) {
+    options.report("Authorizing this machine with Cloudflare: a browser window opens, and the rest is automatic.");
+    await cloudflaredRun(executable, ["tunnel", "login"], (line) => {
+      options.report(line);
+      const url = /https:\/\/\S+/.exec(line)?.[0];
+      if (url !== undefined) options.onAuthorizationUrl?.(url);
+    });
+  }
+
+  const existing = listTunnels(executable, name);
+  const tunnelId = existing[0] ?? (await createTunnel(executable, name, options.report));
+  options.report(existing[0] === undefined ? `Created the tunnel ${name}.` : `Using the tunnel ${name}.`);
+  return { executable, tunnelId, hostname };
 }
 
 /** The tunnels of that name, which is at most one: a name is unique within an account. */
@@ -125,4 +157,17 @@ function routeDns(
         "`bun run tunnel setup --force` to point it at this tunnel instead.",
     );
   throw new Error(`Could not point ${hostname} at the tunnel.\n${routed.output.trim()}`);
+}
+
+/** cloudflared prints the connector token for that tunnel, which is what the host machine runs it with. */
+function readToken(executable: string, tunnelId: string): string {
+  const printed = cloudflaredCapture(executable, ["tunnel", "token", tunnelId]);
+  const token = printed.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .at(-1);
+  if (!printed.ok || token === undefined || /\s/.test(token))
+    throw new Error(`Could not read the tunnel token.\n${printed.output.trim()}`);
+  return token;
 }
