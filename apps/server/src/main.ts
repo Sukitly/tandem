@@ -6,6 +6,7 @@ import { configureModelHttp } from "./http-setup.ts";
 import { pairingUrl, runningPair, showPairing } from "./launch.ts";
 import { createFauxProvider, defaultProviders, demoResponse } from "./models.ts";
 import { publicOrigin } from "./server.ts";
+import { defaultStateDirPath } from "./state-dir.ts";
 import { loadTunnelConfig } from "./tunnel-config.ts";
 import { startTunnel, type TunnelRunner } from "./tunnel-runner.ts";
 
@@ -65,7 +66,7 @@ if (existing !== undefined) {
     });
   // A development server does not serve the page, so a tunnel to it would publish nothing.
   if (tunnel !== undefined && webOrigin === undefined) {
-    tunnelRunner = startTunnel(tunnel, { onLog: (line) => console.log(line) });
+    tunnelRunner = startTunnel(tunnel, { onLog: (line) => console.log(line), stateDir: defaultStateDirPath() });
     console.log(`Tunnel: publishing ${tunnel.publicUrl}`);
   } else if (tunnel !== undefined) console.log("Tunnel: not started while a development server serves the page.");
   console.log(`Tandem listening on ${server.url}`);

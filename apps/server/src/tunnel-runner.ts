@@ -1,7 +1,9 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import type { Readable } from "node:stream";
 import type { TunnelState } from "@tandem/contracts";
 import type { TunnelConfig } from "./tunnel-config.ts";
+import { tunnelFileYamlPath } from "./tunnel-file.ts";
 
 /** The command the tunnel runs, so that a test can stand in for it. */
 export const CLOUDFLARED = "cloudflared";
@@ -24,6 +26,27 @@ export interface TunnelOptions {
   onLog: (line: string) => void;
   /** The program to run, for tests that stand in for it. */
   executable?: string;
+  /** Where the tunnel's own configuration is looked for: the state directory. */
+  stateDir?: string;
+}
+
+/** How to run the tunnel: what it is told, and what it is given that is not an argument. */
+export interface TunnelInvocation {
+  readonly args: readonly string[];
+  readonly env: Readonly<Record<string, string>>;
+}
+
+/**
+ * A tunnel this machine manages itself is described by a configuration file beside the state, which carries the
+ * hostname and the ingress rule. One a dashboard describes is run from its connector token instead. The file wins,
+ * because it is the one `bun run tunnel setup` writes.
+ */
+export function tunnelInvocation(config: TunnelConfig, stateDir?: string): TunnelInvocation {
+  const file = tunnelFileYamlPath(stateDir);
+  if (existsSync(file)) return { args: ["tunnel", "--config", file, "--no-autoupdate", "run"], env: {} };
+  if (config.token !== undefined)
+    return { args: ["tunnel", "--no-autoupdate", "run"], env: { TUNNEL_TOKEN: config.token } };
+  throw new Error(`No tunnel to run: ${file} is missing and no token was configured. Run \`bun run tunnel setup\`.`);
 }
 
 /**
@@ -32,6 +55,7 @@ export interface TunnelOptions {
  */
 export function startTunnel(config: TunnelConfig, options: TunnelOptions): TunnelRunner {
   const executable = options.executable ?? CLOUDFLARED;
+  const invocation = tunnelInvocation(config, options.stateDir);
   let state: TunnelState = "starting";
   let child: TunnelChild | undefined;
   let retry: NodeJS.Timeout | undefined;
@@ -39,10 +63,10 @@ export function startTunnel(config: TunnelConfig, options: TunnelOptions): Tunne
   let stopping = false;
 
   function launch(): void {
-    const running = spawn(executable, ["tunnel", "--no-autoupdate", "run"], {
+    const running = spawn(executable, [...invocation.args], {
       env: {
         ...process.env,
-        TUNNEL_TOKEN: config.token,
+        ...invocation.env,
         // The origin hop goes to this machine; a proxy in the environment must never carry it.
         NO_PROXY: merged("NO_PROXY"),
         no_proxy: merged("no_proxy"),

@@ -48,18 +48,27 @@ After `install`, open the printed pairing link to authorize your first browser. 
 
 ### Remote access
 
-The server still binds only to `127.0.0.1`, so reaching it from outside this machine means a Cloudflare Tunnel in front of it. Tandem runs the tunnel itself, as a child of the server, so it starts and stops with the server and one service covers both. Create a named tunnel in the Cloudflare dashboard, add a public hostname that points at `http://127.0.0.1:4820`, and give Tandem its token and that hostname:
+The server still binds only to `127.0.0.1`, so reaching it from outside this machine means a Cloudflare Tunnel in front of it. Tandem runs the tunnel itself, as a child of the server, so it starts and stops with the server and one service covers both.
+
+Install `cloudflared` (`brew install cloudflared`; Tandem does not download it), then name the address you want:
+
+```bash
+bun run tunnel setup --public-url https://tandem.example.com
+bun run service restart
+bun run tunnel status --verify    # configured origin, and whether the tunnel really connects
+```
+
+`setup` does the Cloudflare work for you. It authorizes this machine once (`cloudflared tunnel login`, which opens a browser), creates the tunnel, points that hostname at it, and writes `~/.tandem/cloudflared.yml` with a single ingress rule sending it to `http://127.0.0.1:4820` and refusing everything else. The origin it records in `~/.tandem/tunnel.json` becomes Tandem's public origin, so pairing links carry it and its cookies are `Secure`; `--public-url`, `TANDEM_PUBLIC_URL`, and `publicUrl` in `settings.json` still override it. `--force` replaces a DNS record that is already there; without it, `setup` stops and says so. That path needs no token, because a tunnel this machine manages itself has none.
+
+A tunnel that a **dashboard** describes is the other way, and then a token is unavoidable:
 
 ```bash
 pbpaste | bun run tunnel configure --public-url https://tandem.example.com
-bun run service install --print   # the service file now carries the proxy, if this machine needs one
-bun run service restart
-bun run tunnel status             # configured origin, and what the running server reports
 ```
 
-`configure` reads the token from standard input or from `--token-file <path>`, never from an argument, and writes `~/.tandem/tunnel.json` at 0600. That origin becomes Tandem's public origin, so pairing links carry it and its cookies are `Secure`; `--public-url`, `TANDEM_PUBLIC_URL`, and `publicUrl` in `settings.json` still override it. `cloudflared` must be on `PATH` (`brew install cloudflared`); Tandem does not download it. Instructions for forcing HTTP/2 or setting a log level go in an optional `~/.tandem/cloudflared.yml`, which is passed to `cloudflared` with `--config`.
+`configure` reads the connector token from standard input or from `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600. That token travels to `cloudflared` in the child's environment, and `cloudflared.yml` wins over it when both are present.
 
-The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The token travels in the child's environment, not in its arguments; the hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
+The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
 
 An explicit public origin is required for WebSocket and pairing checks; proxy headers do not grant access. Configure **Cloudflare Access** in front of the tunnel to allow only your identity. A tunnel alone is not authentication, and Access JWT-based automatic login and passkeys are not implemented.
 

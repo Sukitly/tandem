@@ -4,14 +4,18 @@ import { publicOrigin } from "./server.ts";
 import { defaultStateDirPath } from "./state-dir.ts";
 
 /**
- * Access to this machine from the public internet, through a Cloudflare tunnel the user created: the origin the
- * tunnel publishes, and the token that runs it. Both are the user's to supply; Tandem only reads and keeps them.
+ * Access to this machine from the public internet, through a Cloudflare tunnel. A tunnel this machine manages itself
+ * is described by `cloudflared.yml` beside this file; one a dashboard describes additionally has a connector token.
+ * Either way the published origin is this server's public origin.
  */
 export interface TunnelConfig {
   /** The HTTPS origin the tunnel publishes, which is also this server's public origin. */
   readonly publicUrl: string;
-  /** The Cloudflare tunnel token. It runs that one tunnel and nothing else, and the dashboard revokes it. */
-  readonly token: string;
+  /**
+   * The connector token of a tunnel a dashboard describes. Absent for a tunnel this machine manages itself, whose
+   * configuration is `cloudflared.yml` beside this file: there is no token to keep in that case.
+   */
+  readonly token?: string;
 }
 
 export function tunnelConfigPath(stateDir: string = defaultStateDirPath()): string {
@@ -24,9 +28,11 @@ export async function loadTunnelConfig(stateDir?: string): Promise<TunnelConfig 
   const stored = await readJsonFile(path);
   if (stored === undefined) return undefined;
   const value = stored as Partial<TunnelConfig>;
-  if (typeof value.publicUrl !== "string" || typeof value.token !== "string")
-    throw new Error(`${path} needs both publicUrl and token`);
-  return { publicUrl: checkedPublicUrl(value.publicUrl), token: checkedToken(value.token) };
+  if (typeof value.publicUrl !== "string") throw new Error(`${path} needs a publicUrl`);
+  return {
+    publicUrl: checkedPublicUrl(value.publicUrl),
+    ...(typeof value.token === "string" ? { token: checkedToken(value.token) } : {}),
+  };
 }
 
 /** Writes the configuration at the state directory's usual 0600, and returns where it went. */
@@ -34,7 +40,7 @@ export async function saveTunnelConfig(config: TunnelConfig, stateDir?: string):
   const path = tunnelConfigPath(stateDir);
   const checked: TunnelConfig = {
     publicUrl: checkedPublicUrl(config.publicUrl),
-    token: checkedToken(config.token),
+    ...(config.token === undefined ? {} : { token: checkedToken(config.token) }),
   };
   await writeJsonFile(path, checked);
   return path;

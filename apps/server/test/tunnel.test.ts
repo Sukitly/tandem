@@ -5,7 +5,8 @@ import type { TunnelState } from "@tandem/contracts";
 import { expect, test, vi } from "vitest";
 import { runTunnel } from "../src/tunnel-command.ts";
 import { loadTunnelConfig, saveTunnelConfig, tunnelConfigPath } from "../src/tunnel-config.ts";
-import { startTunnel } from "../src/tunnel-runner.ts";
+import { tunnelFileYaml, tunnelFileYamlPath } from "../src/tunnel-file.ts";
+import { startTunnel, tunnelInvocation } from "../src/tunnel-runner.ts";
 
 const CONFIG = { publicUrl: "https://tandem.example.com", token: "secret-token-value" };
 
@@ -19,13 +20,17 @@ async function standIn(body: string): Promise<string> {
 }
 
 /** Records where every line the runner logs goes, and waits for a state other than `starting`. */
-async function supervise(executable: string) {
+async function supervise(executable: string, stateDir?: string) {
   const root = await mkdtemp(join(tmpdir(), "tandem-tunnel-"));
   const files = { ARGS_FILE: join(root, "args"), ENV_FILE: join(root, "env") };
   vi.stubEnv("ARGS_FILE", files.ARGS_FILE);
   vi.stubEnv("ENV_FILE", files.ENV_FILE);
   const lines: string[] = [];
-  const runner = startTunnel(CONFIG, { onLog: (line) => lines.push(line), executable });
+  const runner = startTunnel(CONFIG, {
+    onLog: (line) => lines.push(line),
+    executable,
+    stateDir: stateDir ?? join(root, "state"),
+  });
   const until = async (state: TunnelState, deadline = Date.now() + 10_000): Promise<TunnelState> => {
     while (runner.state() !== state) {
       if (Date.now() > deadline) return runner.state();
@@ -53,10 +58,16 @@ test("refuses a public origin that could not carry a Secure cookie", async () =>
   await expect(saveTunnelConfig({ ...CONFIG, token: "  " }, state)).rejects.toThrow(/token is empty/);
 });
 
-test("refuses a stored configuration that is missing half of itself", async () => {
+test("reads a configuration with no token, which is one this machine manages itself", async () => {
   const state = await mkdtemp(join(tmpdir(), "tandem-state-"));
   await writeFile(tunnelConfigPath(state), JSON.stringify({ publicUrl: CONFIG.publicUrl }));
-  await expect(loadTunnelConfig(state)).rejects.toThrow(/needs both publicUrl and token/);
+  expect(await loadTunnelConfig(state)).toEqual({ publicUrl: CONFIG.publicUrl });
+});
+
+test("refuses a stored configuration with no public origin", async () => {
+  const state = await mkdtemp(join(tmpdir(), "tandem-state-"));
+  await writeFile(tunnelConfigPath(state), JSON.stringify({ token: CONFIG.token }));
+  await expect(loadTunnelConfig(state)).rejects.toThrow(/needs a publicUrl/);
 });
 
 test("reports connected once cloudflared registers a connection", { timeout: 20_000 }, async () => {
@@ -144,4 +155,20 @@ test("status says so when nothing is configured", { timeout: 20_000 }, async () 
     vi.restoreAllMocks();
   }
   expect(lines.join("\n")).toContain(`No tunnel: ${tunnelConfigPath(state)} does not exist.`);
+});
+
+test("runs from the configuration this machine wrote, and otherwise from a token", async () => {
+  const state = await mkdtemp(join(tmpdir(), "tandem-state-"));
+  expect(tunnelInvocation({ publicUrl: CONFIG.publicUrl, token: CONFIG.token }, state)).toEqual({
+    args: ["tunnel", "--no-autoupdate", "run"],
+    env: { TUNNEL_TOKEN: CONFIG.token },
+  });
+  const file = tunnelFileYamlPath(state);
+  await writeFile(file, tunnelFileYaml({ tunnelId: "id", credentialsFile: "/creds.json", hostname: "h" }));
+  expect(tunnelInvocation({ publicUrl: CONFIG.publicUrl, token: CONFIG.token }, state)).toEqual({
+    args: ["tunnel", "--config", file, "--no-autoupdate", "run"],
+    env: {},
+  });
+  const empty = await mkdtemp(join(tmpdir(), "tandem-state-"));
+  expect(() => tunnelInvocation({ publicUrl: CONFIG.publicUrl }, empty)).toThrow(/No tunnel to run/);
 });
