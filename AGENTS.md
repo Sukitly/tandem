@@ -30,6 +30,8 @@ The backend runs on **Node >= 22.19**, not Bun: pi-durable's SQLite storage need
 | Install dependencies | `bun install` |
 | Build, start the app, and open the browser (or reuse the running app) | `bun run start` |
 | Watch backend + Vite, open once, stop both on Ctrl-C | `bun run dev` |
+| Run the server as a service, so closing the terminal does not end it | `bun run service install` |
+| Rebuild the web app and start that service again, after new code | `bun run service restart` |
 | Run the server in watch mode separately; prints a pairing link | `bun run dev:server` |
 | Run the web app on port 5173 (proxies the server's paths) | `bun run dev:web` |
 | Lint and format check, then typecheck | `bun run check` |
@@ -38,6 +40,10 @@ The backend runs on **Node >= 22.19**, not Bun: pi-durable's SQLite storage need
 | Build | `bun run build` |
 | Run one package's script | `bun run --filter @tandem/server test` |
 | Add a dependency to one package | `cd apps/web && bun add <name>` |
+
+`bun run service` (`apps/server/src/service.ts`, with the decisions in `service-policy.ts` and the file itself in `service-file.ts`) writes the file an init system reads — a launchd agent, or a systemd user unit — loads it, and reports it. It computes every value from the process that runs it: an init system reads no shell configuration, and none of it may be typed by hand, since a version manager's per-shell shim looks like a Node path and is gone by the next login. The unit restarts the server after an unsuccessful exit and leaves it stopped after a clean one, which is what a `SIGTERM` stop gives.
+
+Four things there are deliberate. Being registered is not being up: a macOS agent stopped with `SIGTERM` stays loaded, so the command asks the service manager for the process (`running()`), refuses to install while a server that is not that process holds the port, and after loading requires the process to be running and answering — a port that answers on its own means the service found someone else's server and exited. `bootout` returns before the job is gone, so a step that moves the job waits for the job to settle, and `uninstall` removes the file only after verifying the service is gone. The state directory is created at `0700` before the service manager can create it for the log, world-readable. And a path is not configuration syntax: everything that goes into a unit file is escaped per directive, since `%` resolves specifiers, `$` resolves variables in `ExecStart`, and a quote or a backslash ends a value early. No service test needs a real service manager: `service-install.test.ts` runs the command against a stand-in `launchctl` on `PATH`.
 
 Before finishing a change, `bun run check` and `bun run test` must pass.
 
