@@ -29,6 +29,33 @@ bun run dev                         # server watch mode + Vite, opens once; Ctrl
 
 Stop a running server before switching to development mode. `bun run dev:server` and `bun run dev:web` remain available separately.
 
+### Keep it running
+
+`bun run start` runs in the foreground, so closing the terminal window ends the server: a closing terminal sends `SIGHUP`, and Node does not keep the `SIG_IGN` that `nohup` sets, so `nohup bun run start` ends the same way. (On Node 24, `nohup sleep` survives a hangup and `nohup node` does not.) A service manager is the answer, and it brings start-at-login and restart-after-a-crash with it.
+
+Templates are in `contrib/`: `launchd/com.tandem.server.plist` for macOS and `systemd/tandem.service` for Linux. Replace the absolute paths with your own: Node's real installation, not the shim a version manager puts on your `PATH` for the current shell (with fnm, `~/.local/share/fnm/node-versions/<version>/installation/bin/node`; a shim is gone by the next login); this repository; and on macOS the log path. Run `bun run build` once first, since the backend serves `apps/web/dist` and a service cannot build it for you.
+
+```bash
+# macOS
+cp contrib/launchd/com.tandem.server.plist ~/Library/LaunchAgents/   # after editing it
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tandem.server.plist
+launchctl print gui/$(id -u)/com.tandem.server          # status
+tail -f ~/.tandem/tandem.log                            # output
+launchctl kill SIGTERM gui/$(id -u)/com.tandem.server   # clean stop; it stays stopped
+launchctl bootout gui/$(id -u)/com.tandem.server        # unload
+
+# Linux
+cp contrib/systemd/tandem.service ~/.config/systemd/user/   # after editing it
+systemctl --user daemon-reload
+systemctl --user enable --now tandem
+loginctl enable-linger $USER                            # keep running while logged out
+systemctl --user status tandem
+journalctl --user -u tandem -f                          # output
+systemctl --user stop tandem
+```
+
+A service has no terminal, so nothing opens at login. Run `bun run start` when you want a pairing link: it finds the running server and prints a fresh one. The agent and the terminals it opens inherit the service's `PATH`, which is not your shell's, so keep the `PATH` in the template close to the one you work with. After updating the code, `git pull && bun install && bun run build`, then restart the service (`launchctl kickstart -k gui/$(id -u)/com.tandem.server`, or `systemctl --user restart tandem`).
+
 ### Remote access
 
 The server still binds only to `127.0.0.1`. For a fixed Cloudflare Tunnel domain, start with:

@@ -16,6 +16,7 @@ The code is the source of truth; there are no design documents in this repositor
 | `apps/web` | `@tandem/web` | React + Vite single-page app |
 | `packages/contracts` | `@tandem/contracts` | Constants, types, and service contracts shared by server and clients |
 | `packages/client` | `@tandem/client` | Connects to the server: bootstrap, pi-client over WebSocket, service bindings, reconnects. Used by the web app and by server integration tests |
+| `contrib` | — | Templates for running the server without a terminal: a macOS LaunchAgent and a systemd user unit |
 
 Internal packages export TypeScript sources directly (`"exports": { ".": "./src/index.ts" }`); Node (type stripping) and Vite consume them without a build step. Reference them with `"workspace:*"`.
 
