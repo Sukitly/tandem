@@ -16,6 +16,7 @@ import {
   Models,
   ProjectChanges,
   Prompts,
+  PublicAccess,
   Repository,
   Terminals,
   Usage,
@@ -28,6 +29,8 @@ import { useReplicatedState } from "./use-replicated-state.ts";
 
 export interface Connected {
   devices: Devices;
+  /** Publishing this machine on the public internet, and what the tunnel is doing. */
+  publicAccess: PublicAccess;
   deviceId?: string;
   /** The shared project list and its methods. */
   workspaces: Workspaces;
@@ -115,6 +118,7 @@ export function ConnectionProvider({
             value: {
               connection,
               devices: connection.services.use(Devices),
+              publicAccess: connection.services.use(PublicAccess),
               deviceId: connection.deviceId,
               open,
               openChanges,
@@ -161,6 +165,7 @@ function Connected({
     <ConnectedContext.Provider
       value={{
         devices: value.devices,
+        publicAccess: value.publicAccess,
         deviceId: value.deviceId,
         workspaces: value.workspaces,
         conversations: value.conversations,

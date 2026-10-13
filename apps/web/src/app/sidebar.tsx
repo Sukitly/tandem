@@ -7,6 +7,7 @@ import {
   FolderIcon,
   FolderMinusIcon,
   FolderOpenIcon,
+  GlobeIcon,
   KeyRoundIcon,
   MonitorIcon,
   MoonIcon,
@@ -60,6 +61,7 @@ import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { type ThemeChoice, useTheme } from "@/theme.tsx";
+import { usePublicAccessDialog } from "@/tunnel/public-access.tsx";
 import { useWorkbench } from "./workbench.tsx";
 
 /**
@@ -73,6 +75,7 @@ export function AppSidebar() {
   const { selected, addProject } = useWorkbench();
   const providers = useProvidersDialog();
   const devices = useDevicesDialog();
+  const publicAccess = usePublicAccessDialog();
   const names = new Map(projects.map((project) => [project.id, project.name]));
   return (
     // Collapsed, the sidebar keeps a column of icons; the lists hide.
@@ -140,6 +143,12 @@ export function AppSidebar() {
             <SidebarMenuButton tooltip="Model providers" onClick={() => providers.open()}>
               <KeyRoundIcon />
               <span>Model providers</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Public access" onClick={() => publicAccess.open()}>
+              <GlobeIcon />
+              <span>Public access</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

@@ -48,15 +48,41 @@ After `install`, open the printed pairing link to authorize your first browser. 
 
 ### Remote access
 
-The server still binds only to `127.0.0.1`. For a fixed Cloudflare Tunnel domain, start with:
+The server still binds only to `127.0.0.1`, so reaching it from outside this machine means a Cloudflare Tunnel in front of it. Tandem runs the tunnel itself, as a child of the server, so it starts and stops with the server and one service covers both.
+
+Creating a tunnel needs authority over the Cloudflare account. Running a tunnel needs only the connector token of that one tunnel. Those are two different things, so they are two commands, and they are meant for two different machines:
 
 ```bash
-bun run start --public-url https://tandem.example.com
+# Where authority is acceptable: your own machine.
+bun run tunnel create --public-url https://tandem.example.com
+# → authorizes cloudflared once in a browser, creates the tunnel, points the
+#   hostname at it, and prints the token.
+
+# On the machine that runs Tandem, which never needs that authority:
+pbpaste | bun run tunnel configure --public-url https://tandem.example.com --token-file -
+bun run service restart
+bun run tunnel status --verify
 ```
 
-`TANDEM_PUBLIC_URL` or `publicUrl` in `~/.tandem/settings.json` can also configure the public origin. An explicit origin is required for WebSocket and pairing checks; proxy headers do not grant access. Public-origin cookies are Secure. Configure **Cloudflare Access** in front of the tunnel to allow only your identity. Tunnel setup and a real public-domain browser check are still required; a tunnel alone is not authentication. Access JWT-based automatic login and passkeys are not implemented.
+A connector token runs that one tunnel: it cannot create tunnels or change DNS records, the dashboard revokes it, and it is the only credential the machine running Tandem holds. `create` writes nothing locally; `configure` reads the token from standard input or `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600.
 
-Authenticated devices have full control of this machine, not just the open repositories. The tunnel provider terminates TLS and can inspect traffic. A pairing link grants access to anyone who redeems it before it expires.
+**If the machine running Tandem is yours alone**, the two roles collapse into one command, and no token is copied:
+
+```bash
+bun run tunnel setup --public-url https://tandem.example.com
+```
+
+`setup` does the same work as `create` and then writes `~/.tandem/cloudflared.yml`, whose one ingress rule sends that hostname to `http://127.0.0.1:4820` and whose second rule refuses everything else. It leaves `~/.cloudflared/cert.pem` behind, which can create and delete this account's tunnels and edit that domain's DNS, so do not run it on a shared machine, in a sync folder, or anywhere its home directory is readable by others. `--force` replaces a DNS record that is already there; without it, `create` and `setup` stop and say so. Taking either route replaces the file the other one uses.
+
+Install `cloudflared` first (`brew install cloudflared`); Tandem does not download it. Both commands name the address, so a second run reuses the same tunnel.
+
+The same two roles are in the app: **Public access** in the sidebar footer takes the address and the tunnel token, and reports what the tunnel is doing, so the machine that runs Tandem needs no terminal either.
+
+The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
+
+An explicit public origin is required for WebSocket and pairing checks; proxy headers do not grant access. Configure **Cloudflare Access** in front of the tunnel to allow only your identity. A tunnel alone is not authentication, and Access JWT-based automatic login and passkeys are not implemented.
+
+Authenticated devices have full control of this machine, not just the open repositories. The tunnel provider terminates TLS and can inspect traffic, so anyone who obtains the tunnel token can run a connector of their own and read that traffic. A pairing link grants access to anyone who redeems it before it expires.
 
 `server.json` contains the installation's **master key**, for local launch commands and non-browser clients only. It is accepted in `Authorization: Bearer`, never in a URL. The upgrade from legacy URL-token authentication rotates that key once while keeping the server identity and conversations intact. Stop the old server before starting this version; existing browsers must pair again.
 

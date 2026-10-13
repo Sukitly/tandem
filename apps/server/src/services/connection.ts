@@ -11,6 +11,7 @@ import {
   Models,
   ProjectChanges,
   Prompts,
+  PublicAccess,
   Repository,
   type StartInput,
   Terminals,
@@ -21,6 +22,7 @@ import { pageView } from "../conversation-view.ts";
 import { type DeviceSessions, PairingError } from "../device-sessions.ts";
 import type { ImageProcessor } from "../images/image-processor.ts";
 import type { ConnectionServices } from "../rpc-host.ts";
+import type { TunnelControl } from "../tunnel-control.ts";
 import { type ChangeHold, type ChangeTrackers, createProjectChanges } from "./changes.ts";
 import type { CommentBoard } from "./comments.ts";
 import {
@@ -38,6 +40,7 @@ import type { FileBrowser } from "./files.ts";
 import type { ModelCatalog } from "./models.ts";
 import type { ProjectDirectoryBrowser } from "./project-directories.ts";
 import type { PromptLibrary } from "./prompts.ts";
+import { createPublicAccessService } from "./public-access.ts";
 import type { RepositoryBoard } from "./repository.ts";
 import type { TerminalHost } from "./terminals.ts";
 import type { UsageBoard } from "./usage.ts";
@@ -64,6 +67,8 @@ export interface AppServices {
   readonly repository: RepositoryBoard;
   /** Fits images to a model: those a page sends with a message. */
   readonly images: ImageProcessor;
+  /** Publishing this machine on the public internet. */
+  readonly tunnel: TunnelControl;
 }
 
 /** An open conversation on one connection. */
@@ -98,6 +103,7 @@ export function createConnectionServices({
   images,
   devices,
   publicUrl,
+  tunnel,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
     Models,
@@ -110,6 +116,7 @@ export function createConnectionServices({
     Repository,
     Devices,
     Prompts,
+    PublicAccess,
     Conversations,
     { service: Conversation, mode: "keyed" },
     { service: ProjectChanges, mode: "keyed" },
@@ -267,6 +274,8 @@ export function createConnectionServices({
     revokeOthers: async (id) => devices.revokeOthers(deviceId(id)),
     regenerateRecoveryCodes: async () => devices.regenerateRecoveryCodes(),
   });
+
+  provider.provide(PublicAccess, createPublicAccessService(tunnel));
 
   provider.provide(Terminals, {
     state: terminals.state,

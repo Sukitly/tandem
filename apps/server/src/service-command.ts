@@ -10,8 +10,9 @@ import { connect } from "node:net";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_HOST, DEFAULT_PORT, HEALTH_PATH } from "@tandem/contracts";
+import { DEFAULT_HOST, DEFAULT_PORT, HEALTH_PATH, type HealthResponse } from "@tandem/contracts";
 import {
+  proxyEnvironment,
   SERVICE_LABEL,
   SERVICE_UNIT,
   type ServiceConfig,
@@ -126,15 +127,22 @@ export async function runService(
         existsSync,
       ),
       ...(publicUrl === undefined ? {} : { publicUrl }),
+      proxy: proxyEnvironment(process.env),
     };
   }
 
-  async function answers(): Promise<boolean> {
+  /** What `/health` answered, which also carries the tunnel's state. */
+  async function health(): Promise<HealthResponse | undefined> {
     try {
-      return (await fetch(`${base}${HEALTH_PATH}`, { signal: AbortSignal.timeout(1000) })).ok;
+      const response = await fetch(`${base}${HEALTH_PATH}`, { signal: AbortSignal.timeout(1000) });
+      return response.ok ? ((await response.json()) as HealthResponse) : undefined;
     } catch {
-      return false;
+      return undefined;
     }
+  }
+
+  async function answers(): Promise<boolean> {
+    return (await health()) !== undefined;
   }
 
   /** Whether anything at all listens, which matters before a service tries to take the port. */
@@ -176,6 +184,8 @@ export async function runService(
     console.log(`Wrote ${file}`);
     if (config.publicUrl !== undefined)
       console.log(`Kept TANDEM_PUBLIC_URL=${config.publicUrl} from this environment.`);
+    const carried = Object.keys(config.proxy ?? {});
+    if (carried.length > 0) console.log(`Kept ${carried.join(", ")} for the service.`);
     await apply(serviceRecipe(platform, targets()).load);
     await expectUp(logHints(platform, config.logPath, targets()));
     if (!(await printInstalledPairing(new URL(base)))) exitCode = 1;
@@ -241,7 +251,9 @@ export async function runService(
       process.stdout.write(quiet("systemctl", ["--user", "status", "--no-pager", SERVICE_UNIT]).output);
     }
     console.log(running() ? "The service is running" : "The service is not running");
-    console.log((await answers()) ? `Tandem answers on ${base}` : `Nothing answers on ${base}`);
+    const reported = await health();
+    console.log(reported === undefined ? `Nothing answers on ${base}` : `Tandem answers on ${base}`);
+    if (reported?.tunnel !== undefined) console.log(`Tunnel: ${reported.tunnel}`);
   }
 
   const [action = "", ...rest] = args;

@@ -103,6 +103,12 @@ export {
   terminalPath,
 } from "./terminals.ts";
 export {
+  PublicAccess,
+  type PublicAccessState,
+  type PublicAccessStatus,
+  type PublishInput,
+} from "./tunnel.ts";
+export {
   type ProviderUsage,
   Usage,
   type UsageState,
@@ -133,9 +139,17 @@ export const HEALTH_PATH = "/health";
  */
 export const BOOTSTRAP_PATH = "/bootstrap";
 
+/**
+ * Where the tunnel process has got to. `unavailable` means the `cloudflared` program is not installed, and `failed`
+ * means it exited without registering a connection.
+ */
+export type TunnelState = "starting" | "connected" | "failed" | "unavailable";
+
 export interface HealthResponse {
   status: "ok";
   version: string;
+  /** Absent when this installation runs no tunnel. */
+  tunnel?: TunnelState;
 }
 
 export interface BootstrapResponse {

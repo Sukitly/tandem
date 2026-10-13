@@ -27,9 +27,15 @@ import { UsageBoard } from "./services/usage.ts";
 import { WorkspaceCatalog } from "./services/workspaces.ts";
 import { Settings } from "./settings.ts";
 import { openStateDir } from "./state-dir.ts";
+import { TunnelControl } from "./tunnel-control.ts";
 
 export interface StartAppOptions
-  extends Pick<StartServerOptions, "hostname" | "port" | "allowedOrigins" | "publicUrl" | "webEntry" | "webRoot"> {
+  extends Pick<
+    StartServerOptions,
+    "hostname" | "port" | "allowedOrigins" | "publicUrl" | "webEntry" | "webRoot" | "tunnelState"
+  > {
+  /** The tunnel this server runs, if it runs one. The page reaches it through the public-access service. */
+  tunnel?: TunnelControl;
   /** Default: `$TANDEM_HOME`, or `~/.tandem`. */
   stateDir?: string;
   /** Model providers. Default: every provider pi-ai ships. Tests pass the faux provider only. */
@@ -42,6 +48,9 @@ export interface StartAppOptions
 }
 
 /** Open the state directory and the Harness, then serve them. `stop()` releases everything in reverse order. */
+/** A server with no tunnel: the page still has the service, and it says so. */
+const absentTunnel: TunnelControl = new TunnelControl({ onLog: () => {} });
+
 export async function startApp(options: StartAppOptions = {}): Promise<TandemServer> {
   const context = BACKGROUND_CONTEXT;
   const onError = options.onError ?? (() => {});
@@ -97,7 +106,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     const repository = new RepositoryBoard(paths, workspaces);
 
     const server = await startServer({
-      ...pick(options, ["hostname", "port", "allowedOrigins", "webEntry", "webRoot"]),
+      ...pick(options, ["hostname", "port", "allowedOrigins", "webEntry", "webRoot", "tunnelState"]),
       publicUrl,
       devices,
       ...stateDir.identity,
@@ -119,6 +128,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           images,
           devices,
           publicUrl,
+          tunnel: options.tunnel ?? absentTunnel,
         }),
       terminal: (id) => terminals.get(id),
       image: (ref) => storedImage(opened.harness, ref, context),

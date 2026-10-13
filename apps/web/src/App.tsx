@@ -18,6 +18,7 @@ import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 import { useReplicatedState } from "./rpc/use-replicated-state.ts";
 import { ThemeProvider } from "./theme.tsx";
+import { PublicAccessDialogProvider } from "./tunnel/public-access.tsx";
 
 export function App({ initialPairCode }: { initialPairCode?: string } = {}) {
   return (
@@ -29,7 +30,9 @@ export function App({ initialPairCode }: { initialPairCode?: string } = {}) {
           <ConnectionProvider fallback={(state) => <ConnectionScreen state={state} />}>
             <DevicesDialogProvider>
               <ProvidersDialogProvider>
-                <Workbench />
+                <PublicAccessDialogProvider>
+                  <Workbench />
+                </PublicAccessDialogProvider>
               </ProvidersDialogProvider>
             </DevicesDialogProvider>
           </ConnectionProvider>
