@@ -1,180 +1,138 @@
-import { spawn, spawnSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { DEFAULT_HOST, DEFAULT_PORT } from "@tandem/contracts";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
+import { startServer, type TandemServer } from "../src/server.ts";
 
-/** The command under test, run the way the repository runs it: Node, with type stripping, from the repository. */
-const repository = fileURLToPath(new URL("../../../", import.meta.url)).replace(/\/$/, "");
-const command = join(repository, "apps/server/src/service.ts");
-
-/** Whether the port the command uses is free; otherwise the suite would test against whatever holds it. */
-async function portFree(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.once("error", () => resolve(false));
-    probe.listen(DEFAULT_PORT, DEFAULT_HOST, () => probe.close(() => resolve(true)));
-  });
-}
-
-interface Bench {
-  /** The temporary directory this bench lives in. */
-  readonly root: string;
-  /** What the command computes the state directory from. */
-  readonly state: string;
-  /** Where the service file goes, from the bench's home. */
-  readonly file: string;
-  /** Every call to the stand-in launchd, one per line. */
-  readonly record: string;
-  readonly env: NodeJS.ProcessEnv;
-}
-
-const benches: string[] = [];
-const spare: ReturnType<typeof spawn>[] = [];
+const servers: TandemServer[] = [];
 afterEach(async () => {
-  for (const child of spare.splice(0)) {
-    child.kill("SIGTERM");
-    await new Promise((resolve) => child.once("exit", resolve));
-  }
-  for (const root of benches.splice(0)) {
-    // The stand-in launchd starts a stand-in server; take it down before the directory goes.
-    const written = await readFile(join(root, "pid"), "utf8").catch(() => "");
-    if (written.trim() !== "") {
-      try {
-        process.kill(Number(written.trim()), "SIGTERM");
-      } catch {
-        /* Already gone. */
-      }
-    }
-    await rm(root, { recursive: true, force: true });
-  }
+  for (const server of servers.splice(0)) await server.stop();
 });
 
-/**
- * A stand-in launchd, and the directory layout the command computes its paths from. It answers what the command asks
- * of a service manager: a job that was bootstrapped has a pid and is loaded, one that was booted out is gone, and a
- * refusal to boot out can be asked for. What it "runs" is a server on the command's port that answers `/health`, so
- * a successful install can be observed without a real agent behind it.
- */
-async function bench(): Promise<Bench> {
+/** Real authentication on a random port; only the service manager is a stand-in. */
+async function bench() {
   const root = await mkdtemp(join(tmpdir(), "tandem-service-"));
-  benches.push(root);
   const home = join(root, "home");
-  const bin = join(root, "bin");
   const state = join(root, "state");
-  const record = join(root, "launchctl.log");
+  const bin = join(root, "bin");
+  const record = join(root, "commands");
   const marker = join(root, "loaded");
-  const pid = join(root, "pid");
-  await mkdir(bin, { recursive: true });
-  await mkdir(home, { recursive: true });
-  const server = `require("node:http").createServer((request, response) => response.end("{}")).listen(${DEFAULT_PORT}, "${DEFAULT_HOST}")`;
-  await writeFile(
-    join(bin, "launchctl"),
-    `#!/bin/sh
-echo "$*" >> ${sh(record)}
-case "$1" in
-  print)
-    if [ -f ${sh(marker)} ]; then printf '\\tpid = %s\\n' "$(cat ${sh(pid)})"; exit 0; fi
-    echo "Could not find service"; exit 3 ;;
-  bootstrap)
-    ${sh(process.execPath)} -e ${sh(server)} >/dev/null 2>&1 &
-    echo $! > ${sh(pid)}
-    touch ${sh(marker)} ;;
-  bootout)
-    if [ -n "$STUB_REFUSE_BOOTOUT" ]; then echo "Boot-out failed: 5: Input/output error" >&2; exit 5; fi
-    kill "$(cat ${sh(pid)})" 2>/dev/null
-    rm -f ${sh(marker)} ${sh(pid)} ;;
-  kickstart)
-    touch ${sh(marker)} ;;
-esac
-exit 0
-`,
-  );
-  await chmod(join(bin, "launchctl"), 0o755);
-  return {
-    root,
-    state,
-    file: join(home, "Library", "LaunchAgents", "com.tandem.server.plist"),
-    record,
-    env: {
-      ...process.env,
-      HOME: home,
-      TANDEM_HOME: state,
-      PATH: `${bin}:${process.env.PATH ?? ""}`,
-      TANDEM_PUBLIC_URL: "https://tandem.example.com",
-    },
-  };
+  await mkdir(home);
+  await mkdir(bin);
+  const server = await startServer({ port: 0 });
+  servers.push(server);
+  // The manager reports the already-running test server as its job. Installation
+  // still executes unload/load and verifies it before requesting a real code.
+  await writeFile(marker, "running");
+  const script = `#!/bin/sh\necho "$*" >> "$RECORD"\ncase "$1" in\n print) [ -f "$MARKER" ] || exit 3; printf '\\tpid = 123\\n' ;;\n bootout) [ -z "$REFUSE_STOP" ] || exit 5; printf stopped > "$MARKER" ;;\n bootstrap) printf running > "$MARKER" ;;\n --user) exit 0 ;;\nesac\n`;
+  // A stopped marker must make launchctl print report a missing job.
+  const manager = script.replace('[ -f "$MARKER" ]', '[ "$(cat "$MARKER" 2>/dev/null)" = running ]');
+  for (const name of ["launchctl", "systemctl", "bun"]) {
+    const path = join(bin, name);
+    await writeFile(path, name === "bun" ? '#!/bin/sh\necho build >> "$RECORD"\nexit 99\n' : manager);
+    await chmod(path, 0o755);
+  }
+  async function identity() {
+    await mkdir(state, { recursive: true, mode: 0o700 });
+    await writeFile(join(state, "server.json"), JSON.stringify({ serverId: server.serverId, token: server.token }));
+  }
+  async function command(args: string[], extra: Record<string, string> = {}) {
+    const entry = new URL("../src/service-command.ts", import.meta.url).href;
+    const source = `const { runService } = await import(${JSON.stringify(entry)}); process.exitCode = await runService(${JSON.stringify(args)}, new URL(${JSON.stringify(server.url.href)}));`;
+    const child = spawn(process.execPath, ["--input-type=module", "-e", source], {
+      env: {
+        ...process.env,
+        HOME: home,
+        TANDEM_HOME: state,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        RECORD: record,
+        MARKER: marker,
+        ...extra,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    child.stdout.on("data", (data) => {
+      output += data;
+    });
+    child.stderr.on("data", (data) => {
+      output += data;
+    });
+    const code = await new Promise<number | null>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", resolve);
+    });
+    return { code, output };
+  }
+  const file =
+    process.platform === "darwin"
+      ? join(home, "Library/LaunchAgents/com.tandem.server.plist")
+      : join(home, ".config/systemd/user/tandem.service");
+  return { server, state, file, record, marker, identity, command };
 }
 
-function sh(value: string): string {
-  return `'${value.replace(/'/g, "'\\''")}'`;
+async function redeem(output: string, server: TandemServer) {
+  const link = output.match(/http:\/\/127\.0\.0\.1:\d+\/pair#[a-f0-9]+/)?.[0];
+  expect(link).toBeDefined();
+  if (link === undefined) throw new Error("No pairing link in command output");
+  const response = await fetch(new URL("/auth/pair", server.url), {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: server.url.origin },
+    body: JSON.stringify({ code: new URL(link).hash.slice(1) }),
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("set-cookie")).toContain("HttpOnly");
 }
 
-function service(args: readonly string[], where: Bench): { code: number | null; output: string } {
-  const result = spawnSync(process.execPath, [command, ...args], {
-    cwd: repository,
-    env: where.env,
-    encoding: "utf8",
-    timeout: 60_000,
-  });
-  return { code: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
-}
+test("install prints a redeemable link and exits successfully", async () => {
+  const b = await bench();
+  await b.identity();
+  const result = await b.command(["install"]);
+  expect(result.code).toBe(0);
+  await redeem(result.output, b.server);
+  expect((await stat(b.file)).isFile()).toBe(true);
+  const calls = await readFile(b.record, "utf8");
+  expect(calls).not.toContain("build");
+  if (process.platform === "darwin") expect(calls.indexOf("bootout")).toBeLessThan(calls.indexOf("bootstrap"));
+});
 
-const free = await portFree();
+test("pair uses real authentication without building or calling the service manager", async () => {
+  const b = await bench();
+  await b.identity();
+  const result = await b.command(["pair"]);
+  expect(result.code).toBe(0);
+  await redeem(result.output, b.server);
+  expect(await readFile(b.record, "utf8").catch(() => "")).toBe("");
+});
 
-describe.skipIf(process.platform !== "darwin" || !free)("installing the service", () => {
-  test("creates the state directory, writes the file, and leaves starting to launchd", async () => {
-    const where = await bench();
-    const installed = service(["install"], where);
-    expect(installed.output).toMatch(/Tandem answers on http/);
-    expect(installed.code).toBe(0);
-    // The state directory holds the master key, so its mode is the project's, not whatever the service manager makes.
-    expect((await stat(where.state)).mode & 0o777).toBe(0o700);
-    const plist = await readFile(where.file, "utf8");
-    expect(plist).toContain(`<string>${where.state}</string>`);
-    expect(plist).toContain("<key>TANDEM_PUBLIC_URL</key>");
-    expect(plist).toContain("<string>https://tandem.example.com</string>");
-    // The old job goes before the new one comes: bootstrapping while the last one is still letting go fails.
-    const calls = (await readFile(where.record, "utf8"))
-      .split("\n")
-      .filter((line) => /^(bootout|bootstrap) /.test(line));
-    expect(calls[0]).toMatch(/^bootout /);
-    expect(calls[1]).toMatch(/^bootstrap /);
-    expect(service(["status"], where).output).toContain("The service is running");
-  });
+test("missing identity reports pairing failure but preserves the installed service", async () => {
+  const b = await bench();
+  const result = await b.command(["install"]);
+  expect(result.code).toBe(1);
+  expect(result.output).toContain("The service is running, but generating a pairing link failed");
+  expect((await stat(b.state)).mode & 0o777).toBe(0o700);
+  expect((await stat(b.file)).isFile()).toBe(true);
+  expect((await fetch(new URL("/health", b.server.url))).ok).toBe(true);
+});
 
-  test("refuses while a server that is not this service holds the port", async () => {
-    const where = await bench();
-    const other = spawn(
-      process.execPath,
-      ["-e", `require("node:http").createServer((request, response) => response.end("{}")).listen(${DEFAULT_PORT})`],
-      { stdio: "ignore" },
-    );
-    spare.push(other);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const refused = service(["install"], where);
-    expect(refused.code).not.toBe(0);
-    expect(refused.output).toMatch(/already answers on port/);
-    // Nothing was written and nothing was loaded: the service would have found that server and exited.
-    expect(await readFile(where.file, "utf8").catch(() => "none")).toBe("none");
-    expect(await readFile(where.record, "utf8").catch(() => "")).not.toMatch(/^bootstrap /m);
-    expect(await stat(where.state).catch(() => undefined)).toBeUndefined();
-  });
+test.skipIf(process.platform !== "darwin")("refuses a foreign listener without writing a service file", async () => {
+  const b = await bench();
+  await writeFile(b.marker, "stopped");
+  const result = await b.command(["install"]);
+  expect(result.code).not.toBe(0);
+  expect(result.output).toContain("already answers on port");
+  expect(await stat(b.file).catch(() => undefined)).toBeUndefined();
+  expect(await stat(b.state).catch(() => undefined)).toBeUndefined();
+});
 
-  test("uninstalls only once the service is really gone", async () => {
-    const where = await bench();
-    service(["install"], where);
-    const refused = service(["uninstall"], { ...where, env: { ...where.env, STUB_REFUSE_BOOTOUT: "1" } });
-    expect(refused.code).not.toBe(0);
-    expect(refused.output).toMatch(/still there/);
-    // The file stays: a service that could not be stopped must not be forgotten.
-    expect((await stat(where.file)).isFile()).toBe(true);
-    const removed = service(["uninstall"], where);
-    expect(removed.code).toBe(0);
-    expect(removed.output).toMatch(/Removed .*com\.tandem\.server\.plist/);
-    expect(await readFile(where.file, "utf8").catch(() => "removed")).toBe("removed");
-  });
+test.skipIf(process.platform !== "darwin")("keeps the file when unloading is refused", async () => {
+  const b = await bench();
+  await b.command(["install"]);
+  const refused = await b.command(["uninstall"], { REFUSE_STOP: "1" });
+  expect(refused.code).not.toBe(0);
+  expect((await stat(b.file)).isFile()).toBe(true);
+  const removed = await b.command(["uninstall"]);
+  expect(removed.code).toBe(0);
+  expect(await stat(b.file).catch(() => undefined)).toBeUndefined();
 });

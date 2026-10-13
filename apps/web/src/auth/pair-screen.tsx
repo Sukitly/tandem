@@ -67,8 +67,8 @@ export function PairScreen({ initialCode, onPaired = enterTandem }: { initialCod
         <CardHeader>
           <CardTitle>Pair this device</CardTitle>
           <CardDescription>
-            Open the link printed by Tandem, or choose Add device on a paired browser. Without a paired device, enter a
-            recovery code from your password manager.
+            On the computer running Tandem, run <code>bun run service pair</code> and open the printed link. You can
+            also choose Add device on a paired browser, or enter a recovery code from your password manager.
           </CardDescription>
         </CardHeader>
         <CardContent>

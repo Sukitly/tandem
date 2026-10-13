@@ -12,6 +12,10 @@ afterEach(() => {
 });
 
 describe("pairing a browser", () => {
+  test("explains how to obtain the first pairing link", () => {
+    render(createElement(PairScreen));
+    expect(screen.getByText("bun run service pair")).toBeDefined();
+  });
   test("takes the fragment out of history before any request, without consuming a code twice", () => {
     window.history.replaceState(null, "", "/pair#secret-code");
     expect(takePairingCode()).toBe("secret-code");
