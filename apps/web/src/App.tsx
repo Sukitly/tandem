@@ -5,11 +5,12 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProjectPanel } from "./app/project-panel.tsx";
 import { AppSidebar } from "./app/sidebar.tsx";
+import { AppSidebarProvider } from "./app/sidebar-provider.tsx";
 import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
 import { DevicesDialogProvider } from "./auth/devices-dialog.tsx";
 import { PairScreen } from "./auth/pair-screen.tsx";
@@ -45,14 +46,14 @@ export function App({ initialPairCode }: { initialPairCode?: string } = {}) {
 function Workbench() {
   return (
     <WorkbenchProvider>
-      <SidebarProvider>
+      <AppSidebarProvider>
         <AppSidebar />
         <SidebarInset className="h-dvh min-w-0">
           <ConnectionAlert />
           <FailureAlert />
           <Main />
         </SidebarInset>
-      </SidebarProvider>
+      </AppSidebarProvider>
     </WorkbenchProvider>
   );
 }
