@@ -113,7 +113,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     return device === undefined ? undefined : { master: false, deviceId: device.id };
   };
   const sessionCookie = (request: IncomingMessage, secret: string, clear = false): string => {
-    const secure = publicUrl !== undefined && request.headers.host === new URL(publicUrl).host;
+    const secure = publicUrl !== undefined && cameFromPublicOrigin(request, publicUrl);
     // Cookie lifetime exceeds the idle limit; authentication enforces 30 days without activity server-side.
     return `${cookieName}=${secret}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${clear ? 0 : 400 * 24 * 60 * 60}${secure ? "; Secure" : ""}`;
   };
@@ -291,6 +291,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       await devices.flush();
     },
   };
+}
+
+/**
+ * Whether the browser reached this server through the public origin. A tunnel in front may rewrite `Host`, so the
+ * answer comes from `Origin`, which the browser sets and cannot set to anything but where it is running. Only a
+ * request that sets no `Origin` at all — a navigation — is judged by the `Host` it addressed.
+ */
+export function cameFromPublicOrigin(request: IncomingMessage, publicUrl: string): boolean {
+  const origin = request.headers.origin;
+  if (origin !== undefined) return origin === publicUrl;
+  return request.headers.host === new URL(publicUrl).host;
 }
 
 const SERVED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
