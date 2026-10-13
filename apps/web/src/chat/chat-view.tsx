@@ -15,9 +15,12 @@ import { useConversation } from "@/rpc/use-conversation.ts";
 import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer, imageSupportOf } from "./chat-composer.tsx";
+import { PullRequestLine } from "./pull-request-line.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
+import { TpsLine } from "./tps-line.tsx";
 import { toTranscript } from "./transcript.ts";
 import { TranscriptEntry, WaitingDots } from "./transcript-items.tsx";
+import { UsageLine } from "./usage-line.tsx";
 
 /** One conversation: its header, transcript, and the message box. */
 export function ChatView({ conversationId }: { conversationId: number }) {
@@ -92,6 +95,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
         </EmptyHeader>
       </Empty>
       <ChatFooter>
+        <PullRequestLine workspaceId={workspaceId} />
         <ChatComposer
           busy={false}
           queued={[]}
@@ -112,7 +116,12 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
             select(id);
           }}
           onStop={() => {}}
-          status={<StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />}
+          status={
+            <div className="grid gap-1.5">
+              <StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />
+              <UsageLine provider={agent.model?.provider} />
+            </div>
+          }
         />
       </ChatFooter>
     </ChatFrame>
@@ -132,6 +141,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   const waiting = useMemo(() => waitingComments(threads), [threads]);
   const { commands } = usePrompts(summary?.workspaceId);
   const view = useReplicatedState(conversation.view);
+  const tps = useReplicatedState(conversation.tps)?.last;
   const notices = useReplicatedState(conversation.notices)?.notices ?? [];
   const transcript = useMemo(() => (view === undefined ? undefined : toTranscript(view)), [view]);
   if (view === undefined || transcript === undefined) return null;
@@ -158,6 +168,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
         {notices.map((notice) => (
           <Notice key={notice.id} notice={notice} />
         ))}
+        <PullRequestLine workspaceId={summary?.workspaceId} active={transcript.busy} />
         <ChatComposer
           busy={transcript.busy}
           queued={transcript.queued}
@@ -180,11 +191,15 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}
           status={
-            <StatusBar
-              agent={agent}
-              usage={transcript.usage}
-              onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
-            />
+            <div className="grid gap-1.5">
+              <StatusBar
+                agent={agent}
+                usage={transcript.usage}
+                onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
+              />
+              <UsageLine provider={agent?.model?.provider} active={transcript.busy} />
+              {tps !== undefined && <TpsLine tps={tps} />}
+            </div>
           }
         />
       </ChatFooter>

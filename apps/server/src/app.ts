@@ -6,6 +6,7 @@ import { commentTools } from "./comment-tool.ts";
 import { storedImage } from "./conversation-view.ts";
 import { FileCredentialStore } from "./credentials.ts";
 import { DeviceSessions } from "./device-sessions.ts";
+import { findGuard, writeFindShim } from "./find-guard.ts";
 import { openHarness } from "./harness.ts";
 import { createNodePhotonImages } from "./images/node.ts";
 import { createAppModels, defaultProviders } from "./models.ts";
@@ -20,7 +21,9 @@ import { ModelCatalog } from "./services/models.ts";
 import { ProjectDirectoryBrowser } from "./services/project-directories.ts";
 import { ProjectPaths } from "./services/project-path.ts";
 import { PromptLibrary } from "./services/prompts.ts";
+import { RepositoryBoard } from "./services/repository.ts";
 import { TerminalHost } from "./services/terminals.ts";
+import { UsageBoard } from "./services/usage.ts";
 import { WorkspaceCatalog } from "./services/workspaces.ts";
 import { Settings } from "./settings.ts";
 import { openStateDir } from "./state-dir.ts";
@@ -71,6 +74,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     cleanups.push(async () => comments.dispose());
     // Installed before any work resumes, so a conversation that continues after a restart has the tool too.
     opened.registry.install(commentTools(comments, catalog));
+    // The `find` policy: its shim lives with the state, and its guard wraps every agent Bash call.
+    opened.registry.install(findGuard(await writeFindShim(join(stateDir.path, "shims"))));
     const paths = new ProjectPaths(workspaces, opened.env);
     const changes = new ChangeTrackers(paths, onError);
     cleanups.push(() => changes.dispose());
@@ -88,6 +93,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
       options.terminalCommand === undefined ? {} : { command: options.terminalCommand },
     );
     cleanups.push(async () => terminals.dispose());
+    const usage = new UsageBoard(models, onError);
+    const repository = new RepositoryBoard(paths, workspaces);
 
     const server = await startServer({
       ...pick(options, ["hostname", "port", "allowedOrigins", "webEntry", "webRoot"]),
@@ -107,6 +114,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           comments,
           prompts,
           terminals,
+          usage,
+          repository,
           images,
           devices,
           publicUrl,

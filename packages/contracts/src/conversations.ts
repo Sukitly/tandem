@@ -87,11 +87,38 @@ export interface ConversationNotices {
 }
 
 /**
+ * How the last agent run of a conversation performed, as pi's `tps` extension reports after each run: the throughput
+ * it reached, the tokens it spent, and how long it took. The server times the run across its busy edges and reads the
+ * tokens from the answers; the page renders what it is given.
+ */
+export interface RunTps {
+  /** Output tokens a second, over the run's whole duration, tool execution included. */
+  tokensPerSecond: number;
+  /** Prompt tokens the provider did not have cached. */
+  inputTokens: number;
+  outputTokens: number;
+  /** Prompt tokens the provider read from its cache. */
+  cacheReadTokens: number;
+  /** Prompt tokens the provider wrote to its cache. */
+  cacheWriteTokens: number;
+  totalTokens: number;
+  /** How long the run took, in seconds. */
+  seconds: number;
+}
+
+/** The last run's throughput of one conversation; `last` is absent before its first answer. */
+export interface ConversationTps {
+  last?: RunTps;
+}
+
+/**
  * One open conversation. A keyed service: observe it to receive the instances this connection opened, and tell them
  * apart by `view.conversation.id`.
  */
 export interface Conversation {
   readonly view: ReplicatedState<ConversationView>;
+  /** The last run's throughput, recomputed as the transcript changes. */
+  readonly tps: ReplicatedState<ConversationTps>;
   /** Shared by every client showing the conversation; kept in memory only. */
   readonly notices: ReplicatedState<ConversationNotices>;
   /** Resolves once the message is durably admitted, not when the agent answers. */

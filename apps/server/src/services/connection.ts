@@ -11,8 +11,10 @@ import {
   Models,
   ProjectChanges,
   Prompts,
+  Repository,
   type StartInput,
   Terminals,
+  Usage,
   Workspaces,
 } from "@tandem/contracts";
 import { pageView } from "../conversation-view.ts";
@@ -36,7 +38,9 @@ import type { FileBrowser } from "./files.ts";
 import type { ModelCatalog } from "./models.ts";
 import type { ProjectDirectoryBrowser } from "./project-directories.ts";
 import type { PromptLibrary } from "./prompts.ts";
+import type { RepositoryBoard } from "./repository.ts";
 import type { TerminalHost } from "./terminals.ts";
+import type { UsageBoard } from "./usage.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
 export interface AppServices {
@@ -54,6 +58,10 @@ export interface AppServices {
   readonly comments: CommentBoard;
   readonly prompts: PromptLibrary;
   readonly terminals: TerminalHost;
+  /** The providers' rate-limit usage, read on the server with its credentials. */
+  readonly usage: UsageBoard;
+  /** The projects' pull requests, read on the server with `gh`. */
+  readonly repository: RepositoryBoard;
   /** Fits images to a model: those a page sends with a message. */
   readonly images: ImageProcessor;
 }
@@ -85,6 +93,8 @@ export function createConnectionServices({
   comments,
   prompts,
   terminals,
+  usage,
+  repository,
   images,
   devices,
   publicUrl,
@@ -96,6 +106,8 @@ export function createConnectionServices({
     Changes,
     Comments,
     Terminals,
+    Usage,
+    Repository,
     Devices,
     Prompts,
     Conversations,
@@ -260,6 +272,16 @@ export function createConnectionServices({
     state: terminals.state,
     create: (input, context) => terminals.create(input, context),
     close: async (id) => terminals.close(id),
+  });
+
+  provider.provide(Usage, {
+    state: usage.state,
+    refresh: (provider, force) => usage.refresh(provider, force),
+  });
+
+  provider.provide(Repository, {
+    state: repository.state,
+    refresh: (workspaceId, context) => repository.refresh(workspaceId, context),
   });
 
   provider.provide(Files, {

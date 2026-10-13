@@ -16,7 +16,9 @@ import {
   Models,
   ProjectChanges,
   Prompts,
+  Repository,
   Terminals,
+  Usage,
   Workspaces,
 } from "@tandem/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
@@ -41,6 +43,10 @@ export interface Connected {
   prompts: Prompts;
   /** The terminals of every project. */
   terminals: Terminals;
+  /** The providers' rate-limit usage, read by the server. */
+  usage: Usage;
+  /** The projects' pull requests, read by the server with `gh`. */
+  repository: Repository;
   /** Connect to a terminal with the paired browser's cookie. */
   openTerminal: TandemConnection["terminal"];
   /** A same-origin transcript image URL, authenticated by the browser's cookie. */
@@ -88,6 +94,8 @@ export function ConnectionProvider({
         Prompts,
         Conversations,
         Conversation,
+        Usage,
+        Repository,
       ],
       onError: (error) => console.error(error),
     }).then(
@@ -117,6 +125,8 @@ export function ConnectionProvider({
               comments: connection.services.use(Comments),
               prompts: connection.services.use(Prompts),
               terminals: connection.services.use(Terminals),
+              usage: connection.services.use(Usage),
+              repository: connection.services.use(Repository),
               openTerminal: (id, screen, options) => connection.terminal(id, screen, options),
               imageUrl: (ref) => connection.imageUrl(ref),
             },
@@ -159,6 +169,8 @@ function Connected({
         comments: value.comments,
         prompts: value.prompts,
         terminals: value.terminals,
+        usage: value.usage,
+        repository: value.repository,
         openTerminal: value.openTerminal,
         imageUrl: value.imageUrl,
         open: value.open,
