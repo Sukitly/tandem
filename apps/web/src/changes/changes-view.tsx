@@ -17,6 +17,7 @@ import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChangeDiff } from "./change-diff.tsx";
 import {
   ADDITIONS_COLOR,
+  type CountPart,
   countParts,
   DELETIONS_COLOR,
   statusColor,
@@ -142,11 +143,14 @@ export function ChangesView({
           </Alert>
         </div>
       )}
-      <p className="shrink-0 px-3 py-2 text-xs text-muted-foreground">
-        {state.files.length === 0
-          ? "No changed files"
-          : `${state.files.length} changed ${state.files.length === 1 ? "file" : "files"}`}
-        {state.base !== undefined && ` against ${state.base}`}
+      <p className="flex shrink-0 flex-wrap items-baseline gap-x-2 px-3 py-2 text-xs text-muted-foreground">
+        <span>
+          {state.files.length === 0
+            ? "No changed files"
+            : `${state.files.length} changed ${state.files.length === 1 ? "file" : "files"}`}
+          {state.base !== undefined && ` against ${state.base}`}
+        </span>
+        <Totals files={state.files} />
       </p>
       <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
         <ResizablePanel id="changes" minSize={80} className="overflow-auto px-2 pb-2">
@@ -191,6 +195,30 @@ export function ChangesView({
         )}
       </ResizablePanelGroup>
     </div>
+  );
+}
+
+/**
+ * Every listed file's lines added and deleted, summed: how much the whole project differs from the base commit. A
+ * binary file counts as neither, and so are files the list could not hold beyond its limit.
+ */
+function Totals({ files }: { files: readonly ChangedFile[] }) {
+  let additions = 0;
+  let deletions = 0;
+  for (const file of files) {
+    additions += file.additions ?? 0;
+    deletions += file.deletions ?? 0;
+  }
+  const parts: CountPart[] = countParts(additions, deletions);
+  if (parts.length === 0) return null;
+  return (
+    <span className="flex items-center gap-1 font-mono tabular-nums">
+      {parts.map((part) => (
+        <span key={part.kind} className={part.kind === "additions" ? ADDITIONS_COLOR : DELETIONS_COLOR}>
+          {part.text}
+        </span>
+      ))}
+    </span>
   );
 }
 

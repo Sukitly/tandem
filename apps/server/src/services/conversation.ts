@@ -16,6 +16,7 @@ import type {
 import type {
   Conversation,
   ConversationNotices,
+  ConversationTps,
   ConversationView,
   ImageInput,
   ModelRef,
@@ -23,6 +24,7 @@ import type {
 } from "@tandem/contracts";
 import type { ImageProcessor } from "../images/image-processor.ts";
 import { checkImageTotal, ImageRefused, imageModel, prepareImages } from "../images/message-images.ts";
+import { lastRunTokens, RunTimer, runTps } from "../run-metrics.ts";
 import type { CommentBoard, TakenComments } from "./comments.ts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
@@ -30,6 +32,11 @@ import type { PromptLibrary } from "./prompts.ts";
 
 /** Submissions that end without an answer for these reasons need no notice: the user asked for it, or it was replaced. */
 const QUIET_REASONS = new Set(["aborted", "reset", "stale"]);
+
+/** Whether the conversation is working: its live state holds a run, which is present exactly from `startRun` to `endRun`. */
+function isBusy(view: ConversationView): boolean {
+  return (view.docs["pi.live"] as { run?: unknown } | undefined)?.run !== undefined;
+}
 
 /** Notices of every conversation, shared by all connections. In memory only. */
 export class NoticeBoard {
@@ -84,8 +91,20 @@ export function createConversationService({
   onSubmitted,
 }: ConversationServiceOptions): Conversation {
   const id = conversation.id as number;
+  // The last run's throughput: its duration is measured across the run's busy edges, and its tokens are read from the
+  // answers once it ends, both recomputed as the view publishes.
+  const tps = replicatedState<ConversationTps>({});
+  const timer = new RunTimer();
+  view.subscribe((value) => {
+    const seconds = timer.observe(isBusy(value));
+    if (seconds === undefined) return;
+    const tokens = lastRunTokens(value);
+    const last = tokens === undefined ? undefined : runTps(tokens, seconds);
+    if (last !== undefined) tps.replace(BACKGROUND_CONTEXT, { last });
+  });
   return {
     view,
+    tps,
     notices: notices.get(id),
     async submit(input, context) {
       const { text, whenBusy, comments: ids, images: sent } = parseSubmitInput(input);

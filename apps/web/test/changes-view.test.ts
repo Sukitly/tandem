@@ -60,6 +60,19 @@ describe("file type icons in the changed files list", () => {
     expect(markup).toContain(path);
   });
 
+  test("sums every changed file's line counts in the header", () => {
+    state.changes.files = [
+      { path: "src/a.ts", status: "modified", additions: 10, deletions: 2 },
+      { path: "src/b.ts", status: "added", additions: 5 },
+      { path: "logo.png", status: "added" },
+      { path: "src/c.ts", status: "deleted", deletions: 7 },
+    ];
+    const markup = changes();
+    expect(markup).toContain("4 changed files");
+    expect(markup).toContain("+15");
+    expect(markup).toContain("−9");
+  });
+
   test("keeps Git status, rename information, and line counts alongside the icon", () => {
     const file: ChangedFile = {
       path: "src/new.tsx",

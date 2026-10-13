@@ -37,7 +37,9 @@ export {
   type ConversationSummary,
   Conversations,
   type ConversationsState,
+  type ConversationTps,
   type ConversationView,
+  type RunTps,
   type StartInput,
   type SubmitInput,
 } from "./conversations.ts";
@@ -81,6 +83,7 @@ export {
   Prompts,
   type PromptTemplateSummary,
 } from "./prompts.ts";
+export { type PullRequest, Repository, type RepositoryState } from "./repository.ts";
 export {
   clampTerminalSize,
   exitLabel,
@@ -105,7 +108,18 @@ export {
   type PublicAccessStatus,
   type PublishInput,
 } from "./tunnel.ts";
-export { type ProjectDirectory, type WorkspaceSummary, Workspaces, type WorkspacesState } from "./workspaces.ts";
+export {
+  type ProviderUsage,
+  Usage,
+  type UsageState,
+  type UsageWindow,
+} from "./usage.ts";
+export {
+  type ProjectDirectory,
+  type WorkspaceSummary,
+  Workspaces,
+  type WorkspacesState,
+} from "./workspaces.ts";
 
 /** The server only listens on the loopback interface. */
 export const DEFAULT_HOST = "127.0.0.1";

@@ -22,10 +22,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Progress } from "@/components/ui/progress";
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
+import { ContextRing } from "./context-ring.tsx";
 import type { ContextUsage } from "./transcript.ts";
 
 export interface AgentChoice {
@@ -88,8 +88,8 @@ export function StatusBar({
           {formatCost(usage.cost)}
           {contextWindow > 0 && ` · ${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
         </span>
+        {contextWindow > 0 && <ContextRing percent={percent} tokens={usage.tokens} capacity={contextWindow} />}
       </div>
-      {contextWindow > 0 && <Progress value={percent} aria-label="Context used" />}
     </div>
   );
 }
