@@ -35,9 +35,7 @@ export function TpsLine({ tps }: { tps: RunTps }) {
             </span>
           )}
           <Tooltip>
-            <TooltipTrigger render={<span />} title={metric.detail}>
-              {metric.label}
-            </TooltipTrigger>
+            <TooltipTrigger render={<span />}>{metric.label}</TooltipTrigger>
             <TooltipContent>{metric.detail}</TooltipContent>
           </Tooltip>
         </span>
