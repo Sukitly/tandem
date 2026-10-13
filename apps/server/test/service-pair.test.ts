@@ -9,7 +9,6 @@ vi.mock("../src/launch.ts", async (original) => ({
 afterEach(() => {
   vi.restoreAllMocks();
   vi.mocked(runningPair).mockReset();
-  process.exitCode = 0;
 });
 const base = new URL("http://127.0.0.1:4820");
 
@@ -35,8 +34,7 @@ test("standalone pairing fails when the server cannot be verified", async () => 
 test("reports pairing failure separately after successful installation", async () => {
   const output = vi.spyOn(console, "error").mockImplementation(() => {});
   vi.mocked(runningPair).mockRejectedValue(new Error("request failed"));
-  await printInstalledPairing(base);
+  expect(await printInstalledPairing(base)).toBe(false);
   expect(output.mock.calls.flat().join("\n")).toContain("The service is running, but generating a pairing link failed");
   expect(output.mock.calls.flat().join("\n")).toContain("bun run service pair");
-  expect(process.exitCode).toBe(1);
 });

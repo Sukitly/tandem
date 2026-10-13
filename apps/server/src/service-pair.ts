@@ -14,12 +14,13 @@ export async function printServicePairing(base: URL): Promise<void> {
 }
 
 /** Installation succeeded even when requesting its pairing link fails. */
-export async function printInstalledPairing(base: URL): Promise<void> {
+export async function printInstalledPairing(base: URL): Promise<boolean> {
   try {
     await printServicePairing(base);
+    return true;
   } catch (error) {
     console.error(`The service is running, but generating a pairing link failed: ${String(error)}`);
     console.error("Try again with `bun run service pair` using the same TANDEM_HOME.");
-    process.exitCode = 1;
+    return false;
   }
 }
