@@ -50,25 +50,21 @@ After `install`, open the printed pairing link to authorize your first browser. 
 
 The server still binds only to `127.0.0.1`, so reaching it from outside this machine means a Cloudflare Tunnel in front of it. Tandem runs the tunnel itself, as a child of the server, so it starts and stops with the server and one service covers both.
 
-Install `cloudflared` (`brew install cloudflared`; Tandem does not download it), then name the address you want:
+**Create the tunnel in the Cloudflare dashboard** and give Tandem its connector token. The token runs that one tunnel: it cannot create tunnels or change DNS, and the dashboard revokes it. That is the whole credential this machine holds, which is what a machine that is not yours alone should hold.
 
 ```bash
-bun run tunnel setup --public-url https://tandem.example.com
+pbpaste | bun run tunnel configure --public-url https://tandem.example.com
 bun run service restart
 bun run tunnel status --verify    # configured origin, and whether the tunnel really connects
 ```
 
-`setup` does the Cloudflare work for you. It authorizes this machine once (`cloudflared tunnel login`, which opens a browser), creates the tunnel, points that hostname at it, and writes `~/.tandem/cloudflared.yml` with a single ingress rule sending it to `http://127.0.0.1:4820` and refusing everything else. The origin it records in `~/.tandem/tunnel.json` becomes Tandem's public origin, so pairing links carry it and its cookies are `Secure`; `--public-url`, `TANDEM_PUBLIC_URL`, and `publicUrl` in `settings.json` still override it. `--force` replaces a DNS record that is already there; without it, `setup` stops and says so. That path needs no token, because a tunnel this machine manages itself has none.
+In the dashboard: **Networks → Tunnels → Create a tunnel**, choose `Cloudflared`, name it, then copy the token from the install page, and add a **Public hostname** pointing at `http://127.0.0.1:4820`. `configure` reads the token from standard input or from `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600. Install `cloudflared` with `brew install cloudflared`; Tandem does not download it.
 
-A tunnel that a **dashboard** describes is the other way, and then a token is unavoidable:
+The origin it records becomes Tandem's public origin, so pairing links carry it and its cookies are `Secure`; `--public-url`, `TANDEM_PUBLIC_URL`, and `publicUrl` in `settings.json` still override it.
 
-```bash
-pbpaste | bun run tunnel configure --public-url https://tandem.example.com
-```
+**The other way is only for a machine that is yours alone.** `bun run tunnel setup --public-url <origin>` has Tandem create the tunnel itself: it runs `cloudflared tunnel login`, which authorizes cloudflared to manage this account's tunnels and the DNS records of the domain you pick, then creates the tunnel, points the hostname at it, and writes `~/.tandem/cloudflared.yml`. No token is copied, but `~/.cloudflared/cert.pem` is then a credential that can create and delete tunnels and edit that domain's DNS, so do not put it on a shared machine, in a sync folder, or anywhere its home directory is readable by others. `--force` replaces a DNS record that is already there; without it, `setup` stops and says so. A configuration file wins over a token, so taking that route replaces one with the other.
 
-`configure` reads the connector token from standard input or from `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600. That token travels to `cloudflared` in the child's environment, and `cloudflared.yml` wins over it when both are present.
-
-The same thing is in the app: **Public access** in the sidebar footer takes the address, opens the approval page, and reports what the tunnel is doing, so publishing does not require a terminal. Everything the tunnel needs — the approval URL, whether it connected, why it did not — is in the `PublicAccess` service and in `/health`.
+The same two routes are in the app: **Public access** in the sidebar footer takes the address and the tunnel token, and reports what the tunnel is doing, so publishing needs no terminal. Everything the tunnel needs — the approval URL, whether it connected, why it did not — is in the `PublicAccess` service and in `/health`.
 
 The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
 

@@ -103,6 +103,7 @@ export {
   PublicAccess,
   type PublicAccessState,
   type PublicAccessStatus,
+  type PublishInput,
 } from "./tunnel.ts";
 export { type ProjectDirectory, type WorkspaceSummary, Workspaces, type WorkspacesState } from "./workspaces.ts";
 

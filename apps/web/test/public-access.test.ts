@@ -31,14 +31,30 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-test("publishes at the address the person typed", () => {
+test("publishes with the token the person pasted, which is the path that grants nothing else", () => {
   mock.publish.mockResolvedValue(undefined);
   setup();
   fireEvent.change(screen.getByLabelText("The address it will answer at"), {
     target: { value: "https://tandem.example.com" },
   });
+  fireEvent.change(screen.getByLabelText("Tunnel token"), { target: { value: "eyJhIjoi" } });
   fireEvent.click(screen.getByRole("button", { name: "Publish" }));
-  expect(mock.publish).toHaveBeenCalledWith("https://tandem.example.com", expect.anything());
+  expect(mock.publish).toHaveBeenCalledWith(
+    { publicUrl: "https://tandem.example.com", token: "eyJhIjoi" },
+    expect.anything(),
+  );
+});
+
+test("offers the route that authorizes this machine only when asked for, and sends no token", () => {
+  mock.publish.mockResolvedValue(undefined);
+  setup();
+  fireEvent.change(screen.getByLabelText("The address it will answer at"), {
+    target: { value: "https://tandem.example.com" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "This machine is mine alone: authorize it instead" }));
+  expect(screen.queryByLabelText("Tunnel token")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+  expect(mock.publish).toHaveBeenCalledWith({ publicUrl: "https://tandem.example.com" }, expect.anything());
 });
 
 test("does not ask Cloudflare for an address that is not HTTPS", () => {
@@ -46,8 +62,17 @@ test("does not ask Cloudflare for an address that is not HTTPS", () => {
   fireEvent.change(screen.getByLabelText("The address it will answer at"), {
     target: { value: "http://tandem.example.com" },
   });
+  fireEvent.change(screen.getByLabelText("Tunnel token"), { target: { value: "eyJhIjoi" } });
   expect(screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled")).toBe(true);
   expect(mock.publish).not.toHaveBeenCalled();
+});
+
+test("does not publish with an empty token", () => {
+  setup();
+  fireEvent.change(screen.getByLabelText("The address it will answer at"), {
+    target: { value: "https://tandem.example.com" },
+  });
+  expect(screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled")).toBe(true);
 });
 
 test("says to install cloudflared rather than offering to publish", () => {

@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { readJsonFile, writeJsonFile } from "./json-file.ts";
 import { publicOrigin } from "./server.ts";
 import { defaultStateDirPath } from "./state-dir.ts";
@@ -42,6 +43,8 @@ export async function saveTunnelConfig(config: TunnelConfig, stateDir?: string):
     publicUrl: checkedPublicUrl(config.publicUrl),
     ...(config.token === undefined ? {} : { token: checkedToken(config.token) }),
   };
+  // The state directory holds the master key, so it is created at 0700, like the installer creates it.
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await writeJsonFile(path, checked);
   return path;
 }

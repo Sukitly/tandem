@@ -38,6 +38,8 @@ function PublicAccessDialog({ onOpenChange }: { onOpenChange: (open: boolean) =>
   const { publicAccess } = useConnected();
   const state = useReplicatedState(publicAccess.state);
   const [origin, setOrigin] = useState("https://");
+  const [token, setToken] = useState("");
+  const [authorizing, setAuthorizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
 
@@ -74,7 +76,12 @@ function PublicAccessDialog({ onOpenChange }: { onOpenChange: (open: boolean) =>
             className="flex flex-col gap-2"
             onSubmit={(event) => {
               event.preventDefault();
-              run(() => publicAccess.publish(origin.trim(), BACKGROUND_CONTEXT));
+              run(() =>
+                publicAccess.publish(
+                  { publicUrl: origin.trim(), ...(authorizing ? {} : { token: token.trim() }) },
+                  BACKGROUND_CONTEXT,
+                ),
+              );
             }}
           >
             <Field>
@@ -87,12 +94,40 @@ function PublicAccessDialog({ onOpenChange }: { onOpenChange: (open: boolean) =>
                 autoComplete="off"
               />
             </Field>
+            {!authorizing && (
+              <Field>
+                <FieldLabel htmlFor="public-access-token">Tunnel token</FieldLabel>
+                <Input
+                  id="public-access-token"
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                  placeholder="eyJhIjoi…"
+                  autoComplete="off"
+                />
+              </Field>
+            )}
             <p className="text-sm text-muted-foreground">
-              It must be a hostname on the Cloudflare account that manages this domain. The tunnel and its DNS record
-              are created for you; the first time, a browser opens to approve this machine.
+              {authorizing ? (
+                <>
+                  A browser window opens to approve this machine. That authorizes cloudflared to manage tunnels and DNS
+                  for the domain you pick, which is more than this machine should hold unless it is yours alone.
+                </>
+              ) : (
+                <>
+                  Create the tunnel and its public hostname in the Cloudflare dashboard, pointing at{" "}
+                  <code>http://127.0.0.1:4820</code>, then paste its token here. The token runs that one tunnel and
+                  grants nothing else, and the dashboard revokes it.
+                </>
+              )}
             </p>
-            <Button type="submit" disabled={!origin.trim().startsWith("https://")}>
+            <Button
+              type="submit"
+              disabled={!origin.trim().startsWith("https://") || (!authorizing && token.trim() === "")}
+            >
               Publish
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setAuthorizing(!authorizing)}>
+              {authorizing ? "Use a tunnel token instead" : "This machine is mine alone: authorize it instead"}
             </Button>
           </form>
         )}

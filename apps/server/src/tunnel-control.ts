@@ -1,8 +1,9 @@
+import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import type { TunnelState } from "@tandem/contracts";
 import { CLOUDFLARED, cloudflaredMissing } from "./cloudflared.ts";
 import { defaultStateDirPath } from "./state-dir.ts";
-import { loadTunnelConfig, type TunnelConfig, tunnelConfigPath } from "./tunnel-config.ts";
+import { loadTunnelConfig, saveTunnelConfig, type TunnelConfig, tunnelConfigPath } from "./tunnel-config.ts";
 import { tunnelFileYamlPath } from "./tunnel-file.ts";
 import { startTunnel, type TunnelRunner } from "./tunnel-runner.ts";
 import { setupTunnel } from "./tunnel-setup.ts";
@@ -64,9 +65,9 @@ export class TunnelControl {
   }
 
   /** Publishes at that origin. Returns once the work has started; the view carries what happens next. */
-  async publish(publicUrl: string): Promise<void> {
+  async publish(input: { publicUrl: string; token?: string }): Promise<void> {
     if (this.#working !== undefined) throw new Error("A tunnel is already being set up");
-    const work = this.#publish(publicUrl).finally(() => {
+    const work = this.#publish(input).finally(() => {
       this.#working = undefined;
     });
     this.#working = work;
@@ -86,18 +87,12 @@ export class TunnelControl {
     await this.#stopRunner();
   }
 
-  async #publish(publicUrl: string): Promise<void> {
-    this.#report({ status: "authorizing", publicUrl });
+  async #publish(input: { publicUrl: string; token?: string }): Promise<void> {
+    const { publicUrl } = input;
+    this.#report({ status: input.token === undefined ? "authorizing" : "starting", publicUrl });
     try {
-      if (!this.cloudflared)
-        throw new Error(`${this.#executable} is not installed. Install it with \`brew install cloudflared\`.`);
-      await setupTunnel({
-        publicUrl,
-        stateDir: this.#stateDir,
-        executable: this.#executable,
-        report: (line) => this.#onLog(line),
-        onAuthorizationUrl: (url) => this.#report({ status: "authorizing", publicUrl, authorizationUrl: url }),
-      });
+      if (input.token === undefined) await this.#authorize(publicUrl);
+      else await this.#adopt(input.token, publicUrl);
       const config = await loadTunnelConfig(this.#stateDir);
       if (config === undefined) throw new Error("The tunnel configuration was not written");
       this.#config = config;
@@ -105,6 +100,33 @@ export class TunnelControl {
     } catch (error) {
       this.#report({ status: "failed", publicUrl, message: message(error) });
     }
+  }
+
+  /** A tunnel this machine manages itself: authorize it, create it, and point the hostname at it. */
+  async #authorize(publicUrl: string): Promise<void> {
+    if (!this.cloudflared)
+      throw new Error(`${this.#executable} is not installed. Install it with \`brew install cloudflared\`.`);
+    await setupTunnel({
+      publicUrl,
+      stateDir: this.#stateDir,
+      executable: this.#executable,
+      report: (line) => this.#onLog(line),
+      onAuthorizationUrl: (url) => this.#report({ status: "authorizing", publicUrl, authorizationUrl: url }),
+    });
+  }
+
+  /**
+   * A tunnel a dashboard describes: its token runs that one tunnel and grants nothing else, which is what a machine
+   * that is not this person's own should hold. The file a self-managed tunnel reads would win over the token, so
+   * choosing this route replaces it.
+   */
+  async #adopt(token: string, publicUrl: string): Promise<void> {
+    const managed = tunnelFileYamlPath(this.#stateDir);
+    if (existsSync(managed)) {
+      await rm(managed, { force: true });
+      this.#onLog(`Replaced ${managed} with the tunnel token.`);
+    }
+    await saveTunnelConfig({ publicUrl, token }, this.#stateDir);
   }
 
   #start(config: TunnelConfig): void {

@@ -85,7 +85,7 @@ test("publishes with no token: authorizes, creates, routes, and connects", { tim
     // Every view the page would see: the approval URL is one of them, and it is gone once the step is over.
     const views: PublicAccessView[] = [];
     const watching = b.control.onChange((view) => views.push(view));
-    await b.control.publish(PUBLIC_URL);
+    await b.control.publish({ publicUrl: PUBLIC_URL });
     expect(await settled(b.control)).toBe("connected");
     watching();
     const authorizing = views.find((view) => view.authorizationUrl !== undefined);
@@ -106,7 +106,7 @@ test("publishes with no token: authorizes, creates, routes, and connects", { tim
 test("resumes what is already configured when the server starts", { timeout: 20_000 }, async () => {
   const b = await bench();
   try {
-    await b.control.publish(PUBLIC_URL);
+    await b.control.publish({ publicUrl: PUBLIC_URL });
     await settled(b.control);
     await b.control.stop();
 
@@ -123,7 +123,7 @@ test("resumes what is already configured when the server starts", { timeout: 20_
 test("stops publishing here and leaves nothing configured", { timeout: 20_000 }, async () => {
   const b = await bench();
   try {
-    await b.control.publish(PUBLIC_URL);
+    await b.control.publish({ publicUrl: PUBLIC_URL });
     await settled(b.control);
     await b.control.unpublish();
     expect(b.control.view.status).toBe("none");
@@ -144,7 +144,7 @@ test("says which program to install instead of failing silently", { timeout: 20_
       onLog: () => {},
     });
     expect(control.cloudflared).toBe(false);
-    await control.publish(PUBLIC_URL);
+    await control.publish({ publicUrl: PUBLIC_URL });
     expect(await settled(control)).toBe("failed");
     expect(control.view.message).toContain("brew install cloudflared");
     await control.stop();
@@ -156,8 +156,8 @@ test("says which program to install instead of failing silently", { timeout: 20_
 test("takes one publish at a time", { timeout: 20_000 }, async () => {
   const b = await bench();
   try {
-    await b.control.publish(PUBLIC_URL);
-    await expect(b.control.publish(PUBLIC_URL)).rejects.toThrow(/already being set up/);
+    await b.control.publish({ publicUrl: PUBLIC_URL });
+    await expect(b.control.publish({ publicUrl: PUBLIC_URL })).rejects.toThrow(/already being set up/);
     await settled(b.control);
   } finally {
     await b.control.stop();
@@ -172,15 +172,63 @@ test("the service publishes through the control and refuses an origin it cannot 
     const service = createPublicAccessService(b.control);
     const view = () => service.state.value ?? { status: "none", cloudflared: true };
     expect(service.state.value).toEqual({ status: "none", cloudflared: true });
-    await expect(service.publish("http://tandem.example.com", {} as never)).rejects.toThrow(/HTTPS origin/);
+    await expect(service.publish({ publicUrl: "http://tandem.example.com" }, {} as never)).rejects.toThrow(
+      /HTTPS origin/,
+    );
     expect(b.control.view.status).toBe("none");
-    await service.publish(PUBLIC_URL, {} as never);
+    await service.publish({ publicUrl: PUBLIC_URL }, {} as never);
     expect(await settled(b.control)).toBe("connected");
     // The control's view is what the page reads, so the service replicates it.
     expect(view().status).toBe("connected");
     expect(view().publicUrl).toBe(PUBLIC_URL);
     await service.unpublish({} as never);
     expect(view().status).toBe("none");
+  } finally {
+    await b.control.stop();
+  }
+});
+
+test("publishes with a dashboard token, and needs no authorization for it", { timeout: 20_000 }, async () => {
+  const b = await bench();
+  try {
+    await b.control.publish({ publicUrl: PUBLIC_URL, token: "dashboard-token" });
+    expect(await settled(b.control)).toBe("connected");
+    // The token runs that one tunnel and grants nothing else, so nothing was created or authorized here.
+    const calls = await readFile(b.calls, "utf8");
+    expect(calls).not.toContain("tunnel login");
+    expect(calls).not.toContain("tunnel create");
+    expect(await loadTunnelConfig(b.stateDir)).toEqual({ publicUrl: PUBLIC_URL, token: "dashboard-token" });
+    // No file a self-managed tunnel reads, because the token is what runs this one.
+    expect(await stat(tunnelFileYamlPath(b.stateDir)).catch(() => undefined)).toBeUndefined();
+  } finally {
+    await b.control.stop();
+  }
+});
+
+test("a token replaces a self-managed configuration rather than losing to it", { timeout: 20_000 }, async () => {
+  const b = await bench();
+  try {
+    await b.control.publish({ publicUrl: PUBLIC_URL });
+    await settled(b.control);
+    expect((await stat(tunnelFileYamlPath(b.stateDir))).isFile()).toBe(true);
+    await b.control.publish({ publicUrl: PUBLIC_URL, token: "dashboard-token" });
+    expect(await settled(b.control)).toBe("connected");
+    expect(await stat(tunnelFileYamlPath(b.stateDir)).catch(() => undefined)).toBeUndefined();
+    expect(await loadTunnelConfig(b.stateDir)).toEqual({ publicUrl: PUBLIC_URL, token: "dashboard-token" });
+    expect(b.lines.join("\n")).toContain("Replaced");
+  } finally {
+    await b.control.stop();
+  }
+});
+
+test("the service refuses an empty token rather than publishing with it", { timeout: 20_000 }, async () => {
+  const b = await bench();
+  try {
+    const service = createPublicAccessService(b.control);
+    await expect(service.publish({ publicUrl: PUBLIC_URL, token: "  " }, {} as never)).rejects.toThrow(
+      /token is not valid/,
+    );
+    expect(b.control.view.status).toBe("none");
   } finally {
     await b.control.stop();
   }

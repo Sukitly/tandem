@@ -14,8 +14,11 @@ export function createPublicAccessService(control: TunnelControl): PublicAccess 
   control.onChange(() => state.replace(BACKGROUND_CONTEXT, snapshot(control)));
   return {
     state,
-    publish: async (publicUrl: string, _context: Context) => {
+    publish: async (input: unknown, _context: Context) => {
+      const { publicUrl, token } = (input ?? {}) as { publicUrl?: unknown; token?: unknown };
       if (typeof publicUrl !== "string" || publicUrl.length > 200) throw invalidInput("A public origin is required");
+      if (token !== undefined && (typeof token !== "string" || token.trim().length === 0 || token.length > 4096))
+        throw invalidInput("The tunnel token is not valid");
       try {
         // Validate here so that a typo is the caller's error rather than a failure state the page must explain.
         checkedPublicUrl(publicUrl);
@@ -23,7 +26,7 @@ export function createPublicAccessService(control: TunnelControl): PublicAccess 
         throw invalidInput(error instanceof Error ? error.message : String(error));
       }
       try {
-        await control.publish(publicUrl);
+        await control.publish(token === undefined ? { publicUrl } : { publicUrl, token: token.trim() });
       } catch (error) {
         throw invalidInput(error instanceof Error ? error.message : String(error));
       }

@@ -23,13 +23,23 @@ export interface PublicAccessState {
  * Reaching this machine from the public internet, through a Cloudflare tunnel Tandem runs as a child of the server.
  * Setting one up authorizes this machine once in a browser; after that the work is Cloudflare's own commands.
  */
+/** What publishing needs: the address, and the token of a tunnel a dashboard describes. */
+export interface PublishInput {
+  readonly publicUrl: string;
+  /**
+   * The connector token of a tunnel created in the dashboard, which runs that one tunnel and grants nothing else.
+   * Absent means this machine manages the tunnel itself, which requires authorizing it with cloudflared first.
+   */
+  readonly token?: string;
+}
+
 export interface PublicAccess {
   readonly state: ReplicatedState<PublicAccessState>;
   /**
    * Publishes at that origin, creating the tunnel when this machine has none. Returns when the work has started, not
    * when it is done: authorization is a browser step, so the state carries the URL to open and the rest follows.
    */
-  publish(publicUrl: string, context: Context): Promise<void>;
+  publish(input: PublishInput, context: Context): Promise<void>;
   /** Stops publishing here. The tunnel and its DNS record stay in Cloudflare, so publishing again is one step. */
   unpublish(context: Context): Promise<void>;
 }
