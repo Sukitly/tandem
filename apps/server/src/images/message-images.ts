@@ -1,6 +1,5 @@
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { type ImageInput, MAX_MESSAGE_IMAGE_BYTES } from "@tandem/contracts";
-import { invalidInput } from "../services/errors.ts";
 import { DEFAULT_IMAGE_LIMITS, type ImageLimits, type ImageProcessor } from "./image-processor.ts";
 import { detectSupportedImageMimeType } from "./image-type.ts";
 
@@ -35,21 +34,15 @@ export function imageModel(model: Model<string> | undefined): ImageModel {
  */
 export class ImageRefused extends Error {}
 
-/** The shape of `images` in a submission, before anything is decoded: a list of base64 strings with a type. */
-export function parseImageInputs(value: unknown): ImageInput[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw invalidInput("images must be a list");
+/** Refuses images over `MAX_MESSAGE_IMAGE_BYTES` together, counted from their base64 before anything is decoded. */
+export function checkImageTotal(images: readonly ImageInput[]): void {
   let total = 0;
-  return value.map((item) => {
-    const { data, mimeType } = (item ?? {}) as Partial<ImageInput>;
-    if (typeof data !== "string" || typeof mimeType !== "string")
-      throw invalidInput("Each image needs its data and type");
+  for (const { data } of images) {
     // The original bytes: three of them for every four characters of base64.
     total += Math.floor((data.length * 3) / 4);
     if (total > MAX_MESSAGE_IMAGE_BYTES)
       throw new ImageRefused(`The images are over ${megabytes(MAX_MESSAGE_IMAGE_BYTES)} together`);
-    return { data, mimeType };
-  });
+  }
 }
 
 /** `bytes` in MB as people write it: `11.25 MB`. */

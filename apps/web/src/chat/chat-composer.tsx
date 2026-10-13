@@ -1,4 +1,4 @@
-import type { ImageInput, PromptTemplateSummary } from "@tandem/contracts";
+import type { ImageInput, ModelRef, ModelSummary, PromptTemplateSummary } from "@tandem/contracts";
 import { cn } from "cn";
 import { ArrowUpIcon, ImagePlusIcon, SquareIcon, XIcon } from "lucide-react";
 import {
@@ -27,6 +27,16 @@ import type { QueuedMessage } from "./transcript.ts";
  * says), it takes none, or there is no model that can answer, which the server refuses images for too.
  */
 export type ImageSupport = { kind: "accepted"; maxPerMessage?: number } | { kind: "none" } | { kind: "unknown" };
+
+/** What `model` takes of images, among the available models; a model that is not among them answers nothing. */
+export function imageSupportOf(models: readonly ModelSummary[] | undefined, model: ModelRef | undefined): ImageSupport {
+  const summary = models?.find(
+    (candidate) => model !== undefined && candidate.provider === model.provider && candidate.modelId === model.modelId,
+  );
+  if (summary === undefined) return { kind: "unknown" };
+  if (summary.images === undefined) return { kind: "none" };
+  return { kind: "accepted", ...summary.images };
+}
 
 /**
  * How long after a composition ends a keydown still counts as the IME's. Safari delivers the closing keydown after
@@ -332,11 +342,16 @@ export function ChatComposer({
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           aria-label="Message box"
+          className="relative"
         >
-          <InputGroup
-            data-dragging={dragging || undefined}
-            className="data-[dragging]:ring-2 data-[dragging]:ring-ring"
-          >
+          {/* Where a dragged image would land: a layer of the composer's own over the box, which keeps its look. */}
+          {dragging && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 z-10 rounded-lg border-2 border-dashed border-ring bg-background/60"
+            />
+          )}
+          <InputGroup>
             {attached.length > 0 && (
               <InputGroupAddon align="block-start" className="flex-wrap gap-2">
                 {attached.map((image) => (

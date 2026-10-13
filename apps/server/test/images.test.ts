@@ -153,6 +153,22 @@ describe("images in a message", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(image);
   });
 
+  test("are what the client's image() fetches, with the connection's server and token", async () => {
+    const app = await start();
+    const image = png(12, 12);
+    const id = await app.conversations.start(
+      { workspaceId: app.workspaceId, text: "", images: [{ data: base64(image), mimeType: "image/png" }] },
+      context,
+    );
+    await app.opened(id);
+    await waitFor(() => refsOf(app.view(id)).length === 1);
+    const ref = refsOf(app.view(id))[0]?.ref as ImageRef;
+    const blob = await app.connection.image(ref);
+    expect(blob.type).toBe("image/png");
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(image);
+    await expect(app.connection.image({ ...ref, entryId: 999_999 })).rejects.toThrow(/status 404/);
+  });
+
   test("are fitted to the model's limits", async () => {
     const app = await start({
       models: [

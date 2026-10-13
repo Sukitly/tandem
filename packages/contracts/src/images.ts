@@ -57,7 +57,7 @@ export const MAX_MESSAGE_IMAGE_BYTES = Math.floor(((PROTOCOL_FRAME_BYTES - MESSA
 export const IMAGE_INPUT_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"] as const;
 
 /** Swaps every image block of a type for `PageImageBlock`, wherever it is nested. */
-type WithImageRefs<T> = T extends string | number | boolean | null | undefined
+export type WithImageRefs<T> = T extends string | number | boolean | null | undefined
   ? T // Branded IDs are numbers too: kept as they are.
   : T extends { type: "image"; data: string }
     ? PageImageBlock

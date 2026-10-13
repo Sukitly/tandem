@@ -6,9 +6,17 @@ import {
 } from "@earendil-works/chord";
 import { diffRevisions } from "@earendil-works/chord/delta";
 import type { ConversationId, ConversationView as DurableView, EntryId, Harness } from "@earendil-works/pi-durable";
-import type { ConversationView, ImageRef, PageImageBlock } from "@tandem/contracts";
+import type { ConversationView, ImageRef, PageImageBlock, WithImageRefs } from "@tandem/contracts";
 
-type JsonValue = Parameters<typeof diffRevisions>[0];
+type Entry = DurableView["entries"][number];
+
+/**
+ * A view as the JSON `diffRevisions` compares. Its values are JSON, as a replicated state's must be; only the type
+ * differs, Chord's `JsonValue` having mutable arrays where the view's are readonly. `diffRevisions` reads, never writes.
+ */
+function asJson(view: ConversationView): Parameters<typeof diffRevisions>[0] {
+  return view as unknown as Parameters<typeof diffRevisions>[0];
+}
 
 /**
  * A conversation's view as pages receive it: pi-durable's, with every image block's data replaced by where to fetch
@@ -23,8 +31,8 @@ export function pageView(
   durable: AttachedReplicatedState<DurableView>,
   onError?: (error: Error) => void,
 ): AttachedReplicatedState<ConversationView> {
-  const entries = new WeakMap<object, unknown>();
-  const docs = new WeakMap<object, unknown>();
+  const entries = new WeakMap<Entry, WithImageRefs<Entry>>();
+  const docs = new WeakMap<DurableView["docs"][string], WithImageRefs<DurableView["docs"][string]>>();
   const turn = (view: DurableView): ConversationView => {
     const conversationId = view.conversation.id as number;
     return {
@@ -33,7 +41,7 @@ export function pageView(
       docs: Object.fromEntries(
         Object.entries(view.docs).map(([kind, doc]) => [kind, cached(docs, doc, () => withoutData(doc, []))]),
       ),
-    } as unknown as ConversationView;
+    };
   };
 
   const source: ReplicatedStateSource<ConversationView> = {
@@ -46,7 +54,7 @@ export function pageView(
       // Every revision is compared with the last one sent, so a revision delivered twice, or skipped, changes nothing.
       const unsubscribe = durable.subscribe((value, context) => {
         const next = turn(value);
-        const ops = diffRevisions(current as unknown as JsonValue, next as unknown as JsonValue);
+        const ops = diffRevisions(asJson(current), asJson(next));
         if (ops.length === 0) return;
         current = next;
         cursor += 1;
@@ -74,8 +82,7 @@ interface Frame {
   context: Context;
 }
 
-function cached(cache: WeakMap<object, unknown>, value: unknown, make: () => unknown): unknown {
-  if (value === null || typeof value !== "object") return value;
+function cached<K extends object, V>(cache: WeakMap<K, V>, value: K, make: () => V): V {
   let turned = cache.get(value);
   if (turned === undefined) {
     turned = make();
@@ -85,7 +92,7 @@ function cached(cache: WeakMap<object, unknown>, value: unknown, make: () => unk
 }
 
 /** An entry with the images of its messages as references; images elsewhere in it, such as in edits, lose their data. */
-function withRefs(entry: DurableView["entries"][number], conversationId: number): unknown {
+function withRefs(entry: Entry, conversationId: number): WithImageRefs<Entry> {
   const refAt = (path: readonly (string | number)[]): ImageRef | undefined => {
     const [model, messageIndex, content, blockIndex] = path;
     if (
@@ -104,15 +111,24 @@ function withRefs(entry: DurableView["entries"][number], conversationId: number)
  * `value` with every image block (`{type: "image", data}`) replaced by a `PageImageBlock`, at the reference `refAt`
  * gives its path, if any. What holds no image is returned as it is, so unchanged parts stay the same objects.
  */
-export function withoutData(
-  value: unknown,
+export function withoutData<T>(
+  value: T,
   path: (string | number)[],
   refAt?: (path: readonly (string | number)[]) => ImageRef | undefined,
+): WithImageRefs<T> {
+  // The walk is over JSON of any shape; `WithImageRefs` states for the type what it does to the value.
+  return without(value, path, refAt) as WithImageRefs<T>;
+}
+
+function without(
+  value: unknown,
+  path: (string | number)[],
+  refAt: ((path: readonly (string | number)[]) => ImageRef | undefined) | undefined,
 ): unknown {
   if (Array.isArray(value)) {
     let changed = false;
     const items = value.map((item, index) => {
-      const turned = withoutData(item, [...path, index], refAt);
+      const turned = without(item, [...path, index], refAt);
       if (turned !== item) changed = true;
       return turned;
     });
@@ -131,7 +147,7 @@ export function withoutData(
   }
   let changed = false;
   const fields = Object.entries(record).map(([key, field]) => {
-    const turned = withoutData(field, [...path, key], refAt);
+    const turned = without(field, [...path, key], refAt);
     if (turned !== field) changed = true;
     return [key, turned] as const;
   });

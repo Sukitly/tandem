@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Conversation, ConversationNotice, ModelRef, ModelSummary } from "@tandem/contracts";
+import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
 import { AlertCircleIcon, ArrowDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -14,7 +14,7 @@ import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
 import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { ChatComposer, type ImageSupport } from "./chat-composer.tsx";
+import { ChatComposer, imageSupportOf } from "./chat-composer.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
 import { toTranscript } from "./transcript.ts";
 import { TranscriptEntry, WaitingDots } from "./transcript-items.tsx";
@@ -230,14 +230,6 @@ function FilesToggle() {
 /** Under the transcript: notices and the message box. */
 function ChatFooter({ children }: { children: ReactNode }) {
   return <div className="mx-auto grid w-full max-w-3xl gap-3 px-4 pt-2 pb-4">{children}</div>;
-}
-
-/** What `model` takes of images, among the available models; a model that is not among them answers nothing. */
-function imageSupportOf(models: readonly ModelSummary[] | undefined, model: ModelRef | undefined): ImageSupport {
-  const summary = models?.find((candidate) => sameModel(candidate, model));
-  if (summary === undefined) return { kind: "unknown" };
-  if (summary.images === undefined) return { kind: "none" };
-  return { kind: "accepted", ...summary.images };
 }
 
 function sameModel(a: ModelRef | undefined, b: ModelRef | undefined): boolean {

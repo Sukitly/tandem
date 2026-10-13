@@ -22,7 +22,7 @@ import type {
   SubmitInput,
 } from "@tandem/contracts";
 import type { ImageProcessor } from "../images/image-processor.ts";
-import { ImageRefused, imageModel, parseImageInputs, prepareImages } from "../images/message-images.ts";
+import { checkImageTotal, ImageRefused, imageModel, prepareImages } from "../images/message-images.ts";
 import type { CommentBoard, TakenComments } from "./comments.ts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
@@ -257,6 +257,25 @@ function unansweredMessage(settled: SettledSubmissionRecord): string | undefined
   return `The message got no answer (${reason}).`;
 }
 
+/** `images` of a submission: its shape, a page's to get right, then its size together, the user's to keep within. */
+function parseImages(images: unknown): ImageInput[] | undefined {
+  if (images === undefined) return undefined;
+  if (!Array.isArray(images)) throw invalidInput("images must be a list");
+  const parsed = images.map((item): ImageInput => {
+    const { data, mimeType } = (item ?? {}) as Partial<ImageInput>;
+    if (typeof data !== "string" || typeof mimeType !== "string")
+      throw invalidInput("Each image needs its data and type");
+    return { data, mimeType };
+  });
+  try {
+    checkImageTotal(parsed);
+  } catch (error) {
+    if (error instanceof ImageRefused) throw invalidInput(error.message);
+    throw error;
+  }
+  return parsed;
+}
+
 /** The message's parts. The text may be empty here; the message as a whole may not, which is checked once it is put together. */
 export function parseSubmitInput(input: unknown): SubmitInput {
   const { text, whenBusy, comments, images } = (input ?? {}) as Partial<SubmitInput>;
@@ -264,13 +283,7 @@ export function parseSubmitInput(input: unknown): SubmitInput {
   if (whenBusy !== "steer" && whenBusy !== "followUp") throw invalidInput('whenBusy must be "steer" or "followUp"');
   if (comments !== undefined && !(Array.isArray(comments) && comments.every((id) => Number.isSafeInteger(id))))
     throw invalidInput("comments must be a list of message IDs");
-  let parsed: ImageInput[] | undefined;
-  try {
-    parsed = parseImageInputs(images);
-  } catch (error) {
-    if (error instanceof ImageRefused) throw invalidInput(error.message);
-    throw error;
-  }
+  const parsed = parseImages(images);
   return {
     text,
     whenBusy,

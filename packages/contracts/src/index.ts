@@ -50,6 +50,7 @@ export {
   imagePath,
   MAX_MESSAGE_IMAGE_BYTES,
   type PageImageBlock,
+  type WithImageRefs,
 } from "./images.ts";
 export {
   type AuthType,
