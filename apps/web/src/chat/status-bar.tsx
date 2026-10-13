@@ -54,6 +54,11 @@ export function StatusBar({
   const contextWindow = current?.contextWindow ?? 0;
   const percent = contextWindow > 0 ? Math.min(100, (usage.tokens / contextWindow) * 100) : 0;
   const report = (error: unknown): void => console.error(error);
+  const chooseThinking = (thinkingLevel: string): void => {
+    onConfigure({ thinkingLevel }).catch(report);
+    // The last choice is what new conversations start with.
+    models.setDefaultThinkingLevel(thinkingLevel, BACKGROUND_CONTEXT).catch(report);
+  };
 
   return (
     <div className="grid gap-1.5">
@@ -68,10 +73,7 @@ export function StatusBar({
             <DropdownMenuContent align="start" className="w-40">
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Thinking</DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={agent?.thinkingLevel ?? "off"}
-                  onValueChange={(thinkingLevel: string) => onConfigure({ thinkingLevel }).catch(report)}
-                >
+                <DropdownMenuRadioGroup value={agent?.thinkingLevel ?? "off"} onValueChange={chooseThinking}>
                   {current.thinkingLevels.map((level) => (
                     <DropdownMenuRadioItem key={level} value={level} closeOnClick>
                       {level === "off" ? "Off" : level[0]?.toUpperCase() + level.slice(1)}

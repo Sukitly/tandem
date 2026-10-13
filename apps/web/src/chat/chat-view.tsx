@@ -58,7 +58,16 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
     chosen.model ??
     available?.defaultModel ??
     (first === undefined ? undefined : { provider: first.provider, modelId: first.modelId });
-  const agent: AgentChoice = { ...(model === undefined ? {} : { model }), ...pick(chosen, "thinkingLevel") };
+  // Like the server, follow the remembered thinking level where the model supports it.
+  const levels = available?.models.find((candidate) => sameModel(candidate, model))?.thinkingLevels;
+  const remembered = available?.defaultThinkingLevel;
+  const thinkingLevel =
+    chosen.thinkingLevel ??
+    (remembered !== undefined && levels?.includes(remembered) === true ? remembered : undefined);
+  const agent: AgentChoice = {
+    ...(model === undefined ? {} : { model }),
+    ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+  };
 
   const configure = async (change: AgentChoice): Promise<void> => {
     setChosen((current) => {
@@ -234,10 +243,6 @@ function ChatFooter({ children }: { children: ReactNode }) {
 
 function sameModel(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
   return a !== undefined && b !== undefined && a.provider === b.provider && a.modelId === b.modelId;
-}
-
-function pick<T extends object, K extends keyof T>(value: T, key: K): Partial<Pick<T, K>> {
-  return value[key] === undefined ? {} : ({ [key]: value[key] } as Partial<Pick<T, K>>);
 }
 
 function Notice({ notice }: { notice: ConversationNotice }) {

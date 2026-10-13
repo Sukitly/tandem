@@ -115,11 +115,14 @@ export class ModelCatalog {
       models.some((model) => model.provider === chosen.provider && model.modelId === chosen.modelId)
         ? chosen
         : undefined;
+    const defaultThinkingLevel = this.#settings.value.defaultThinkingLevel;
     this.#state.change(BACKGROUND_CONTEXT, (draft) => {
       draft.providers = providers;
       draft.models = models;
       if (defaultModel === undefined) delete draft.defaultModel;
       else draft.defaultModel = defaultModel;
+      if (defaultThinkingLevel === undefined) delete draft.defaultThinkingLevel;
+      else draft.defaultThinkingLevel = defaultThinkingLevel;
     });
   }
 
@@ -129,6 +132,18 @@ export class ModelCatalog {
     await this.#settings.update({ defaultModel });
     this.#state.change(BACKGROUND_CONTEXT, (draft) => {
       draft.defaultModel = defaultModel;
+    });
+  }
+
+  /** The thinking level new conversations start with, if one was chosen; a model clamps it when it cannot reason that far. */
+  defaultThinkingLevel(): string | undefined {
+    return this.#state.value.defaultThinkingLevel;
+  }
+
+  async setDefaultThinkingLevel(level: string): Promise<void> {
+    await this.#settings.update({ defaultThinkingLevel: level });
+    this.#state.change(BACKGROUND_CONTEXT, (draft) => {
+      draft.defaultThinkingLevel = level;
     });
   }
 
