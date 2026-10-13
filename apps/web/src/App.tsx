@@ -1,4 +1,4 @@
-import { AlertCircleIcon, FolderPlusIcon, KeyRoundIcon, MessageSquareIcon, WifiOffIcon, XIcon } from "lucide-react";
+import { AlertCircleIcon, FolderPlusIcon, MessageSquareIcon, WifiOffIcon, XIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,21 +11,29 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProjectPanel } from "./app/project-panel.tsx";
 import { AppSidebar } from "./app/sidebar.tsx";
 import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
+import { DevicesDialogProvider } from "./auth/devices-dialog.tsx";
+import { PairScreen } from "./auth/pair-screen.tsx";
 import { ChatView, NewChat } from "./chat/chat-view.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 import { useReplicatedState } from "./rpc/use-replicated-state.ts";
 import { ThemeProvider } from "./theme.tsx";
 
-export function App() {
+export function App({ initialPairCode }: { initialPairCode?: string } = {}) {
   return (
     <ThemeProvider>
       <TooltipProvider>
-        <ConnectionProvider fallback={(state) => <ConnectionScreen state={state} />}>
-          <ProvidersDialogProvider>
-            <Workbench />
-          </ProvidersDialogProvider>
-        </ConnectionProvider>
+        {initialPairCode !== undefined ? (
+          <PairScreen initialCode={initialPairCode} />
+        ) : (
+          <ConnectionProvider fallback={(state) => <ConnectionScreen state={state} />}>
+            <DevicesDialogProvider>
+              <ProvidersDialogProvider>
+                <Workbench />
+              </ProvidersDialogProvider>
+            </DevicesDialogProvider>
+          </ConnectionProvider>
+        )}
       </TooltipProvider>
     </ThemeProvider>
   );
@@ -159,6 +167,7 @@ function ConnectionAlert() {
 }
 
 function ConnectionScreen({ state }: { state: { kind: "connecting" | "unauthorized" | "failed"; message?: string } }) {
+  if (state.kind === "unauthorized") return <PairScreen />;
   return (
     <Empty className="h-dvh">
       <EmptyHeader>
@@ -168,15 +177,6 @@ function ConnectionScreen({ state }: { state: { kind: "connecting" | "unauthoriz
               <Spinner />
             </EmptyMedia>
             <EmptyTitle>Connecting to the server</EmptyTitle>
-          </>
-        )}
-        {state.kind === "unauthorized" && (
-          <>
-            <EmptyMedia variant="icon">
-              <KeyRoundIcon />
-            </EmptyMedia>
-            <EmptyTitle>This page needs the server's token</EmptyTitle>
-            <EmptyDescription>Open the URL the Tandem server printed when it started.</EmptyDescription>
           </>
         )}
         {state.kind === "failed" && (

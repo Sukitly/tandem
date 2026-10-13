@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
-/** A random session token, safe to put in URLs. */
+/** A high-entropy installation key. Never distribute it through a URL. */
 export function createToken(): string {
   return randomBytes(32).toString("base64url");
 }
@@ -20,7 +20,7 @@ export function bearerToken(header: string | undefined): string | undefined {
 
 /**
  * Browsers always send `Origin` with WebSocket and cross-origin requests, so a present origin must be allowed. Clients
- * that are not browsers send none and are authorized by the token alone.
+ * that are not browsers send none and are authorized by an explicit bearer header.
  */
 export function isAllowedOrigin(origin: string | undefined, allowed: ReadonlySet<string>): boolean {
   return origin === undefined || allowed.has(origin);

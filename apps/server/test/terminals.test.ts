@@ -81,8 +81,9 @@ async function start(terminalCommand: readonly string[] = SHELL) {
 async function refused(server: TandemServer, path: string, token: string, origin?: string): Promise<number> {
   const url = new URL(path, server.url);
   url.protocol = "ws:";
-  url.searchParams.set("token", token);
-  const socket = new WebSocket(url, origin === undefined ? {} : { headers: { origin } });
+  const socket = new WebSocket(url, {
+    headers: { authorization: `Bearer ${token}`, ...(origin === undefined ? {} : { origin }) },
+  });
   sockets.push(socket);
   // A refused socket reports an error too; the status is what is asked for.
   socket.on("error", () => {});
@@ -223,8 +224,7 @@ describe("a terminal's socket", () => {
     const id = await terminals.create({ workspaceId }, context);
     const url = new URL(terminalPath(id), server.url);
     url.protocol = "ws:";
-    url.searchParams.set("token", server.token);
-    const socket = new WebSocket(url);
+    const socket = new WebSocket(url, { headers: { authorization: `Bearer ${server.token}` } });
     sockets.push(socket);
     await new Promise((resolve) => socket.once("open", resolve));
     const closed = new Promise<number>((resolve) => socket.once("close", (code) => resolve(code)));

@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import {
+  AUTH_PATH,
   BOOTSTRAP_PATH,
   DEFAULT_HOST,
   DEFAULT_PORT,
@@ -25,6 +26,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
+      [AUTH_PATH]: backend,
       [HEALTH_PATH]: backend,
       [BOOTSTRAP_PATH]: backend,
       [IMAGE_PATH]: backend,

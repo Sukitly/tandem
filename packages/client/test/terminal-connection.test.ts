@@ -84,9 +84,9 @@ describe("a terminal's connection", () => {
     vi.unstubAllGlobals();
   });
 
-  test("connects to the server with the token, and draws the screen before the output", () => {
+  test("keeps credentials out of the URL, and draws the screen before the output", () => {
     const { screen, connection } = make();
-    expect(socket(0).url).toBe("ws://127.0.0.1:5173/pty/a%20b?token=secret");
+    expect(socket(0).url).toBe("ws://127.0.0.1:5173/pty/a%20b");
     connection.resize({ cols: 100, rows: 30 });
     socket(0).open();
     expect(socket(0).sent).toEqual([JSON.stringify({ type: "resize", cols: 100, rows: 30 })]);

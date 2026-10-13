@@ -2,7 +2,7 @@ import { type Context, defineService, type ReplicatedState } from "@earendil-wor
 
 /** A shell running in a project's directory. Its bytes go over `/pty/<id>`, not over this list. */
 export type TerminalSummary = {
-  /** Random: knowing it, with the token, is what connecting to the terminal takes. */
+  /** Random; connecting also requires a valid device session or the installation master key. */
   id: string;
   workspaceId: number;
   /** "Terminal 1", "Terminal 2", … in the order they were opened in the project. */

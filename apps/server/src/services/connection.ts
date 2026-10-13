@@ -6,6 +6,7 @@ import {
   Comments,
   Conversation,
   Conversations,
+  Devices,
   Files,
   Models,
   ProjectChanges,
@@ -15,6 +16,7 @@ import {
   Workspaces,
 } from "@tandem/contracts";
 import { pageView } from "../conversation-view.ts";
+import { type DeviceSessions, PairingError } from "../device-sessions.ts";
 import type { ImageProcessor } from "../images/image-processor.ts";
 import type { ConnectionServices } from "../rpc-host.ts";
 import { type ChangeHold, type ChangeTrackers, createProjectChanges } from "./changes.ts";
@@ -38,6 +40,8 @@ import type { TerminalHost } from "./terminals.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
 export interface AppServices {
+  readonly devices: DeviceSessions;
+  readonly publicUrl?: string;
   readonly harness: Harness;
   /** The projects' change trackers, shared by every connection: one tracker per project. */
   readonly changes: ChangeTrackers;
@@ -82,6 +86,8 @@ export function createConnectionServices({
   prompts,
   terminals,
   images,
+  devices,
+  publicUrl,
 }: AppServices): ConnectionServices {
   const provider = new RemoteServiceProvider([
     Models,
@@ -90,6 +96,7 @@ export function createConnectionServices({
     Changes,
     Comments,
     Terminals,
+    Devices,
     Prompts,
     Conversations,
     { service: Conversation, mode: "keyed" },
@@ -217,6 +224,32 @@ export function createConnectionServices({
     edit: (input, context) => comments.edit(input, context),
     withdraw: (input, context) => comments.withdraw(input, context),
     remove: (threadId, context) => comments.remove(threadId, context),
+  });
+
+  const deviceId = (id: unknown): string => {
+    if (typeof id !== "string" || !devices.state.value.devices.some((device) => device.id === id))
+      throw invalidInput("Device does not exist");
+    return id;
+  };
+  provider.provide(Devices, {
+    state: devices.state,
+    addDevice: async () => {
+      try {
+        return devices.issue(publicUrl);
+      } catch (error) {
+        if (error instanceof PairingError) throw invalidInput(error.message);
+        throw error;
+      }
+    },
+    rename: async (id, name) => {
+      const parsed = deviceId(id);
+      if (typeof name !== "string" || name.trim().length === 0 || name.length > 80)
+        throw invalidInput("Device name must contain 1 to 80 characters");
+      await devices.rename(parsed, name.trim());
+    },
+    revoke: async (id) => devices.revoke(deviceId(id)),
+    revokeOthers: async (id) => devices.revokeOthers(deviceId(id)),
+    regenerateRecoveryCodes: async () => devices.regenerateRecoveryCodes(),
   });
 
   provider.provide(Terminals, {

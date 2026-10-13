@@ -7,7 +7,7 @@ import {
 } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { BootstrapError, connect, type TandemConnection } from "@tandem/client";
-import { RPC_PATH, TOKEN_QUERY_PARAMETER } from "@tandem/contracts";
+import { RPC_PATH } from "@tandem/contracts";
 import { afterEach, describe, expect, test } from "vitest";
 import { WebSocket as NodeWebSocket } from "ws";
 import { type StartServerOptions, startServer, type TandemServer } from "../src/server.ts";
@@ -76,8 +76,7 @@ async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
 function rawSocket(server: TandemServer, token: string, headers: Record<string, string> = {}) {
   const url = new URL(RPC_PATH, server.url);
   url.protocol = "ws:";
-  url.searchParams.set(TOKEN_QUERY_PARAMETER, token);
-  const socket = new NodeWebSocket(url, { headers });
+  const socket = new NodeWebSocket(url, { headers: { authorization: `Bearer ${token}`, ...headers } });
   return new Promise<{ opened: boolean; status?: number }>((resolve) => {
     socket.once("open", () => {
       socket.close();

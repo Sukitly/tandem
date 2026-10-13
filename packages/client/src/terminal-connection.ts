@@ -4,9 +4,9 @@ import {
   type TerminalControl,
   type TerminalEvent,
   type TerminalSize,
-  TOKEN_QUERY_PARAMETER,
   terminalPath,
 } from "@tandem/contracts";
+import { authenticatedSocket } from "./authenticated-socket.ts";
 
 /** What a terminal's connection needs of the screen that shows it: an xterm `Terminal`, or a recorder. */
 export interface TerminalScreen {
@@ -25,7 +25,7 @@ export type TerminalLink = "connecting" | "open" | "closed";
 export interface TerminalConnectionOptions {
   /** The server's origin. */
   baseUrl: URL;
-  token: string;
+  token?: string;
   id: string;
   screen: TerminalScreen;
   onLink?(link: TerminalLink): void;
@@ -107,8 +107,9 @@ export class TerminalConnection {
   #connect(): void {
     const url = new URL(terminalPath(this.#options.id), this.#options.baseUrl);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    url.searchParams.set(TOKEN_QUERY_PARAMETER, this.#options.token);
-    const socket = (this.#options.socket ?? ((target) => new WebSocket(target)))(url.toString());
+    const socket = (this.#options.socket ?? ((target) => authenticatedSocket(target, this.#options.token)))(
+      url.toString(),
+    );
     socket.binaryType = "arraybuffer";
     this.#socket = socket;
     this.#options.onLink?.("connecting");

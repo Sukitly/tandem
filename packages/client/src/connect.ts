@@ -7,18 +7,12 @@ import {
 } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Client, createClientServiceTransport } from "@earendil-works/pi-client";
-import {
-  BOOTSTRAP_PATH,
-  type BootstrapResponse,
-  type ImageRef,
-  imagePath,
-  RPC_PATH,
-  TOKEN_QUERY_PARAMETER,
-} from "@tandem/contracts";
+import { BOOTSTRAP_PATH, type BootstrapResponse, type ImageRef, imagePath, RPC_PATH } from "@tandem/contracts";
 import { TerminalConnection, type TerminalConnectionOptions, type TerminalScreen } from "./terminal-connection.ts";
 import { createWebSocketTransportFactory } from "./websocket-transport.ts";
 
 export type ConnectionStatus =
+  | { status: "unauthorized" }
   | { status: "connecting" }
   | { status: "connected" }
   | { status: "disconnected"; reason: string; retryInMs: number | null };
@@ -31,7 +25,8 @@ export interface ReconnectOptions {
 export interface ConnectOptions {
   /** HTTP origin of the Tandem server, for example `http://127.0.0.1:4820`. */
   baseUrl: string | URL;
-  token: string;
+  /** Node clients only. Browsers authenticate with same-origin cookies. */
+  token?: string;
   /** Services this connection binds. Only these can be used or observed. */
   services: readonly { readonly id: string }[];
   /** `false` disables reconnecting after the connection drops. */
@@ -40,14 +35,17 @@ export interface ConnectOptions {
 }
 
 export interface TandemConnection {
+  readonly deviceId?: string;
   /** Bound services. Handles stay valid across reconnects; their state rehydrates after each one. */
   readonly services: RemoteServices;
   /** `connected` is reported once the services are bound and can be called. */
   readonly status: ReplicatedState<ConnectionStatus>;
-  /** Connect to a terminal's own socket, with this connection's server and token. */
+  /** Connect to a terminal with this connection's server and authentication mode. */
   terminal(id: string, screen: TerminalScreen, options?: TerminalOptions): TerminalConnection;
-  /** An image of a conversation's transcript, fetched with this connection's token. Rejects for anything but 200. */
+  /** Fetch a transcript image using a device cookie or a Node client's bearer header. Rejects for anything but 200. */
   image(ref: ImageRef, signal?: AbortSignal): Promise<Blob>;
+  /** Same-origin image path for a browser with a paired-device cookie. */
+  imageUrl(ref: ImageRef): string;
   close(): Promise<void>;
 }
 
@@ -73,15 +71,14 @@ const DEFAULT_MAX_DELAY_MS = 5_000;
 export async function connect(options: ConnectOptions): Promise<TandemConnection> {
   const baseUrl = new URL(options.baseUrl);
   const onError = options.onError ?? (() => {});
-  const { serverId } = await bootstrap(baseUrl, options.token);
+  const { serverId, deviceId } = await bootstrap(baseUrl, options.token);
 
   const rpcUrl = new URL(RPC_PATH, baseUrl);
   rpcUrl.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
-  rpcUrl.searchParams.set(TOKEN_QUERY_PARAMETER, options.token);
 
   const client = new Client({
     serverId,
-    transportFactory: createWebSocketTransportFactory(rpcUrl),
+    transportFactory: createWebSocketTransportFactory(rpcUrl, { token: options.token }),
     onListenerError: onError,
   });
   const binding = createRemoteServiceBinding({
@@ -121,7 +118,17 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
       if (closed) return;
       status.replace(BACKGROUND_CONTEXT, { status: "connecting" });
       // A failed attempt reports `disconnected` through the state listener, which schedules the next one.
-      client.reconnect().catch(() => {});
+      bootstrap(baseUrl, options.token).then(
+        () => {
+          if (!closed) client.reconnect().catch(() => {});
+        },
+        (error: unknown) => {
+          if (closed) return;
+          if (error instanceof BootstrapError && error.status === 401)
+            status.replace(BACKGROUND_CONTEXT, { status: "unauthorized" });
+          else scheduleReconnect(toError(error).message);
+        },
+      );
     }, wait);
   };
 
@@ -151,13 +158,15 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
   await transitions;
 
   return {
+    deviceId,
     services: binding,
     status,
     terminal: (id, screen, terminalOptions = {}) =>
       new TerminalConnection({ baseUrl, token: options.token, id, screen, ...terminalOptions }),
+    imageUrl: (ref) => new URL(imagePath(client.serverId, ref), baseUrl).href,
     async image(ref, signal) {
       const response = await fetch(new URL(imagePath(client.serverId, ref), baseUrl), {
-        headers: { authorization: `Bearer ${options.token}` },
+        headers: options.token === undefined ? {} : { authorization: `Bearer ${options.token}` },
         ...(signal === undefined ? {} : { signal }),
       });
       if (!response.ok) throw new Error(`The image could not be loaded (status ${response.status})`);
@@ -175,9 +184,9 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
   };
 }
 
-async function bootstrap(baseUrl: URL, token: string): Promise<BootstrapResponse> {
+async function bootstrap(baseUrl: URL, token?: string): Promise<BootstrapResponse> {
   const response = await fetch(new URL(BOOTSTRAP_PATH, baseUrl), {
-    headers: { authorization: `Bearer ${token}` },
+    headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new BootstrapError(response.status);
   return (await response.json()) as BootstrapResponse;

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import lockfile from "proper-lockfile";
 import { createToken } from "./auth.ts";
+import { writeJsonFile } from "./json-file.ts";
 
-/** What clients must know to reconnect: kept across restarts so open pages reconnect on their own. */
+/** Stable installation identity and a local master key that is never distributed to browsers. */
 export interface ServerIdentity {
   serverId: string;
   token: string;
@@ -54,15 +55,19 @@ export async function openStateDir(
 
 async function loadIdentity(file: string): Promise<ServerIdentity> {
   try {
-    const stored = JSON.parse(await readFile(file, "utf8")) as Partial<ServerIdentity>;
+    const stored = JSON.parse(await readFile(file, "utf8")) as Partial<ServerIdentity> & { authVersion?: number };
     if (typeof stored.serverId === "string" && typeof stored.token === "string") {
-      return { serverId: stored.serverId, token: stored.token };
+      if (stored.authVersion === 2) return { serverId: stored.serverId, token: stored.token };
+      // The legacy token was shared through URLs and localStorage. It must not remain a valid master key.
+      const identity = { serverId: stored.serverId, token: createToken() };
+      await writeJsonFile(file, { ...identity, authVersion: 2 });
+      return identity;
     }
   } catch (error) {
     if (!isErrorCode(error, "ENOENT")) throw new Error(`Cannot read ${file}`, { cause: error });
   }
   const identity: ServerIdentity = { serverId: randomUUID(), token: createToken() };
-  await writeFile(file, `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 });
+  await writeJsonFile(file, { ...identity, authVersion: 2 });
   return identity;
 }
 

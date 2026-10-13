@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
@@ -13,40 +13,48 @@ import {
   type HealthResponse,
   IMAGE_PATH,
   type ImageRef,
+  PAIR_CODE_PATH,
+  PAIR_PATH,
+  type PairingCode,
+  PROOF_PATH,
+  type ProofRequest,
+  type ProofResponse,
   PTY_PATH,
   RPC_PATH,
-  TOKEN_QUERY_PARAMETER,
+  SIGN_OUT_PATH,
 } from "@tandem/contracts";
 import packageJson from "../package.json" with { type: "json" };
 import { bearerToken, createToken, isAllowedOrigin, tokensMatch } from "./auth.ts";
+import { DeviceSessions, deviceName, PairingError } from "./device-sessions.ts";
 import type { HostedTerminal } from "./hosted-terminal.ts";
 import { type ConnectionServices, createServiceHost } from "./rpc-host.ts";
+import { StaticFiles } from "./static-files.ts";
 import { TerminalSockets } from "./terminal-sockets.ts";
 import { WebSocketListener } from "./websocket-listener.ts";
 
 export interface StartServerOptions {
   hostname?: string;
-  /** `0` picks a free port. */
   port?: number;
-  /** Logical pi-protocol server identity, a lowercase UUIDv4. Generated when absent. */
   serverId?: string;
-  /** Session token clients must present. Generated when absent. */
+  /** Installation master key; never passed to the browser. */
   token?: string;
-  /** Browser origins allowed besides the server's own, such as a development server. */
   allowedOrigins?: readonly string[];
-  /** Creates the services of each client connection. */
+  publicUrl?: string;
+  /** Origin a browser opens the page at, when this server does not serve it, as in development. */
+  webEntry?: string;
+  webRoot?: string;
+  devices?: DeviceSessions;
   createConnectionServices?: () => ConnectionServices;
-  /** The terminal a `/pty/<id>` connection is for. */
   terminal?: (id: string) => HostedTerminal | undefined;
-  /** The image a `/image/...` request is for, as stored: base64 and its type. */
   image?: (ref: ImageRef) => Promise<{ data: string; mimeType: string } | undefined>;
   onError?: (error: Error) => void;
 }
-
 export interface TandemServer {
   readonly url: URL;
   readonly serverId: string;
   readonly token: string;
+  readonly publicUrl?: string;
+  pair(): PairingCode;
   stop(): Promise<void>;
 }
 
@@ -55,42 +63,183 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   const serverId = options.serverId ?? randomUUID();
   const token = options.token ?? createToken();
   const onError = options.onError ?? (() => {});
-  const createConnectionServices =
-    options.createConnectionServices ?? (() => ({ provider: new RemoteServiceProvider([]) }));
-
+  const devices = options.devices ?? (await DeviceSessions.load());
+  const web = options.webRoot === undefined ? undefined : await StaticFiles.load(options.webRoot);
+  const publicUrl = options.publicUrl === undefined ? undefined : publicOrigin(options.publicUrl);
+  const cookieName = `tandem_${serverId}`;
+  let ownOrigin: string | undefined;
+  const allowedOrigins = new Set(
+    (options.allowedOrigins ?? []).map((value) => {
+      const url = new URL(value);
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.pathname !== "/" ||
+        url.search ||
+        url.hash
+      )
+        throw new Error("allowedOrigins must contain HTTP or HTTPS origins");
+      return url.origin;
+    }),
+  );
+  if (publicUrl !== undefined) allowedOrigins.add(publicUrl);
+  const hosts = new Set<string>();
+  const sockets = new Map<string, Set<Duplex>>();
+  const stopRevocations = devices.onRevoke((id) => {
+    for (const socket of sockets.get(id) ?? []) socket.destroy();
+    sockets.delete(id);
+  });
   const listener = new WebSocketListener({ onError });
-  const rpc = new Server(createServiceHost(createConnectionServices), { listeners: [listener], serverId, onError });
+  const rpc = new Server(
+    createServiceHost(options.createConnectionServices ?? (() => ({ provider: new RemoteServiceProvider([]) }))),
+    {
+      listeners: [listener],
+      serverId,
+      onError,
+    },
+  );
   await rpc.start();
-
-  const allowedOrigins = new Set(options.allowedOrigins ?? []);
   const terminalSockets = new TerminalSockets();
+
+  const acceptable = (request: IncomingMessage): boolean =>
+    hosts.has(request.headers.host ?? "") && isAllowedOrigin(request.headers.origin, allowedOrigins);
+  const authorize = async (request: IncomingMessage): Promise<{ master: boolean; deviceId?: string } | undefined> => {
+    if (tokensMatch(token, bearerToken(request.headers.authorization))) return { master: true };
+    const device = await devices.authenticate(cookie(request, cookieName));
+    return device === undefined ? undefined : { master: false, deviceId: device.id };
+  };
+  const sessionCookie = (request: IncomingMessage, secret: string, clear = false): string => {
+    const secure = publicUrl !== undefined && request.headers.host === new URL(publicUrl).host;
+    // Cookie lifetime exceeds the idle limit; authentication enforces 30 days without activity server-side.
+    return `${cookieName}=${secret}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${clear ? 0 : 400 * 24 * 60 * 60}${secure ? "; Secure" : ""}`;
+  };
+
+  const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    response.setHeader("x-content-type-options", "nosniff");
+    response.setHeader("referrer-policy", "no-referrer");
+    response.setHeader("cross-origin-resource-policy", "same-origin");
+    if (!acceptable(request)) return sendJson(response, 403, { error: "forbidden" });
+    web?.headers(response, request.headers.host ?? "");
+    const { pathname } = new URL(request.url ?? "/", "http://localhost");
+    if (pathname === HEALTH_PATH) {
+      const body: HealthResponse = { status: "ok", version: packageJson.version };
+      return sendJson(response, 200, body);
+    }
+    if (pathname === PROOF_PATH && request.method === "POST") {
+      const input = await readBody(request);
+      const nonce = (input as Partial<ProofRequest> | null)?.nonce;
+      if (typeof nonce !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(nonce))
+        return sendJson(response, 400, { error: "A nonce is required" });
+      // The master key proves itself without being sent: a listener that cannot answer is never given it.
+      const body: ProofResponse = { serverId, proof: createHmac("sha256", token).update(nonce).digest("hex") };
+      return sendJson(response, 200, body);
+    }
+    if (pathname === PAIR_PATH && request.method === "POST") {
+      // A browser POST must come from an explicitly configured origin, never merely a matching Host.
+      if (request.headers.origin === undefined)
+        return sendJson(response, 403, { error: "An allowed Origin is required" });
+      const input = await readBody(request);
+      if (input === null || typeof input !== "object" || typeof (input as { code?: unknown }).code !== "string")
+        return sendJson(response, 400, { error: "A pairing or recovery code is required" });
+      const { secret } = await devices.redeem(
+        (input as { code: string }).code,
+        deviceName(request.headers["user-agent"]),
+      );
+      response.setHeader("set-cookie", sessionCookie(request, secret));
+      return sendJson(response, 200, { paired: true });
+    }
+    if ([BOOTSTRAP_PATH, PAIR_CODE_PATH, SIGN_OUT_PATH].includes(pathname) || pathname.startsWith(`${IMAGE_PATH}/`)) {
+      const auth = await authorize(request);
+      if (auth === undefined) return sendJson(response, 401, { error: "unauthorized" });
+      if (pathname === BOOTSTRAP_PATH && request.method === "GET") {
+        const body: BootstrapResponse = {
+          serverId,
+          ...(auth.deviceId === undefined ? {} : { deviceId: auth.deviceId }),
+        };
+        const secret = cookie(request, cookieName);
+        if (!auth.master && secret !== undefined) response.setHeader("set-cookie", sessionCookie(request, secret));
+        return sendJson(response, 200, body);
+      }
+      if (pathname === PAIR_CODE_PATH && request.method === "POST") {
+        if (!auth.master) return sendJson(response, 403, { error: "The installation master key is required" });
+        const issued = devices.issue(publicUrl);
+        // Where a launcher that reuses this server must open the browser: its own page, or the one configured for it.
+        const entry = options.webEntry ?? (web === undefined ? undefined : ownOrigin);
+        return sendJson(response, 200, entry === undefined ? issued : { ...issued, entry });
+      }
+      if (pathname === SIGN_OUT_PATH && request.method === "POST") {
+        if (request.headers.origin === undefined)
+          return sendJson(response, 403, { error: "An allowed Origin is required" });
+        if (auth.deviceId !== undefined) await devices.revoke(auth.deviceId);
+        response.setHeader("set-cookie", sessionCookie(request, "", true));
+        return sendJson(response, 200, { signedOut: true });
+      }
+      if (pathname.startsWith(`${IMAGE_PATH}/`) && request.method === "GET") {
+        const ref = imageRefOf(pathname.slice(IMAGE_PATH.length + 1), serverId);
+        const image = ref === undefined ? undefined : await options.image?.(ref);
+        if (image === undefined || !SERVED_IMAGE_TYPES.has(image.mimeType))
+          return sendJson(response, 404, { error: "not_found" });
+        const body = Buffer.from(image.data, "base64");
+        response.writeHead(200, {
+          "content-type": image.mimeType,
+          "content-length": body.length,
+          "cache-control": "private, max-age=31536000, immutable",
+        });
+        response.end(body);
+        return;
+      }
+    }
+    if (await web?.serve(pathname, request, response)) return;
+    sendJson(response, 404, { error: "not_found" });
+  };
   const http = createServer((request, response) => {
-    handleRequest(request, response, { serverId, token, image: options.image }).catch((error: unknown) => {
-      onError(error instanceof Error ? error : new Error(String(error)));
-      if (!response.headersSent) sendJson(response, 500, { error: "internal" });
-      else response.destroy();
+    handle(request, response).catch((error: unknown) => {
+      if (error instanceof PairingError) {
+        if (error.status === 429) response.setHeader("retry-after", "60");
+        sendJson(response, error.status, { error: error.message });
+      } else {
+        onError(error instanceof Error ? error : new Error(String(error)));
+        if (!response.headersSent) sendJson(response, 500, { error: "internal" });
+        else response.destroy();
+      }
     });
   });
-  // Both sockets are authorized alike: a terminal is a shell, as much as the agent's tools are.
   http.on("upgrade", (request, socket, head) => {
-    const url = new URL(request.url ?? "/", "http://localhost");
-    const terminal = url.pathname.startsWith(`${PTY_PATH}/`);
-    if (url.pathname !== RPC_PATH && !terminal) {
-      rejectUpgrade(socket, 404, "Not Found");
-    } else if (!tokensMatch(token, url.searchParams.get(TOKEN_QUERY_PARAMETER))) {
-      rejectUpgrade(socket, 401, "Unauthorized");
-    } else if (!isAllowedOrigin(request.headers.origin, allowedOrigins)) {
-      rejectUpgrade(socket, 403, "Forbidden");
-    } else if (!terminal) {
-      listener.handleUpgrade(request, socket, head);
-    } else {
-      const id = decodedSegment(url.pathname.slice(PTY_PATH.length + 1));
-      const hosted = id === undefined ? undefined : options.terminal?.(id);
-      if (hosted === undefined) rejectUpgrade(socket, 404, "Not Found");
-      else terminalSockets.handleUpgrade(hosted, request, socket, head);
-    }
+    const upgrade = async (): Promise<void> => {
+      const url = new URL(request.url ?? "/", "http://localhost");
+      const terminal = url.pathname.startsWith(`${PTY_PATH}/`);
+      if (url.pathname !== RPC_PATH && !terminal) return rejectUpgrade(socket, 404, "Not Found");
+      if (!acceptable(request)) return rejectUpgrade(socket, 403, "Forbidden");
+      const auth = await authorize(request);
+      if (auth === undefined) return rejectUpgrade(socket, 401, "Unauthorized");
+      // Browser cookies require an Origin on upgrades; only explicit bearer clients may omit it.
+      if (!auth.master && request.headers.origin === undefined) return rejectUpgrade(socket, 403, "Forbidden");
+      if (auth.deviceId !== undefined) {
+        const id = auth.deviceId;
+        const held = sockets.get(id) ?? new Set<Duplex>();
+        held.add(socket);
+        sockets.set(id, held);
+        const release = devices.hold(id);
+        socket.once("close", () => {
+          void release().catch(onError);
+          held.delete(socket);
+          if (held.size === 0) sockets.delete(id);
+        });
+      }
+      if (!terminal) listener.handleUpgrade(request, socket, head);
+      else {
+        const id = decodedSegment(url.pathname.slice(PTY_PATH.length + 1));
+        const hosted = id === undefined ? undefined : options.terminal?.(id);
+        if (hosted === undefined) rejectUpgrade(socket, 404, "Not Found");
+        else terminalSockets.handleUpgrade(hosted, request, socket, head);
+      }
+    };
+    upgrade().catch((error: unknown) => {
+      onError(error instanceof Error ? error : new Error(String(error)));
+      socket.destroy();
+    });
   });
-
   try {
     await new Promise<void>((resolve, reject) => {
       http.once("error", reject);
@@ -100,89 +249,88 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       });
     });
   } catch (error) {
+    stopRevocations();
+    terminalSockets.close();
     await rpc.close();
     throw error;
   }
   const { port } = http.address() as AddressInfo;
+  ownOrigin = `http://${hostname}:${port}`;
   for (const host of [hostname, "localhost"]) allowedOrigins.add(`http://${host}:${port}`);
-
+  for (const origin of allowedOrigins) hosts.add(new URL(origin).host);
+  const activityTimer = setInterval(
+    () => {
+      void devices.touchActive().catch(onError);
+    },
+    60 * 60 * 1000,
+  );
+  activityTimer.unref();
   return {
     url: new URL(`http://${hostname}:${port}/`),
     serverId,
     token,
+    publicUrl,
+    pair: () => devices.issue(publicUrl),
     async stop() {
+      clearInterval(activityTimer);
+      stopRevocations();
       terminalSockets.close();
       await rpc.close();
       await new Promise<void>((resolve, reject) => {
         http.closeAllConnections();
         http.close((error) => (error ? reject(error) : resolve()));
       });
+      await devices.flush();
     },
   };
 }
 
-/** The types an image is served as: what browsers show in `<img>`, never anything they would run. */
 const SERVED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-
-async function handleRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  server: Pick<StartServerOptions, "image"> & { serverId: string; token: string },
-): Promise<void> {
-  const { pathname } = new URL(request.url ?? "/", "http://localhost");
-  if (pathname.startsWith(`${IMAGE_PATH}/`)) {
-    // Authorized by the header, not a query parameter: the token stays out of URLs, logs, and the browser's history.
-    if (!tokensMatch(server.token, bearerToken(request.headers.authorization))) {
-      sendJson(response, 401, { error: "unauthorized" });
-      return;
-    }
-    // An image of another state directory, which has its own server ID, is not this server's to serve.
-    const ref = imageRefOf(pathname.slice(IMAGE_PATH.length + 1), server.serverId);
-    const image = ref === undefined || request.method !== "GET" ? undefined : await server.image?.(ref);
-    if (image === undefined || !SERVED_IMAGE_TYPES.has(image.mimeType)) {
-      sendJson(response, 404, { error: "not_found" });
-      return;
-    }
-    const body = Buffer.from(image.data, "base64");
-    response.writeHead(200, {
-      "content-type": image.mimeType,
-      "content-length": body.length,
-      "x-content-type-options": "nosniff",
-      // An entry never changes once written, and the path names the state directory it is in (`imagePath`).
-      "cache-control": "private, max-age=31536000, immutable",
-    });
-    response.end(body);
-  } else if (pathname === HEALTH_PATH) {
-    const body: HealthResponse = { status: "ok", version: packageJson.version };
-    sendJson(response, 200, body);
-  } else if (pathname === BOOTSTRAP_PATH) {
-    if (tokensMatch(server.token, bearerToken(request.headers.authorization))) {
-      const body: BootstrapResponse = { serverId: server.serverId };
-      sendJson(response, 200, body);
-    } else {
-      sendJson(response, 401, { error: "unauthorized" });
-    }
-  } else {
-    response.writeHead(404, { "content-type": "text/plain" });
-    response.end("Not found");
+function cookie(request: IncomingMessage, name: string): string | undefined {
+  return request.headers.cookie
+    ?.split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+}
+export function publicOrigin(value: string): string {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/")
+    throw new Error("public-url must be an HTTPS origin, for example https://tandem.example.com");
+  return url.origin;
+}
+async function readBody(request: IncomingMessage): Promise<unknown> {
+  if (request.headers["content-type"]?.split(";")[0] !== "application/json")
+    throw new PairingError("Use application/json", 415);
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 4096) throw new PairingError("Request body is too large", 413);
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new PairingError("Invalid JSON");
   }
 }
-
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
 }
-
-/** `<server>/<conversation>/<entry>/<messageIndex>/<blockIndex>` of this server, the rest non-negative whole numbers. */
 function imageRefOf(path: string, serverId: string): ImageRef | undefined {
   const [server, ...rest] = path.split("/");
-  if (server === undefined || decodedSegment(server) !== serverId) return undefined;
-  if (rest.length !== 4 || !rest.every((part) => /^\d{1,15}$/.test(part))) return undefined;
+  if (
+    server === undefined ||
+    decodedSegment(server) !== serverId ||
+    rest.length !== 4 ||
+    !rest.every((part) => /^\d{1,15}$/.test(part))
+  )
+    return undefined;
   const [conversationId, entryId, messageIndex, blockIndex] = rest.map(Number) as [number, number, number, number];
   return { conversationId, entryId, messageIndex, blockIndex };
 }
-
-/** A path segment as it was encoded, or `undefined` for one that is not valid percent-encoding. */
 function decodedSegment(segment: string): string | undefined {
   try {
     return decodeURIComponent(segment);
@@ -190,7 +338,6 @@ function decodedSegment(segment: string): string | undefined {
     return undefined;
   }
 }
-
 function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
   socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
