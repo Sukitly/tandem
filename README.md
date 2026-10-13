@@ -33,28 +33,16 @@ Stop a running server before switching to development mode. `bun run dev:server`
 
 `bun run start` runs in the foreground, so closing the terminal window ends the server: a closing terminal sends `SIGHUP`, and Node does not keep the `SIG_IGN` that `nohup` sets, so `nohup bun run start` ends the same way. (On Node 24, `nohup sleep` survives a hangup and `nohup node` does not.) A service manager is the answer, and it brings start-at-login and restart-after-a-crash with it.
 
-Templates are in `contrib/`: `launchd/com.tandem.server.plist` for macOS and `systemd/tandem.service` for Linux. Replace the absolute paths with your own: the Node binary (`node -p 'process.execPath'` prints the path to write, however Node was installed — never a version manager's per-shell shim, which is gone by the next login), this repository, and on macOS the log path. Run `bun run build` once first, since the backend serves `apps/web/dist` and a service cannot build it for you.
-
 ```bash
-# macOS
-cp contrib/launchd/com.tandem.server.plist ~/Library/LaunchAgents/   # after editing it
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tandem.server.plist
-launchctl print gui/$(id -u)/com.tandem.server          # status
-tail -f ~/.tandem/tandem.log                            # output
-launchctl kill SIGTERM gui/$(id -u)/com.tandem.server   # clean stop; it stays stopped
-launchctl bootout gui/$(id -u)/com.tandem.server        # unload
-
-# Linux
-cp contrib/systemd/tandem.service ~/.config/systemd/user/   # after editing it
-systemctl --user daemon-reload
-systemctl --user enable --now tandem
-loginctl enable-linger $USER                            # keep running while logged out
-systemctl --user status tandem
-journalctl --user -u tandem -f                          # output
-systemctl --user stop tandem
+bun run service install           # a launchd agent on macOS, a systemd user unit on Linux
+bun run service status            # what the service manager says, and whether it answers
+bun run service install --print   # show the file without writing or loading it
+bun run service uninstall
 ```
 
-A service has no terminal, so nothing opens at login. Run `bun run start` when you want a pairing link: it finds the running server and prints a fresh one. The agent and the terminals it opens inherit the service's `PATH`, which is not your shell's, so keep the `PATH` in the template close to the one you work with. After updating the code, `git pull && bun install && bun run build`, then restart the service (`launchctl kickstart -k gui/$(id -u)/com.tandem.server`, or `systemctl --user restart tandem`).
+`install` builds the web app if it has not been built, refuses while another program holds the port, writes the file, loads it, and waits until it answers. Everything an init system needs is absolute and it reads no shell configuration, so the values are computed rather than typed: Node's path from the process that runs this (a version manager's per-shell shim never reaches the service, which would break at your next login), this repository from its own location, and the state directory from `TANDEM_HOME`.
+
+A service has no terminal, so nothing opens at login. Run `bun run start` when you want a pairing link: it finds the running server and prints a fresh one. What the agent reads and the terminals it opens inherit the service's `PATH`: the one you installed from, without the entries that no longer exist. On Linux, `loginctl enable-linger $USER` keeps it running while you are logged out. To stop it for good: `launchctl kill SIGTERM gui/$(id -u)/com.tandem.server`, or `systemctl --user stop tandem`. After updating the code, `git pull && bun install && bun run build`, then `launchctl kickstart -k gui/$(id -u)/com.tandem.server`, or `systemctl --user restart tandem`. Output goes to `$TANDEM_HOME/tandem.log` on macOS, and to the journal on Linux (`journalctl --user -u tandem -f`).
 
 ### Remote access
 

@@ -16,7 +16,6 @@ The code is the source of truth; there are no design documents in this repositor
 | `apps/web` | `@tandem/web` | React + Vite single-page app |
 | `packages/contracts` | `@tandem/contracts` | Constants, types, and service contracts shared by server and clients |
 | `packages/client` | `@tandem/client` | Connects to the server: bootstrap, pi-client over WebSocket, service bindings, reconnects. Used by the web app and by server integration tests |
-| `contrib` | — | Templates for running the server without a terminal: a macOS LaunchAgent and a systemd user unit |
 
 Internal packages export TypeScript sources directly (`"exports": { ".": "./src/index.ts" }`); Node (type stripping) and Vite consume them without a build step. Reference them with `"workspace:*"`.
 
@@ -31,6 +30,7 @@ The backend runs on **Node >= 22.19**, not Bun: pi-durable's SQLite storage need
 | Install dependencies | `bun install` |
 | Build, start the app, and open the browser (or reuse the running app) | `bun run start` |
 | Watch backend + Vite, open once, stop both on Ctrl-C | `bun run dev` |
+| Run the server as a service, so closing the terminal does not end it | `bun run service install` |
 | Run the server in watch mode separately; prints a pairing link | `bun run dev:server` |
 | Run the web app on port 5173 (proxies the server's paths) | `bun run dev:web` |
 | Lint and format check, then typecheck | `bun run check` |
@@ -39,6 +39,8 @@ The backend runs on **Node >= 22.19**, not Bun: pi-durable's SQLite storage need
 | Build | `bun run build` |
 | Run one package's script | `bun run --filter @tandem/server test` |
 | Add a dependency to one package | `cd apps/web && bun add <name>` |
+
+`bun run service` (`apps/server/src/service.ts`) writes the file an init system reads — a launchd agent, or a systemd user unit — loads it, and reports it. It computes every value from the process that runs it: an init system reads no shell configuration, and none of it may be typed by hand, since a version manager's per-shell shim looks like a Node path and is gone by the next login. The unit restarts the server after an unsuccessful exit and leaves it stopped after a clean one, which is what a `SIGTERM` stop gives.
 
 Before finishing a change, `bun run check` and `bun run test` must pass.
 
