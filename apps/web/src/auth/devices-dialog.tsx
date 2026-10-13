@@ -68,6 +68,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
   const [pair, setPair] = useState<PairingCode>();
   const [recovery, setRecovery] = useState<string[]>();
   const remaining = state?.recoveryCodesRemaining ?? 0;
+  const deviceList = state?.devices ?? [];
   const [renaming, setRenaming] = useState<string>();
   const [draft, setDraft] = useState("");
   const [failure, setFailure] = useState<string>();
@@ -106,7 +107,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
-            {state?.devices.map((device) => (
+            {deviceList.map((device) => (
               <div key={device.id} className="flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   {renaming === device.id ? (
@@ -153,20 +154,23 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                   >
                     Rename
                   </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      setConfirmation({
-                        title: "Revoke this device?",
-                        description: "Its active connections will be closed immediately. It will need to pair again.",
-                        action: () => devices.revoke(device.id, BACKGROUND_CONTEXT),
-                      })
-                    }
-                  >
-                    Revoke
-                  </Button>
+                  {/* Removing this device is signing out: it also clears the cookie this browser holds. */}
+                  {device.id !== deviceId && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        setConfirmation({
+                          title: "Revoke this device?",
+                          description: "Its active connections will be closed immediately. It will need to pair again.",
+                          action: () => devices.revoke(device.id, BACKGROUND_CONTEXT),
+                        })
+                      }
+                    >
+                      Revoke
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -181,19 +185,21 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
               </Button>
               {deviceId !== undefined && (
                 <>
-                  <Button
-                    variant="destructive"
-                    disabled={busy}
-                    onClick={() =>
-                      setConfirmation({
-                        title: "Revoke all other devices?",
-                        description: "Only this browser will remain paired.",
-                        action: () => devices.revokeOthers(deviceId, BACKGROUND_CONTEXT),
-                      })
-                    }
-                  >
-                    Revoke other devices
-                  </Button>
+                  {deviceList.length > 1 && (
+                    <Button
+                      variant="destructive"
+                      disabled={busy}
+                      onClick={() =>
+                        setConfirmation({
+                          title: "Revoke all other devices?",
+                          description: "Only this browser will remain paired.",
+                          action: () => devices.revokeOthers(deviceId, BACKGROUND_CONTEXT),
+                        })
+                      }
+                    >
+                      Revoke other devices
+                    </Button>
+                  )}
                   <Button
                     variant="destructive"
                     disabled={busy}

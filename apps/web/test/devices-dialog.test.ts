@@ -7,8 +7,10 @@ import { Button } from "../src/components/ui/button.tsx";
 
 const mock = vi.hoisted(() => {
   const device = { id: "self", name: "Laptop", createdAt: 0, lastSeenAt: 0 };
+  const other = { id: "phone", name: "Phone", createdAt: 0, lastSeenAt: 0 };
   return {
     device,
+    other,
     value: { devices: [device], recoveryCodesRemaining: 10 },
     addDevice: vi.fn(),
     revoke: vi.fn(),
@@ -41,19 +43,30 @@ function setup() {
 beforeEach(() => {
   mock.value.recoveryCodesRemaining = 10;
   mock.device.name = "Laptop";
+  mock.value.devices = [mock.device];
   vi.clearAllMocks();
 });
 afterEach(cleanup);
 
-test("lists devices from subscription state and asks before revoking", async () => {
+test("lists devices, and revokes another one only after asking", async () => {
+  mock.value.devices = [mock.device, mock.other];
   mock.revoke.mockResolvedValue(undefined);
   setup();
   expect(screen.getByText("This device")).toBeDefined();
+  expect(screen.getByText("Phone")).toBeDefined();
+  // Only the other device is revocable here: removing this browser is signing out.
+  expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
   expect(mock.revoke).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
   await waitFor(() => expect(mock.revoke).toHaveBeenCalled());
-  expect(mock.revoke.mock.calls[0]?.[0]).toBe("self");
+  expect(mock.revoke.mock.calls[0]?.[0]).toBe("phone");
+});
+test("with one device there is nothing to revoke, and so no button for it", () => {
+  setup();
+  expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Revoke other devices" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Sign out" })).toBeDefined();
 });
 test("add device shows a fragment link and QR code for the configured public origin", async () => {
   mock.addDevice.mockResolvedValue({
