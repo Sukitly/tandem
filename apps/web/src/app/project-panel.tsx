@@ -52,7 +52,7 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
             >
               <RotateCwIcon />
             </TooltipTrigger>
-            <TooltipContent>Read again</TooltipContent>
+            <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
         )}
       </header>

@@ -9,6 +9,7 @@ import {
   Files,
   Models,
   ProjectChanges,
+  Prompts,
   type StartInput,
   Terminals,
   Workspaces,
@@ -31,6 +32,8 @@ import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
 import type { FileBrowser } from "./files.ts";
 import type { ModelCatalog } from "./models.ts";
+import type { ProjectDirectoryBrowser } from "./project-directories.ts";
+import type { PromptLibrary } from "./prompts.ts";
 import type { TerminalHost } from "./terminals.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
@@ -41,9 +44,11 @@ export interface AppServices {
   readonly catalog: ConversationCatalog;
   readonly workspaces: WorkspaceCatalog;
   readonly files: FileBrowser;
+  readonly directories: ProjectDirectoryBrowser;
   readonly models: ModelCatalog;
   readonly notices: NoticeBoard;
   readonly comments: CommentBoard;
+  readonly prompts: PromptLibrary;
   readonly terminals: TerminalHost;
   /** Fits images to a model: those a page sends with a message. */
   readonly images: ImageProcessor;
@@ -69,10 +74,12 @@ export function createConnectionServices({
   catalog,
   workspaces,
   files,
+  directories,
   models,
   notices,
   changes,
   comments,
+  prompts,
   terminals,
   images,
 }: AppServices): ConnectionServices {
@@ -83,6 +90,7 @@ export function createConnectionServices({
     Changes,
     Comments,
     Terminals,
+    Prompts,
     Conversations,
     { service: Conversation, mode: "keyed" },
     { service: ProjectChanges, mode: "keyed" },
@@ -110,6 +118,7 @@ export function createConnectionServices({
           models,
           comments,
           images,
+          prompts,
           workspaceId: () => catalog.workspaceOf(id),
           onSubmitted: (_text, context) => catalog.noteMessage(id, context),
         }),
@@ -157,6 +166,7 @@ export function createConnectionServices({
 
   provider.provide(Workspaces, {
     state: workspaces.state,
+    browse: (path, context) => directories.browse(path, context),
     async add(input, context) {
       const { path } = (input ?? {}) as { path?: unknown };
       if (typeof path !== "string") throw invalidInput("path must be a string");
@@ -220,6 +230,13 @@ export function createConnectionServices({
     read: (location, context) => files.read(location, context),
   });
 
+  provider.provide(Prompts, {
+    list: (workspaceId, context) => {
+      parseId(workspaceId, "Project");
+      return prompts.list(workspaceId, context);
+    },
+  });
+
   provider.provide(Conversations, {
     state: catalog.state,
     async start(input, context) {
@@ -233,8 +250,10 @@ export function createConnectionServices({
         agent.model === undefined ? undefined : models.available(agent.model),
         images,
       );
+      // Expanded before the comments are taken, so a failure leaves them waiting.
+      const expanded = await prompts.expand(workspaceId, text, context);
       const taken = comments.take(workspaceId, ids);
-      const message = joinMessage(taken.text, text);
+      const message = joinMessage(taken.text, expanded);
       let conversation: Awaited<ReturnType<ConversationCatalog["create"]>>;
       try {
         if (message === "" && attached.length === 0) throw invalidInput("Write a message, or a comment to send");

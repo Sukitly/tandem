@@ -1,4 +1,5 @@
-import type { ImageInput } from "@tandem/contracts";
+import type { ImageInput, PromptTemplateSummary } from "@tandem/contracts";
+import { cn } from "cn";
 import { ArrowUpIcon, ImagePlusIcon, SquareIcon, XIcon } from "lucide-react";
 import {
   type ClipboardEvent,
@@ -7,6 +8,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -26,12 +28,20 @@ import type { QueuedMessage } from "./transcript.ts";
  */
 export type ImageSupport = { kind: "accepted"; maxPerMessage?: number } | { kind: "none" } | { kind: "unknown" };
 
+/**
+ * How long after a composition ends a keydown still counts as the IME's. Safari delivers the closing keydown after
+ * `compositionend`, so `isComposing` alone would let an IME's Enter submit or pick a command.
+ */
+const IME_SETTLE_MS = 10;
+
 export interface ChatComposerProps {
   busy: boolean;
   queued: QueuedMessage[];
   /** Comments of the project waiting to be sent; they go with the message, which the server writes them into. */
   comments?: WaitingComment[];
   onWithdrawComment?(comment: WaitingComment): void;
+  /** The project's slash commands, offered while a message begins with `/`. The server expands them when it is sent. */
+  commands?: PromptTemplateSummary[];
   /** Rejects when the server refuses the message; the text and images then stay in the box, and the comments wait. */
   onSend: (text: string, comments: number[], images: ImageInput[], whenBusy: "steer" | "followUp") => Promise<void>;
   /** Whether the current model takes images; images are offered only when it does. */
@@ -45,12 +55,20 @@ export interface ChatComposerProps {
 /**
  * The message box. While the agent works, Enter steers it (the message is read at its next step) and Alt+Enter queues
  * a follow-up for when it is done, as in pi's terminal UI. Shift+Enter starts a new line.
+ *
+ * The box is a combobox, and its suggestion menu is Tandem's own, laid over the box rather than rendered by a popover
+ * or a menu component: focus must stay in the box so that ordinary typing, spaces, and Shift+Enter keep working, and
+ * such a component would take the keys for itself. It follows how pi's own input behaves: a message that begins with
+ * `/` and holds no argument yet offers the project's slash commands, the arrows move through them, Tab fills the
+ * highlighted one into the box so its arguments can be typed, Enter sends it, Escape puts the menu away, and
+ * everything else is left to the browser.
  */
 export function ChatComposer({
   busy,
   queued,
   comments = [],
   onWithdrawComment,
+  commands = [],
   onSend,
   onStop,
   autoFocus,
@@ -63,6 +81,12 @@ export function ChatComposer({
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
+  const [highlight, setHighlight] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const listId = useId();
+  const boxRef = useRef<HTMLDivElement>(null);
+  const composing = useRef(false);
+  const composingUntil = useRef(0);
   const empty = value.trim() === "" && comments.length === 0 && attached.length === 0;
 
   // The thumbnails' URLs go with the box.
@@ -113,14 +137,46 @@ export function ChatComposer({
     );
   };
 
-  const send = async (whenBusy: "steer" | "followUp"): Promise<void> => {
-    if (empty || sending) return;
+  const query = commandQuery(value);
+  const matching =
+    query === null ? [] : commands.filter((command) => command.name.toLowerCase().startsWith(query.toLowerCase()));
+  const menuOpen = query !== null && !dismissed && matching.length > 0 && !sending;
+  const selected = menuOpen ? Math.min(highlight, matching.length - 1) : -1;
+  const optionId = (index: number): string => `${listId}-${index}`;
+
+  // Focus stays in the box, so the browser does not scroll the highlighted row into view when the arrows move it.
+  useEffect(() => {
+    if (selected < 0) return;
+    document.getElementById(`${listId}-${selected}`)?.scrollIntoView({ block: "nearest" });
+  }, [listId, selected]);
+
+  // A press outside the box and its menu puts the menu away. Presses on the box, its buttons, or the menu itself do
+  // not: the box owns when the menu is open.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (event.target instanceof Node && boxRef.current?.contains(event.target) === true) return;
+      setDismissed(true);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [menuOpen]);
+
+  const accept = (command: PromptTemplateSummary): void => {
+    setValue(completion(command));
+    setHighlight(0);
+    setDismissed(false);
+  };
+
+  const send = async (text: string, whenBusy: "steer" | "followUp"): Promise<void> => {
+    if (sending) return;
+    if (text.trim() === "" && comments.length === 0 && attached.length === 0) return;
     setSending(true);
     setError(null);
     const sent = attached;
     try {
       await onSend(
-        value,
+        text,
         comments.map((comment) => comment.messageId),
         sent.map((image) => image.input),
         whenBusy,
@@ -136,14 +192,59 @@ export function ChatComposer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    const native = event.nativeEvent;
+    // A key the input method owns, picking one of its candidates, is never ours: acting on it would fight the IME.
+    if (native.isComposing || native.keyCode === 229 || composing.current || Date.now() < composingUntil.current)
+      return;
+
+    if (menuOpen) {
+      const count = matching.length;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setHighlight((current) => (current + 1) % count);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setHighlight((current) => (current - 1 + count) % count);
+        return;
+      }
+      if (event.key === "Tab") {
+        event.preventDefault();
+        // Tab fills the command into the box and closes the menu, so its arguments can be typed; Shift+Tab puts the
+        // menu away, so the two never disagree.
+        if (event.shiftKey) setDismissed(true);
+        else {
+          const command = matching[selected];
+          if (command !== undefined) accept(command);
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDismissed(true);
+        return;
+      }
+      // Enter settles the highlighted command and sends it in one gesture, as pi's editor does for slash commands.
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        const command = matching[selected];
+        const text = command === undefined ? value : completion(command);
+        if (text !== value) setValue(text);
+        void send(text, event.altKey ? "followUp" : "steer");
+        return;
+      }
+    }
+    // Everything else is the browser's: ordinary characters and spaces, which close the menu by changing the message,
+    // and Shift+Enter's line break.
+    if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
-    void send(event.altKey ? "followUp" : "steer");
+    void send(value, event.altKey ? "followUp" : "steer");
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    void send("steer");
+    void send(value, "steer");
   };
 
   // A pasted image is attached; pasted text goes into the box as usual.
@@ -168,15 +269,17 @@ export function ChatComposer({
   };
 
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 gap-2">
       <CommentList comments={comments} onWithdraw={(comment) => onWithdrawComment?.(comment)} />
       {queued.length > 0 && (
         <ItemGroup aria-label="Queued messages" className="gap-1">
           {queued.map((message) => (
             <Item key={message.id} size="xs" variant="muted">
               <Badge variant="outline">{message.mode === "steer" ? "Steering" : "Follow-up"}</Badge>
-              <ItemContent>
-                <ItemDescription className="truncate">{message.text}</ItemDescription>
+              <ItemContent className="min-w-0">
+                <ItemDescription className="line-clamp-none whitespace-pre-wrap wrap-anywhere">
+                  {message.text}
+                </ItemDescription>
               </ItemContent>
               {message.imageCount > 0 && (
                 <Badge variant="secondary">
@@ -187,96 +290,172 @@ export function ChatComposer({
           ))}
         </ItemGroup>
       )}
-      <form
-        onSubmit={onSubmit}
-        onDragOver={onDragOver}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        aria-label="Message box"
-      >
-        <InputGroup data-dragging={dragging || undefined} className="data-[dragging]:ring-2 data-[dragging]:ring-ring">
-          {attached.length > 0 && (
-            <InputGroupAddon align="block-start" className="flex-wrap gap-2">
-              {attached.map((image) => (
-                <div key={image.id} className="relative">
-                  <img src={image.url} alt={image.name} className="size-14 rounded-md border object-cover" />
-                  <InputGroupButton
-                    type="button"
-                    variant="secondary"
-                    size="icon-xs"
-                    className="absolute -top-1.5 -right-1.5"
-                    aria-label={`Remove ${image.name}`}
-                    onClick={() => detach(image.id)}
-                  >
-                    <XIcon />
-                  </InputGroupButton>
-                </div>
-              ))}
-            </InputGroupAddon>
-          )}
-          <InputGroupTextarea
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            rows={1}
-            className="max-h-60 min-h-0 py-2.5"
-            aria-label="Message"
-            placeholder={busy ? "Steer the agent, or Alt+Enter to queue a follow-up" : "Ask the agent"}
-            autoFocus={autoFocus}
-          />
-          <InputGroupAddon align="inline-end" className="self-end pb-1.5">
-            {imageSupport.kind === "accepted" && (
-              <>
-                <input
-                  ref={picker}
-                  type="file"
-                  accept={IMAGE_ACCEPT}
-                  multiple
-                  hidden
-                  onChange={(event) => {
-                    void attach([...(event.target.files ?? [])]);
-                    event.target.value = "";
+      <div ref={boxRef} className="relative">
+        {menuOpen && (
+          <div className="absolute bottom-full left-0 z-10 mb-2 w-full overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-md">
+            <p className="border-b px-2.5 py-1.5 text-xs text-muted-foreground">
+              {query === "" ? "Commands" : `Commands matching /${query}`}
+            </p>
+            <div id={listId} role="listbox" aria-label="Commands" className="max-h-72 overflow-y-auto p-1">
+              {matching.map((command, index) => (
+                <button
+                  key={commandValue(command)}
+                  id={optionId(index)}
+                  type="button"
+                  role="option"
+                  aria-selected={index === selected}
+                  className={cn(
+                    "flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden select-none",
+                    index === selected && "bg-muted text-foreground",
+                  )}
+                  // mousedown, not click: the box keeps focus, and the command is settled before a blur-driven teardown.
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    accept(command);
                   }}
-                />
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <InputGroupButton
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="Attach images"
-                        onClick={() => picker.current?.click()}
-                      />
-                    }
-                  >
-                    <ImagePlusIcon />
-                  </TooltipTrigger>
-                  <TooltipContent>Attach images, or paste or drop them</TooltipContent>
-                </Tooltip>
-              </>
+                  // mousemove, not mouseenter: rows moving under a resting pointer must not take the highlight back.
+                  onMouseMove={() => {
+                    if (index !== selected) setHighlight(index);
+                  }}
+                >
+                  <span className="shrink-0 font-mono">/{command.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{command.description}</span>
+                  <Badge variant="outline">{command.origin === "project" ? "Project" : "Global"}</Badge>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <form
+          onSubmit={onSubmit}
+          onDragOver={onDragOver}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          aria-label="Message box"
+        >
+          <InputGroup
+            data-dragging={dragging || undefined}
+            className="data-[dragging]:ring-2 data-[dragging]:ring-ring"
+          >
+            {attached.length > 0 && (
+              <InputGroupAddon align="block-start" className="flex-wrap gap-2">
+                {attached.map((image) => (
+                  <div key={image.id} className="relative">
+                    <img src={image.url} alt={image.name} className="size-14 rounded-md border object-cover" />
+                    <InputGroupButton
+                      type="button"
+                      variant="secondary"
+                      size="icon-xs"
+                      className="absolute -top-1.5 -right-1.5"
+                      aria-label={`Remove ${image.name}`}
+                      onClick={() => detach(image.id)}
+                    >
+                      <XIcon />
+                    </InputGroupButton>
+                  </div>
+                ))}
+              </InputGroupAddon>
             )}
-            {busy && empty ? (
-              <InputGroupButton type="button" variant="default" size="icon-sm" aria-label="Stop" onClick={onStop}>
-                <SquareIcon />
-              </InputGroupButton>
-            ) : (
-              <InputGroupButton
-                type="submit"
-                variant="default"
-                size="icon-sm"
-                aria-label="Send"
-                disabled={empty || sending}
-              >
-                <ArrowUpIcon />
-              </InputGroupButton>
-            )}
-          </InputGroupAddon>
-        </InputGroup>
-      </form>
+            <InputGroupTextarea
+              value={value}
+              onChange={(event) => {
+                setValue(event.target.value);
+                setHighlight(0);
+                setDismissed(false);
+              }}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              onCompositionStart={() => {
+                composing.current = true;
+              }}
+              onCompositionEnd={() => {
+                composing.current = false;
+                composingUntil.current = Date.now() + IME_SETTLE_MS;
+              }}
+              rows={1}
+              className="max-h-60 min-h-0 py-2.5"
+              aria-label="Message"
+              role="combobox"
+              aria-haspopup="listbox"
+              aria-autocomplete="list"
+              aria-expanded={menuOpen}
+              aria-controls={menuOpen ? listId : undefined}
+              aria-activedescendant={selected >= 0 ? optionId(selected) : undefined}
+              placeholder={busy ? "Steer the agent, or Alt+Enter to queue a follow-up" : "Ask the agent"}
+              autoFocus={autoFocus}
+            />
+            <InputGroupAddon align="inline-end" className="self-end pb-1.5">
+              {imageSupport.kind === "accepted" && (
+                <>
+                  <input
+                    ref={picker}
+                    type="file"
+                    accept={IMAGE_ACCEPT}
+                    multiple
+                    hidden
+                    onChange={(event) => {
+                      void attach([...(event.target.files ?? [])]);
+                      event.target.value = "";
+                    }}
+                  />
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <InputGroupButton
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Attach images"
+                          onClick={() => picker.current?.click()}
+                        />
+                      }
+                    >
+                      <ImagePlusIcon />
+                    </TooltipTrigger>
+                    <TooltipContent>Attach images, or paste or drop them</TooltipContent>
+                  </Tooltip>
+                </>
+              )}
+              {busy && empty ? (
+                <InputGroupButton type="button" variant="default" size="icon-sm" aria-label="Stop" onClick={onStop}>
+                  <SquareIcon />
+                </InputGroupButton>
+              ) : (
+                <InputGroupButton
+                  type="submit"
+                  variant="default"
+                  size="icon-sm"
+                  aria-label="Send"
+                  disabled={empty || sending}
+                >
+                  <ArrowUpIcon />
+                </InputGroupButton>
+              )}
+            </InputGroupAddon>
+          </InputGroup>
+        </form>
+      </div>
       {status}
       {error !== null && <FieldError>{error}</FieldError>}
     </div>
   );
+}
+
+/** What settling a command fills into the box, with the trailing space its arguments would follow. */
+function completion(command: PromptTemplateSummary): string {
+  return `/${command.name} `;
+}
+
+/**
+ * The command name being typed: the text after a leading `/`, while the message holds no argument and no further
+ * slash. `null` once there is an argument, when the message is not a command, or when it is empty.
+ */
+function commandQuery(value: string): string | null {
+  const match = /^\/([^\s/]*)$/.exec(value);
+  return match === null ? null : (match[1] ?? "");
+}
+
+/** A command's identity in the menu: its name, told apart from a global one of the same name. */
+function commandValue(command: PromptTemplateSummary): string {
+  return `${command.origin}/${command.name}`;
 }

@@ -26,6 +26,7 @@ import { ImageRefused, imageModel, parseImageInputs, prepareImages } from "../im
 import type { CommentBoard, TakenComments } from "./comments.ts";
 import { invalidInput } from "./errors.ts";
 import type { ModelCatalog } from "./models.ts";
+import type { PromptLibrary } from "./prompts.ts";
 
 /** Submissions that end without an answer for these reasons need no notice: the user asked for it, or it was replaced. */
 const QUIET_REASONS = new Set(["aborted", "reset", "stale"]);
@@ -64,6 +65,7 @@ export interface ConversationServiceOptions {
   models: ModelCatalog;
   comments: CommentBoard;
   images: ImageProcessor;
+  prompts: PromptLibrary;
   /** The project the conversation belongs to, whose comments its messages may carry. */
   workspaceId: () => number | undefined;
   onSubmitted: (text: string, context: Context) => Promise<void>;
@@ -77,6 +79,7 @@ export function createConversationService({
   models,
   comments,
   images,
+  prompts,
   workspaceId,
   onSubmitted,
 }: ConversationServiceOptions): Conversation {
@@ -90,8 +93,10 @@ export function createConversationService({
       const current = sent === undefined || sent.length === 0 ? undefined : (await conversation.agent(context)).model;
       const attached = await imagesFor(sent, current === undefined ? undefined : models.available(current), images);
       const project = workspaceId();
+      // Expanded before the comments are taken, so a failure leaves them waiting.
+      const expanded = project === undefined ? text : await prompts.expand(project, text, context);
       const taken = project === undefined ? undefined : comments.take(project, ids);
-      const message = joinMessage(taken?.text ?? "", text);
+      const message = joinMessage(taken?.text ?? "", expanded);
       if (message === "" && attached.length === 0) {
         taken?.release();
         throw invalidInput("Write a message, or a comment to send");

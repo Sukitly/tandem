@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice, ModelRef, ModelSummary } from "@tandem/contracts";
-import { AlertCircleIcon, ArrowDownIcon, PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { useWorkbench } from "@/app/workbench.tsx";
@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
+import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer, type ImageSupport } from "./chat-composer.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
@@ -50,6 +50,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
   const projectComments = comments(workspaceId);
   const threads = useCommentThreads(projectComments);
   const waiting = useMemo(() => waitingComments(threads), [threads]);
+  const { commands } = usePrompts(workspaceId);
   const [chosen, setChosen] = useState<AgentChoice>({});
   // What the server starts with when none is chosen: the default model, else the first available.
   const first = available?.models[0];
@@ -86,6 +87,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
           busy={false}
           queued={[]}
           comments={waiting}
+          commands={commands}
           onWithdrawComment={(comment) =>
             projectComments
               .withdraw(comment.thread.id, comment.messageId)
@@ -119,6 +121,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   const projectComments = summary === undefined ? undefined : comments(summary.workspaceId);
   const threads = useCommentThreads(projectComments);
   const waiting = useMemo(() => waitingComments(threads), [threads]);
+  const { commands } = usePrompts(summary?.workspaceId);
   const view = useReplicatedState(conversation.view);
   const notices = useReplicatedState(conversation.notices)?.notices ?? [];
   const transcript = useMemo(() => (view === undefined ? undefined : toTranscript(view)), [view]);
@@ -150,6 +153,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           busy={transcript.busy}
           queued={transcript.queued}
           comments={waiting}
+          commands={commands}
           onWithdrawComment={(comment) =>
             projectComments
               ?.withdraw(comment.thread.id, comment.messageId)
@@ -211,22 +215,15 @@ function FilesToggle() {
   const { filesShown, showFiles } = useWorkbench();
   const label = filesShown ? "Hide files" : "Show files";
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={label}
-            aria-pressed={filesShown}
-            onClick={() => showFiles(!filesShown)}
-          />
-        }
-      >
-        {filesShown ? <PanelRightCloseIcon /> : <PanelRightOpenIcon />}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      aria-pressed={filesShown}
+      onClick={() => showFiles(!filesShown)}
+    >
+      {filesShown ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+    </Button>
   );
 }
 

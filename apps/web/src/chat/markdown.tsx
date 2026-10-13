@@ -32,6 +32,10 @@ const rehypePlugins = [sanitize];
  * `language-*` class.
  */
 const components: Components = {
+  // Only Markdown paragraphs receive chat spacing; plugin UI paragraphs keep their own styles.
+  // Delegate to Streamdown so images and fenced blocks still omit their paragraph wrapper.
+  p: (props: object) =>
+    createElement(defaultComponents.p, { ...props, "data-chat-markdown": "paragraph" } as ComponentProps<"p">),
   // Links to files open them in the files panel; links to the web keep Streamdown's, which asks before leaving.
   a: (props: object) => {
     const { href, children } = props as ComponentProps<"a">;
@@ -75,7 +79,7 @@ export const Markdown = memo(
   function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
     return (
       <Streamdown
-        className="min-w-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+        className="chat-markdown min-w-0"
         plugins={plugins}
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
