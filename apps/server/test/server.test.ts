@@ -17,6 +17,16 @@ test("health endpoint reports ok", async () => {
   expect(body.status).toBe("ok");
 });
 
+test("health reports the tunnel, and says nothing about one when there is none", async () => {
+  server = await startServer({ port: 0, tunnelState: () => "connected" });
+  const withTunnel = (await (await fetch(new URL(HEALTH_PATH, server.url))).json()) as HealthResponse;
+  expect(withTunnel.tunnel).toBe("connected");
+  await server.stop();
+  server = await startServer({ port: 0, tunnelState: () => undefined });
+  const without = (await (await fetch(new URL(HEALTH_PATH, server.url))).json()) as HealthResponse;
+  expect("tunnel" in without).toBe(false);
+});
+
 test("unknown paths return 404", async () => {
   server = await startServer({ port: 0 });
   const response = await fetch(new URL("/missing", server.url));

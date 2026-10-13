@@ -48,15 +48,22 @@ After `install`, open the printed pairing link to authorize your first browser. 
 
 ### Remote access
 
-The server still binds only to `127.0.0.1`. For a fixed Cloudflare Tunnel domain, start with:
+The server still binds only to `127.0.0.1`, so reaching it from outside this machine means a Cloudflare Tunnel in front of it. Tandem runs the tunnel itself, as a child of the server, so it starts and stops with the server and one service covers both. Create a named tunnel in the Cloudflare dashboard, add a public hostname that points at `http://127.0.0.1:4820`, and give Tandem its token and that hostname:
 
 ```bash
-bun run start --public-url https://tandem.example.com
+pbpaste | bun run tunnel configure --public-url https://tandem.example.com
+bun run service install --print   # the service file now carries the proxy, if this machine needs one
+bun run service restart
+bun run tunnel status             # configured origin, and what the running server reports
 ```
 
-`TANDEM_PUBLIC_URL` or `publicUrl` in `~/.tandem/settings.json` can also configure the public origin. An explicit origin is required for WebSocket and pairing checks; proxy headers do not grant access. Public-origin cookies are Secure. Configure **Cloudflare Access** in front of the tunnel to allow only your identity. Tunnel setup and a real public-domain browser check are still required; a tunnel alone is not authentication. Access JWT-based automatic login and passkeys are not implemented.
+`configure` reads the token from standard input or from `--token-file <path>`, never from an argument, and writes `~/.tandem/tunnel.json` at 0600. That origin becomes Tandem's public origin, so pairing links carry it and its cookies are `Secure`; `--public-url`, `TANDEM_PUBLIC_URL`, and `publicUrl` in `settings.json` still override it. `cloudflared` must be on `PATH` (`brew install cloudflared`); Tandem does not download it. Instructions for forcing HTTP/2 or setting a log level go in an optional `~/.tandem/cloudflared.yml`, which is passed to `cloudflared` with `--config`.
 
-Authenticated devices have full control of this machine, not just the open repositories. The tunnel provider terminates TLS and can inspect traffic. A pairing link grants access to anyone who redeems it before it expires.
+The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The token travels in the child's environment, not in its arguments; the hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
+
+An explicit public origin is required for WebSocket and pairing checks; proxy headers do not grant access. Configure **Cloudflare Access** in front of the tunnel to allow only your identity. A tunnel alone is not authentication, and Access JWT-based automatic login and passkeys are not implemented.
+
+Authenticated devices have full control of this machine, not just the open repositories. The tunnel provider terminates TLS and can inspect traffic, so anyone who obtains the tunnel token can run a connector of their own and read that traffic. A pairing link grants access to anyone who redeems it before it expires.
 
 `server.json` contains the installation's **master key**, for local launch commands and non-browser clients only. It is accepted in `Authorization: Bearer`, never in a URL. The upgrade from legacy URL-token authentication rotates that key once while keeping the server identity and conversations intact. Stop the old server before starting this version; existing browsers must pair again.
 

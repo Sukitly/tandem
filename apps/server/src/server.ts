@@ -22,6 +22,7 @@ import {
   PTY_PATH,
   RPC_PATH,
   SIGN_OUT_PATH,
+  type TunnelState,
 } from "@tandem/contracts";
 import packageJson from "../package.json" with { type: "json" };
 import { bearerToken, createToken, isAllowedOrigin, tokensMatch } from "./auth.ts";
@@ -44,6 +45,8 @@ export interface StartServerOptions {
   webEntry?: string;
   webRoot?: string;
   devices?: DeviceSessions;
+  /** Where the tunnel this installation runs has got to, for `/health`. */
+  tunnelState?: () => TunnelState | undefined;
   createConnectionServices?: () => ConnectionServices;
   terminal?: (id: string) => HostedTerminal | undefined;
   image?: (ref: ImageRef) => Promise<{ data: string; mimeType: string } | undefined>;
@@ -123,7 +126,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     web?.headers(response, request.headers.host ?? "");
     const { pathname } = new URL(request.url ?? "/", "http://localhost");
     if (pathname === HEALTH_PATH) {
-      const body: HealthResponse = { status: "ok", version: packageJson.version };
+      const tunnel = options.tunnelState?.();
+      const body: HealthResponse = {
+        status: "ok",
+        version: packageJson.version,
+        ...(tunnel === undefined ? {} : { tunnel }),
+      };
       return sendJson(response, 200, body);
     }
     if (pathname === PROOF_PATH && request.method === "POST") {

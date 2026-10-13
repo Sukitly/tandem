@@ -26,7 +26,10 @@ import { Settings } from "./settings.ts";
 import { openStateDir } from "./state-dir.ts";
 
 export interface StartAppOptions
-  extends Pick<StartServerOptions, "hostname" | "port" | "allowedOrigins" | "publicUrl" | "webEntry" | "webRoot"> {
+  extends Pick<
+    StartServerOptions,
+    "hostname" | "port" | "allowedOrigins" | "publicUrl" | "webEntry" | "webRoot" | "tunnelState"
+  > {
   /** Default: `$TANDEM_HOME`, or `~/.tandem`. */
   stateDir?: string;
   /** Model providers. Default: every provider pi-ai ships. Tests pass the faux provider only. */
@@ -90,7 +93,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     cleanups.push(async () => terminals.dispose());
 
     const server = await startServer({
-      ...pick(options, ["hostname", "port", "allowedOrigins", "webEntry", "webRoot"]),
+      ...pick(options, ["hostname", "port", "allowedOrigins", "webEntry", "webRoot", "tunnelState"]),
       publicUrl,
       devices,
       ...stateDir.identity,

@@ -119,9 +119,17 @@ export const HEALTH_PATH = "/health";
  */
 export const BOOTSTRAP_PATH = "/bootstrap";
 
+/**
+ * Where a public Cloudflare tunnel has got to. `unavailable` means the `cloudflared` program is not installed, and
+ * `failed` means it exited without registering a connection.
+ */
+export type TunnelState = "starting" | "connected" | "failed" | "unavailable";
+
 export interface HealthResponse {
   status: "ok";
   version: string;
+  /** Absent when this installation runs no tunnel. */
+  tunnel?: TunnelState;
 }
 
 export interface BootstrapResponse {
