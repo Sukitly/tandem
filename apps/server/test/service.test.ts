@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import {
   launchdPlist,
+  proxyEnvironment,
   type ServiceConfig,
   serviceFile,
   serviceFileText,
@@ -136,4 +137,18 @@ test("the public origin the environment configured goes into the file", () => {
   expect(systemdUnit(withUrl)).toContain('Environment="TANDEM_PUBLIC_URL=https://tandem.example.com"');
   expect(launchdPlist(config)).not.toContain("TANDEM_PUBLIC_URL");
   expect(systemdUnit(config)).not.toContain("TANDEM_PUBLIC_URL");
+});
+
+test("the proxy a machine reaches the internet through goes into the file", () => {
+  expect(proxyEnvironment({ HTTPS_PROXY: "http://127.0.0.1:1087", NO_PROXY: "" })).toEqual({
+    HTTPS_PROXY: "http://127.0.0.1:1087",
+  });
+  expect(proxyEnvironment({ https_proxy: "http://127.0.0.1:1087" })).toEqual({
+    HTTPS_PROXY: "http://127.0.0.1:1087",
+  });
+  const proxied: ServiceConfig = { ...config, proxy: { HTTPS_PROXY: "http://127.0.0.1:1087" } };
+  expect(launchdPlist(proxied)).toContain("<key>HTTPS_PROXY</key>\n    <string>http://127.0.0.1:1087</string>");
+  expect(systemdUnit(proxied)).toContain('Environment="HTTPS_PROXY=http://127.0.0.1:1087"');
+  expect(launchdPlist(config)).not.toContain("HTTPS_PROXY");
+  expect(systemdUnit(config)).not.toContain("HTTPS_PROXY");
 });

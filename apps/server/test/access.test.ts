@@ -154,6 +154,29 @@ describe("device authentication at the HTTP boundary", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("; Secure");
   });
+  test("marks the cookie Secure from the Origin, so a tunnel that rewrites Host changes nothing", async () => {
+    const { server } = await start({ publicUrl: "https://tandem.example.com" });
+    // What a tunnel that rewrote the Host header would forward: the Origin is still the public one.
+    const rewritten = await rawHttp(
+      new URL(PAIR_PATH, server.url),
+      {
+        host: new URL(server.url).host,
+        origin: "https://tandem.example.com",
+        "content-type": "application/json",
+      },
+      JSON.stringify({ code: server.pair().code }),
+    );
+    expect(rewritten.status).toBe(200);
+    expect(rewritten.headers.get("set-cookie")).toContain("; Secure");
+
+    // A request that says it came from somewhere else is not the public origin, whatever Host it addressed.
+    const elsewhere = await rawHttp(
+      new URL(PAIR_PATH, server.url),
+      { host: "tandem.example.com", origin: "http://localhost:5173", "content-type": "application/json" },
+      JSON.stringify({ code: server.pair().code }),
+    );
+    expect(elsewhere.status).toBe(403);
+  });
   test("rate limits code redemption after five failures", async () => {
     const { pair } = await start();
     for (let i = 0; i < 5; i++) expect((await pair("wrong")).status).toBe(400);

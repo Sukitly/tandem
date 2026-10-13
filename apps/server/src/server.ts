@@ -22,6 +22,7 @@ import {
   PTY_PATH,
   RPC_PATH,
   SIGN_OUT_PATH,
+  type TunnelState,
 } from "@tandem/contracts";
 import packageJson from "../package.json" with { type: "json" };
 import { bearerToken, createToken, isAllowedOrigin, tokensMatch } from "./auth.ts";
@@ -44,6 +45,8 @@ export interface StartServerOptions {
   webEntry?: string;
   webRoot?: string;
   devices?: DeviceSessions;
+  /** Where the tunnel this installation runs has got to, for `/health`. */
+  tunnelState?: () => TunnelState | undefined;
   createConnectionServices?: () => ConnectionServices;
   terminal?: (id: string) => HostedTerminal | undefined;
   image?: (ref: ImageRef) => Promise<{ data: string; mimeType: string } | undefined>;
@@ -110,7 +113,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     return device === undefined ? undefined : { master: false, deviceId: device.id };
   };
   const sessionCookie = (request: IncomingMessage, secret: string, clear = false): string => {
-    const secure = publicUrl !== undefined && request.headers.host === new URL(publicUrl).host;
+    const secure = publicUrl !== undefined && cameFromPublicOrigin(request, publicUrl);
     // Cookie lifetime exceeds the idle limit; authentication enforces 30 days without activity server-side.
     return `${cookieName}=${secret}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${clear ? 0 : 400 * 24 * 60 * 60}${secure ? "; Secure" : ""}`;
   };
@@ -123,7 +126,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     web?.headers(response, request.headers.host ?? "");
     const { pathname } = new URL(request.url ?? "/", "http://localhost");
     if (pathname === HEALTH_PATH) {
-      const body: HealthResponse = { status: "ok", version: packageJson.version };
+      const tunnel = options.tunnelState?.();
+      const body: HealthResponse = {
+        status: "ok",
+        version: packageJson.version,
+        ...(tunnel === undefined ? {} : { tunnel }),
+      };
       return sendJson(response, 200, body);
     }
     if (pathname === PROOF_PATH && request.method === "POST") {
@@ -283,6 +291,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       await devices.flush();
     },
   };
+}
+
+/**
+ * Whether the browser reached this server through the public origin. A tunnel in front may rewrite `Host`, so the
+ * answer comes from `Origin`, which the browser sets and cannot set to anything but where it is running. Only a
+ * request that sets no `Origin` at all — a navigation — is judged by the `Host` it addressed.
+ */
+export function cameFromPublicOrigin(request: IncomingMessage, publicUrl: string): boolean {
+  const origin = request.headers.origin;
+  if (origin !== undefined) return origin === publicUrl;
+  return request.headers.host === new URL(publicUrl).host;
 }
 
 const SERVED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);

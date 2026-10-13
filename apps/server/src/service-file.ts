@@ -24,6 +24,21 @@ export interface ServiceConfig {
   readonly path: string;
   /** The public origin the installing environment configured, so that the service keeps the same allowlist. */
   readonly publicUrl?: string;
+  /** Proxy variables to carry in, since a service that reaches the internet through one otherwise has none. */
+  readonly proxy?: Readonly<Record<string, string>>;
+}
+
+/**
+ * The proxy a machine reaches the internet through. An init system reads no shell configuration, so a service that
+ * needs one has to be told; the uppercase spelling wins, and Go and Node both read either.
+ */
+export function proxyEnvironment(source: NodeJS.ProcessEnv): Record<string, string> {
+  const carried: Record<string, string> = {};
+  for (const name of ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"] as const) {
+    const value = source[name] ?? source[name.toLowerCase()];
+    if (value !== undefined && value !== "") carried[name] = value;
+  }
+  return carried;
 }
 
 /**
@@ -87,7 +102,9 @@ export function launchdPlist(config: ServiceConfig): string {
         : `
     <key>TANDEM_PUBLIC_URL</key>
     <string>${xml(config.publicUrl)}</string>`
-    }
+    }${Object.entries(config.proxy ?? {})
+      .map(([name, value]) => `\n    <key>${xml(name)}</key>\n    <string>${xml(value)}</string>`)
+      .join("")}
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -124,7 +141,9 @@ Environment="TANDEM_HOME=${escaped(config.stateDir)}"${
       ? ""
       : `
 Environment="TANDEM_PUBLIC_URL=${escaped(config.publicUrl)}"`
-  }
+  }${Object.entries(config.proxy ?? {})
+    .map(([name, value]) => `\nEnvironment="${name}=${escaped(value)}"`)
+    .join("")}
 Restart=on-failure
 RestartSec=10
 
