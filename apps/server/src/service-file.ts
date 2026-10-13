@@ -22,6 +22,8 @@ export interface ServiceConfig {
   readonly logPath: string;
   /** The `PATH` the server and everything it starts sees. */
   readonly path: string;
+  /** The public origin the installing environment configured, so that the service keeps the same allowlist. */
+  readonly publicUrl?: string;
 }
 
 /**
@@ -79,7 +81,13 @@ export function launchdPlist(config: ServiceConfig): string {
     <key>PATH</key>
     <string>${xml(config.path)}</string>
     <key>TANDEM_HOME</key>
-    <string>${xml(config.stateDir)}</string>
+    <string>${xml(config.stateDir)}</string>${
+      config.publicUrl === undefined
+        ? ""
+        : `
+    <key>TANDEM_PUBLIC_URL</key>
+    <string>${xml(config.publicUrl)}</string>`
+    }
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -108,10 +116,15 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory="${config.repository}"
-ExecStart="${config.node}" "${entryPoint(config)}" --no-open
-Environment="PATH=${config.path}"
-Environment="TANDEM_HOME=${config.stateDir}"
+WorkingDirectory=${quotedValue(config.repository)}
+ExecStart=${quotedArgument(config.node)} ${quotedArgument(entryPoint(config))} --no-open
+Environment="PATH=${escaped(config.path)}"
+Environment="TANDEM_HOME=${escaped(config.stateDir)}"${
+    config.publicUrl === undefined
+      ? ""
+      : `
+Environment="TANDEM_PUBLIC_URL=${escaped(config.publicUrl)}"`
+  }
 Restart=on-failure
 RestartSec=10
 
@@ -126,4 +139,28 @@ function entryPoint(config: ServiceConfig): string {
 
 function xml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * A value in a systemd directive, which is not a file path but configuration syntax: `%` begins a specifier, and a
+ * backslash, a quote, or a line break changes where the value ends. `%%` is one percent sign to systemd.
+ */
+function escaped(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")
+    .replace(/%/g, "%%");
+}
+
+/** A value as a single-value directive takes it: quoted, and no character in it ends it early. */
+function quotedValue(value: string): string {
+  return `"${escaped(value)}"`;
+}
+
+/** An argument of `ExecStart`, the one directive where `$` also begins a variable: `$$` is one dollar sign. */
+function quotedArgument(value: string): string {
+  return `"${escaped(value).replace(/\$/g, "$$$$")}"`;
 }
