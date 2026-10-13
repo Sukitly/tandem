@@ -25,6 +25,8 @@ export interface SetupOptions {
   readonly force?: boolean;
   readonly home?: string;
   readonly report: (line: string) => void;
+  /** The URL the person approves this machine at, as cloudflared prints it while it waits. */
+  readonly onAuthorizationUrl?: (url: string) => void;
 }
 
 export interface SetupResult {
@@ -46,7 +48,11 @@ export async function setupTunnel(options: SetupOptions): Promise<SetupResult> {
 
   if (!existsSync(originCertPath(options.home))) {
     options.report("Authorizing this machine with Cloudflare: a browser window opens, and the rest is automatic.");
-    await cloudflaredRun(executable, ["tunnel", "login"], options.report);
+    await cloudflaredRun(executable, ["tunnel", "login"], (line) => {
+      options.report(line);
+      const url = /https:\/\/\S+/.exec(line)?.[0];
+      if (url !== undefined) options.onAuthorizationUrl?.(url);
+    });
   }
 
   const existing = listTunnels(executable, name);

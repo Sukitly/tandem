@@ -68,6 +68,8 @@ pbpaste | bun run tunnel configure --public-url https://tandem.example.com
 
 `configure` reads the connector token from standard input or from `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600. That token travels to `cloudflared` in the child's environment, and `cloudflared.yml` wins over it when both are present.
 
+The same thing is in the app: **Public access** in the sidebar footer takes the address, opens the approval page, and reports what the tunnel is doing, so publishing does not require a terminal. Everything the tunnel needs — the approval URL, whether it connected, why it did not — is in the `PublicAccess` service and in `/health`.
+
 The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
 
 An explicit public origin is required for WebSocket and pairing checks; proxy headers do not grant access. Configure **Cloudflare Access** in front of the tunnel to allow only your identity. A tunnel alone is not authentication, and Access JWT-based automatic login and passkeys are not implemented.

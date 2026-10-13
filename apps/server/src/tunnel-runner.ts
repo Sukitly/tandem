@@ -28,6 +28,8 @@ export interface TunnelOptions {
   executable?: string;
   /** Where the tunnel's own configuration is looked for: the state directory. */
   stateDir?: string;
+  /** Every state change, so that a page can follow the tunnel rather than ask for it. */
+  onState?: (state: TunnelState) => void;
 }
 
 /** How to run the tunnel: what it is told, and what it is given that is not an argument. */
@@ -62,6 +64,12 @@ export function startTunnel(config: TunnelConfig, options: TunnelOptions): Tunne
   let attempts = 0;
   let stopping = false;
 
+  function setState(next: TunnelState): void {
+    if (next === state) return;
+    state = next;
+    options.onState?.(next);
+  }
+
   function launch(): void {
     const running = spawn(executable, [...invocation.args], {
       env: {
@@ -73,7 +81,7 @@ export function startTunnel(config: TunnelConfig, options: TunnelOptions): Tunne
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    state = "starting";
+    setState("starting");
     child = running;
     for (const stream of [running.stdout, running.stderr]) {
       let pending = "";
@@ -89,7 +97,7 @@ export function startTunnel(config: TunnelConfig, options: TunnelOptions): Tunne
       child = undefined;
       if (stopping) return;
       if (error.code === "ENOENT") {
-        state = "unavailable";
+        setState("unavailable");
         options.onLog(`${executable} is not installed. Install it, then start Tandem again.`);
         return;
       }
@@ -107,12 +115,12 @@ export function startTunnel(config: TunnelConfig, options: TunnelOptions): Tunne
     options.onLog(line);
     if (REGISTERED.test(line)) {
       attempts = 0;
-      state = "connected";
+      setState("connected");
     }
   }
 
   function failed(reason: string): void {
-    state = "failed";
+    setState("failed");
     const delay = Math.min(MAX_RETRY_MS, FIRST_RETRY_MS * 2 ** attempts);
     attempts += 1;
     options.onLog(`${reason}. Trying again in ${Math.round(delay / 1000)}s.`);
