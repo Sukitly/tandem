@@ -11,6 +11,7 @@ import {
   Comments,
   Conversation,
   Conversations,
+  Devices,
   Files,
   Models,
   ProjectChanges,
@@ -19,10 +20,13 @@ import {
   Workspaces,
 } from "@tandem/contracts";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
-import { readToken } from "./token.ts";
+import { PairScreen } from "@/auth/pair-screen.tsx";
+import { clearLegacyToken } from "./token.ts";
 import { useReplicatedState } from "./use-replicated-state.ts";
 
 export interface Connected {
+  devices: Devices;
+  deviceId?: string;
   /** The shared project list and its methods. */
   workspaces: Workspaces;
   /** The shared conversation list and its methods. */
@@ -37,10 +41,10 @@ export interface Connected {
   prompts: Prompts;
   /** The terminals of every project. */
   terminals: Terminals;
-  /** Connect to a terminal's own socket; the connection holds the server and the token. */
+  /** Connect to a terminal with the paired browser's cookie. */
   openTerminal: TandemConnection["terminal"];
-  /** Fetch an image of a transcript; the connection holds the token. */
-  fetchImage: TandemConnection["image"];
+  /** A same-origin transcript image URL, authenticated by the browser's cookie. */
+  imageUrl: TandemConnection["imageUrl"];
   /** The conversations this page has open. */
   open: OpenConversations;
   /** The projects whose changes this page shows. */
@@ -67,18 +71,14 @@ export function ConnectionProvider({
   const [state, setState] = useState<ConnectionState>({ kind: "connecting" });
 
   useEffect(() => {
-    const token = readToken();
-    if (token === undefined) {
-      setState({ kind: "unauthorized" });
-      return;
-    }
+    clearLegacyToken();
     let cancelled = false;
     let close = (): void => {};
     connect({
       baseUrl: window.location.origin,
-      token,
       services: [
         Models,
+        Devices,
         Workspaces,
         Files,
         Changes,
@@ -106,6 +106,8 @@ export function ConnectionProvider({
             kind: "connected",
             value: {
               connection,
+              devices: connection.services.use(Devices),
+              deviceId: connection.deviceId,
               open,
               openChanges,
               workspaces: connection.services.use(Workspaces),
@@ -116,7 +118,7 @@ export function ConnectionProvider({
               prompts: connection.services.use(Prompts),
               terminals: connection.services.use(Terminals),
               openTerminal: (id, screen, options) => connection.terminal(id, screen, options),
-              fetchImage: (ref, signal) => connection.image(ref, signal),
+              imageUrl: (ref) => connection.imageUrl(ref),
             },
           });
       },
@@ -144,9 +146,12 @@ function Connected({
   children: ReactNode;
 }) {
   const status = useReplicatedState(value.connection.status);
+  if (status?.status === "unauthorized") return <PairScreen />;
   return (
     <ConnectedContext.Provider
       value={{
+        devices: value.devices,
+        deviceId: value.deviceId,
         workspaces: value.workspaces,
         conversations: value.conversations,
         models: value.models,
@@ -155,7 +160,7 @@ function Connected({
         prompts: value.prompts,
         terminals: value.terminals,
         openTerminal: value.openTerminal,
-        fetchImage: value.fetchImage,
+        imageUrl: value.imageUrl,
         open: value.open,
         openChanges: value.openChanges,
         status,

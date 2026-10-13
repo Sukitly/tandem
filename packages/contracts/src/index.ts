@@ -41,6 +41,16 @@ export {
   type StartInput,
   type SubmitInput,
 } from "./conversations.ts";
+export {
+  AUTH_PATH,
+  type DeviceSummary,
+  Devices,
+  type DevicesState,
+  PAIR_CODE_PATH,
+  PAIR_PATH,
+  type PairingCode,
+  SIGN_OUT_PATH,
+} from "./devices.ts";
 export { type FileContent, type FileEntry, type FileLocation, Files, MAX_FILE_VIEW_BYTES } from "./files.ts";
 export {
   IMAGE_INPUT_TYPES,
@@ -102,12 +112,9 @@ export const PTY_PATH = "/pty";
 export const HEALTH_PATH = "/health";
 
 /**
- * Returns what a client needs before it can connect to `RPC_PATH`. Requires the session token as a bearer token.
+ * Returns what a client needs before it can connect to `RPC_PATH`. Requires a device cookie or the installation master key in an Authorization header.
  */
 export const BOOTSTRAP_PATH = "/bootstrap";
-
-/** Query parameter that carries the session token on WebSocket URLs, which cannot set request headers in browsers. */
-export const TOKEN_QUERY_PARAMETER = "token";
 
 export interface HealthResponse {
   status: "ok";
@@ -117,4 +124,6 @@ export interface HealthResponse {
 export interface BootstrapResponse {
   /** Logical server identity the client must expect during the pi-protocol handshake. */
   serverId: string;
+  /** Present for a paired browser, absent for master-key clients. */
+  deviceId?: string;
 }

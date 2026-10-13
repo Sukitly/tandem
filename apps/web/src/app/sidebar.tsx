@@ -14,6 +14,7 @@ import {
   SunIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { useDevicesDialog } from "@/auth/devices-dialog.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +72,7 @@ export function AppSidebar() {
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
   const { selected, addProject } = useWorkbench();
   const providers = useProvidersDialog();
+  const devices = useDevicesDialog();
   const names = new Map(projects.map((project) => [project.id, project.name]));
   return (
     // Collapsed, the sidebar keeps a column of icons; the lists hide.
@@ -128,6 +130,12 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Devices" onClick={() => devices.open()}>
+              <KeyRoundIcon />
+              <span>Devices</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Model providers" onClick={() => providers.open()}>
               <KeyRoundIcon />

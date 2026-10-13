@@ -5,6 +5,7 @@ import type { Provider } from "@earendil-works/pi-ai";
 import { commentTools } from "./comment-tool.ts";
 import { storedImage } from "./conversation-view.ts";
 import { FileCredentialStore } from "./credentials.ts";
+import { DeviceSessions } from "./device-sessions.ts";
 import { openHarness } from "./harness.ts";
 import { createNodePhotonImages } from "./images/node.ts";
 import { createAppModels, defaultProviders } from "./models.ts";
@@ -24,7 +25,8 @@ import { WorkspaceCatalog } from "./services/workspaces.ts";
 import { Settings } from "./settings.ts";
 import { openStateDir } from "./state-dir.ts";
 
-export interface StartAppOptions extends Pick<StartServerOptions, "hostname" | "port" | "allowedOrigins"> {
+export interface StartAppOptions
+  extends Pick<StartServerOptions, "hostname" | "port" | "allowedOrigins" | "publicUrl" | "webRoot"> {
   /** Default: `$TANDEM_HOME`, or `~/.tandem`. */
   stateDir?: string;
   /** Model providers. Default: every provider pi-ai ships. Tests pass the faux provider only. */
@@ -48,6 +50,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
 
   try {
     const settings = await Settings.load(join(stateDir.path, "settings.json"));
+    const devices = await DeviceSessions.load(join(stateDir.path, "devices.json"));
+    cleanups.push(() => devices.flush());
+    const publicUrl = options.publicUrl ?? settings.value.publicUrl;
     const credentials = new FileCredentialStore(join(stateDir.path, "auth.json"));
     const models = createAppModels(credentials, options.providers ?? defaultProviders());
     const modelCatalog = await ModelCatalog.load(models, credentials, settings);
@@ -85,7 +90,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     cleanups.push(async () => terminals.dispose());
 
     const server = await startServer({
-      ...pick(options, ["hostname", "port", "allowedOrigins"]),
+      ...pick(options, ["hostname", "port", "allowedOrigins", "webRoot"]),
+      publicUrl,
+      devices,
       ...stateDir.identity,
       createConnectionServices: () =>
         createConnectionServices({
@@ -101,6 +108,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           prompts,
           terminals,
           images,
+          devices,
+          publicUrl,
         }),
       terminal: (id) => terminals.get(id),
       image: (ref) => storedImage(opened.harness, ref, context),
@@ -114,6 +123,8 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
       url: server.url,
       serverId: server.serverId,
       token: server.token,
+      publicUrl: server.publicUrl,
+      pair: server.pair,
       stop: cleanup,
     };
   } catch (error) {

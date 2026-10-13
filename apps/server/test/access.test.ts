@@ -1,0 +1,201 @@
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { BOOTSTRAP_PATH, PAIR_CODE_PATH, PAIR_PATH, RPC_PATH, SIGN_OUT_PATH } from "@tandem/contracts";
+import { afterEach, describe, expect, test } from "vitest";
+import { WebSocket } from "ws";
+import { DeviceSessions } from "../src/device-sessions.ts";
+import { publicOrigin, startServer, type TandemServer } from "../src/server.ts";
+
+/** fetch controls Host itself; use HTTP directly to test the tunnel boundary's forwarded Host. */
+function rawHttp(url: URL, headers: Record<string, string>, body?: string): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(url, { method: body === undefined ? "GET" : "POST", headers }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(res.headers))
+          if (value !== undefined) responseHeaders.set(name, Array.isArray(value) ? value.join(", ") : value);
+        resolve(new Response(Buffer.concat(chunks), { status: res.statusCode, headers: responseHeaders }));
+      });
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+const servers: TandemServer[] = [];
+const sockets: WebSocket[] = [];
+afterEach(async () => {
+  for (const socket of sockets.splice(0)) socket.terminate();
+  for (const server of servers.splice(0)) await server.stop();
+});
+async function start(options: Parameters<typeof startServer>[0] = {}) {
+  const devices = options.devices ?? (await DeviceSessions.load());
+  const server = await startServer({ port: 0, ...options, devices });
+  servers.push(server);
+  const pair = (code: string, extra: Record<string, string> = {}) =>
+    fetch(new URL(PAIR_PATH, server.url), {
+      method: "POST",
+      headers: { origin: server.url.origin, "content-type": "application/json", ...extra },
+      body: JSON.stringify({ code }),
+    });
+  return { server, devices, pair };
+}
+function socket(server: TandemServer, headers: Record<string, string>, query = ""): Promise<WebSocket | number> {
+  const url = new URL(RPC_PATH + query, server.url);
+  url.protocol = "ws:";
+  const ws = new WebSocket(url, { headers });
+  sockets.push(ws);
+  ws.on("error", () => {});
+  return new Promise((resolve) => {
+    ws.once("open", () => resolve(ws));
+    ws.once("unexpected-response", (_req, response) => {
+      response.resume();
+      resolve(response.statusCode ?? 0);
+    });
+  });
+}
+
+describe("device authentication at the HTTP boundary", () => {
+  test("pairs with a cookie, bootstraps without a JS-visible credential, and accepts that cookie on WebSocket", async () => {
+    const { server, pair } = await start();
+    const code = server.pair().code;
+    const response = await pair(code);
+    expect(response.status).toBe(200);
+    const set = response.headers.get("set-cookie") as string;
+    expect(set).toContain("HttpOnly");
+    expect(set).toContain("SameSite=Strict");
+    expect(set).not.toContain("Secure");
+    const cookie = set.split(";")[0] as string;
+    const bootstrap = await fetch(new URL(BOOTSTRAP_PATH, server.url), { headers: { cookie } });
+    expect(await bootstrap.json()).toMatchObject({ serverId: server.serverId, deviceId: expect.any(String) });
+    expect(bootstrap.headers.get("set-cookie")).toContain("HttpOnly");
+    const ws = await socket(server, { cookie, origin: server.url.origin });
+    expect(ws).toBeInstanceOf(WebSocket);
+    expect(await socket(server, { cookie, origin: "https://evil.example" })).toBe(403);
+    expect(await socket(server, { cookie })).toBe(403);
+    expect((await pair(code)).status).toBe(400);
+  });
+  test("a token in the URL is not accepted, but a master-key header is", async () => {
+    const { server } = await start();
+    expect(await socket(server, {}, `?token=${server.token}`)).toBe(401);
+    expect(await socket(server, { authorization: `Bearer ${server.token}` })).toBeInstanceOf(WebSocket);
+    const unauthorized = await fetch(new URL(BOOTSTRAP_PATH, server.url));
+    expect(unauthorized.status).toBe(401);
+  });
+  test("only the master key may issue launch codes, and signing out invalidates the cookie", async () => {
+    const { server, pair } = await start();
+    const response = await pair(server.pair().code);
+    const cookie = response.headers.get("set-cookie")?.split(";")[0] as string;
+    const issued = await fetch(new URL(PAIR_CODE_PATH, server.url), {
+      method: "POST",
+      headers: { authorization: `Bearer ${server.token}` },
+    });
+    expect(issued.status).toBe(200);
+    expect((await fetch(new URL(PAIR_CODE_PATH, server.url), { method: "POST", headers: { cookie } })).status).toBe(
+      403,
+    );
+    const signedOut = await fetch(new URL(SIGN_OUT_PATH, server.url), {
+      method: "POST",
+      headers: { cookie, origin: server.url.origin },
+    });
+    expect(signedOut.status).toBe(200);
+    expect(signedOut.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect((await fetch(new URL(BOOTSTRAP_PATH, server.url), { headers: { cookie } })).status).toBe(401);
+  });
+  test("revocation closes an already upgraded socket", async () => {
+    const { server, pair, devices } = await start();
+    const response = await pair(server.pair().code);
+    const cookie = response.headers.get("set-cookie")?.split(";")[0] as string;
+    const ws = (await socket(server, { cookie, origin: server.url.origin })) as WebSocket;
+    const closed = new Promise((resolve) => ws.once("close", resolve));
+    await devices.revoke(devices.state.value.devices[0]?.id as string);
+    await closed;
+    expect((await fetch(new URL(BOOTSTRAP_PATH, server.url), { headers: { cookie } })).status).toBe(401);
+  });
+  test("rejects a foreign Origin, unconfigured Host, missing JSON, malformed JSON, and oversized pairing body", async () => {
+    const { server, pair } = await start();
+    expect((await pair(server.pair().code, { origin: "https://evil.example" })).status).toBe(403);
+    expect((await rawHttp(server.url, { host: "evil.example" })).status).toBe(403);
+    const post = (headers: Record<string, string>, body: string) =>
+      fetch(new URL(PAIR_PATH, server.url), {
+        method: "POST",
+        headers: { origin: server.url.origin, ...headers },
+        body,
+      });
+    expect((await post({}, "code=x")).status).toBe(415);
+    expect((await post({ "content-type": "application/json" }, "{")).status).toBe(400);
+    expect(
+      (await post({ "content-type": "application/json" }, JSON.stringify({ code: "x".repeat(5000) }))).status,
+    ).toBe(413);
+  });
+  test("public HTTPS requests receive Secure cookies without trusting forwarded protocol headers", async () => {
+    const { server } = await start({ publicUrl: "https://tandem.example.com" });
+    const response = await rawHttp(
+      new URL(PAIR_PATH, server.url),
+      {
+        host: "tandem.example.com",
+        origin: "https://tandem.example.com",
+        "content-type": "application/json",
+      },
+      JSON.stringify({ code: server.pair().code }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("; Secure");
+  });
+  test("rate limits code redemption after five failures", async () => {
+    const { pair } = await start();
+    for (let i = 0; i < 5; i++) expect((await pair("wrong")).status).toBe(400);
+    const blocked = await pair("wrong");
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toBe("60");
+  });
+});
+
+describe("built web assets", () => {
+  test("serves pages and assets with security headers and rejects traversal and symlinks outside the root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "tandem-web-"));
+    const webRoot = join(root, "web");
+    await mkdir(join(webRoot, "assets"), { recursive: true });
+    await writeFile(join(webRoot, "index.html"), '<script>console.log("theme")</script>');
+    await writeFile(join(webRoot, "assets", "main-hash.js"), "export {}");
+    await writeFile(join(root, "secret.txt"), "secret");
+    await symlink(join(root, "secret.txt"), join(webRoot, "link.txt"));
+    const { server } = await start({ webRoot });
+    const html = await fetch(server.url);
+    expect(html.status).toBe(200);
+    expect(html.headers.get("cache-control")).toBe("no-store");
+    expect(html.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(html.headers.get("content-security-policy")).toContain("sha256-");
+    expect(html.headers.get("referrer-policy")).toBe("no-referrer");
+    expect((await fetch(new URL("/pair", server.url))).status).toBe(200);
+    const asset = await fetch(new URL("/assets/main-hash.js", server.url));
+    expect(asset.headers.get("cache-control")).toContain("immutable");
+    expect((await fetch(new URL("/link.txt", server.url))).status).toBe(404);
+    const status = await new Promise<number>((resolve) => {
+      const req = httpRequest(server.url, { path: "/..%2fsecret.txt" }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      req.end();
+    });
+    expect(status).toBe(404);
+  });
+  test("reports a missing web build before binding", async () => {
+    const root = await mkdtemp(join(tmpdir(), "tandem-no-web-"));
+    await expect(startServer({ port: 0, webRoot: root })).rejects.toThrow(/build is missing/);
+  });
+});
+
+test("public-url must be a fixed HTTPS origin", () => {
+  expect(publicOrigin("https://tandem.example.com/")).toBe("https://tandem.example.com");
+  for (const url of [
+    "http://example.com",
+    "https://user:pass@example.com",
+    "https://example.com/a",
+    "https://example.com/?x=y",
+  ])
+    expect(() => publicOrigin(url)).toThrow();
+});

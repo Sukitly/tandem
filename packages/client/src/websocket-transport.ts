@@ -1,6 +1,9 @@
 import type { ByteTransport, ByteTransportFactory } from "@earendil-works/pi-client";
 
+import { authenticatedSocket } from "./authenticated-socket.ts";
+
 export interface WebSocketTransportOptions {
+  token?: string;
   /**
    * Pause `send()` while more than this many bytes wait in the socket's send buffer. Browsers expose no drain event,
    * so the buffer is polled.
@@ -26,7 +29,7 @@ export function createWebSocketTransportFactory(
 
   return (handlers) =>
     new Promise<ByteTransport>((resolve, reject) => {
-      const socket = new WebSocket(url);
+      const socket = authenticatedSocket(url, options.token);
       socket.binaryType = "arraybuffer";
       let opened = false;
       let terminated = false;

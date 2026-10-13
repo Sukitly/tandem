@@ -4,6 +4,7 @@ import { readJsonFile, SerialQueue, writeJsonFile } from "./json-file.ts";
 
 /** Preferences and installation facts kept in `settings.json` in the state directory. */
 export interface SettingsValue {
+  publicUrl?: string;
   defaultModel?: ModelRef;
   /** Stable ID of this installation; some providers ask for it during login. */
   deviceId?: string;

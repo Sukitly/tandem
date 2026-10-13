@@ -7,6 +7,8 @@
     "packages/*"
   ],
   "scripts": {
+    "start": "bun run build && node apps/server/src/main.ts",
+    "dev": "node apps/server/src/dev.ts",
     "dev:server": "bun run --filter @tandem/server dev",
     "dev:web": "bun run --filter @tandem/web dev",
     "build": "bun run --filter '*' build",

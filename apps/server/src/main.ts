@@ -1,33 +1,59 @@
-import { TOKEN_QUERY_PARAMETER } from "@tandem/contracts";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import { DEFAULT_HOST, DEFAULT_PORT } from "@tandem/contracts";
 import { startApp } from "./app.ts";
 import { configureModelHttp } from "./http-setup.ts";
+import { pairingUrl, runningPair, showPairing } from "./launch.ts";
 import { createFauxProvider, defaultProviders, demoResponse } from "./models.ts";
+import { publicOrigin } from "./server.ts";
 
-/** In development the web app is served by Vite on another origin, which must be allowed and opened instead. */
-const webOrigin = process.env.TANDEM_WEB_ORIGIN;
-/**
- * `TANDEM_FAUX=1` adds a local model that needs no credentials. It thinks, calls tools, and answers, slowly enough to
- * watch an answer stream and stop it.
- */
-const faux = process.env.TANDEM_FAUX === "1";
-
-configureModelHttp();
-const server = await startApp({
-  ...(webOrigin === undefined ? {} : { allowedOrigins: [webOrigin] }),
-  providers: [
-    ...defaultProviders(),
-    ...(faux ? [createFauxProvider({ tokensPerSecond: 40, respond: demoResponse })] : []),
-  ],
-  onError: (error) => console.error(error),
+const { values } = parseArgs({
+  options: {
+    port: { type: "string" },
+    "public-url": { type: "string" },
+    "no-open": { type: "boolean", default: false },
+  },
 });
-const openUrl = new URL(webOrigin ?? server.url);
-openUrl.searchParams.set(TOKEN_QUERY_PARAMETER, server.token);
-console.log(`Tandem server listening on ${server.url}`);
-console.log(`Open ${openUrl}`);
-
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, async () => {
-    await server.stop();
-    process.exit(0);
+const port = values.port === undefined ? DEFAULT_PORT : Number(values.port);
+if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("port must be between 1 and 65535");
+const webOrigin = process.env.TANDEM_WEB_ORIGIN;
+const local = new URL(`http://${DEFAULT_HOST}:${port}`);
+const requestedPublicUrl = values["public-url"] ?? process.env.TANDEM_PUBLIC_URL;
+const publicUrl = requestedPublicUrl === undefined ? undefined : publicOrigin(requestedPublicUrl);
+const existing = await runningPair(local);
+if (existing !== undefined) {
+  if (publicUrl !== undefined && publicUrl !== existing.publicUrl)
+    throw new Error("The running server uses a different public-url. Stop it before changing the public origin.");
+  await showPairing(pairingUrl(webOrigin ?? local, existing.code), !values["no-open"]);
+} else {
+  configureModelHttp();
+  const faux = process.env.TANDEM_FAUX === "1";
+  const server = await startApp({
+    port,
+    publicUrl,
+    ...(webOrigin === undefined
+      ? { webRoot: fileURLToPath(new URL("../../web/dist", import.meta.url)) }
+      : { allowedOrigins: [webOrigin] }),
+    providers: [
+      ...defaultProviders(),
+      ...(faux ? [createFauxProvider({ tokensPerSecond: 40, respond: demoResponse })] : []),
+    ],
+    onError: (error) => console.error(error),
+  }).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE")
+      throw new Error(`Port ${port} is occupied. Choose another with --port.`, { cause: error });
+    throw error;
   });
+  let stopping = false;
+  for (const signal of ["SIGINT", "SIGTERM"] as const)
+    process.on(signal, async () => {
+      if (stopping) return;
+      stopping = true;
+      await server.stop();
+      process.exit(0);
+    });
+  console.log(`Tandem listening on ${server.url}`);
+  const pair = server.pair();
+  await showPairing(pairingUrl(webOrigin ?? server.url, pair.code), !values["no-open"]);
+  if (server.publicUrl !== undefined) console.log(`Remote pairing: ${pairingUrl(server.publicUrl, pair.code)}`);
 }
