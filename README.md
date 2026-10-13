@@ -35,6 +35,7 @@ Stop a running server before switching to development mode. `bun run dev:server`
 
 ```bash
 bun run service install           # a launchd agent on macOS, a systemd user unit on Linux
+bun run service restart           # rebuild the web app and start it again, after new code
 bun run service status            # what the service manager says, and whether it answers
 bun run service install --print   # show the file without writing or loading it
 bun run service uninstall
@@ -42,7 +43,7 @@ bun run service uninstall
 
 `install` builds the web app if it has not been built, refuses while another program holds the port, writes the file, loads it, and waits until it answers. Everything an init system needs is absolute and it reads no shell configuration, so the values are computed rather than typed: Node's path from the process that runs this (a version manager's per-shell shim never reaches the service, which would break at your next login), this repository from its own location, and the state directory from `TANDEM_HOME`.
 
-A service has no terminal, so nothing opens at login. Run `bun run start` when you want a pairing link: it finds the running server and prints a fresh one. What the agent reads and the terminals it opens inherit the service's `PATH`: the one you installed from, without the entries that no longer exist. On Linux, `loginctl enable-linger $USER` keeps it running while you are logged out. To stop it for good: `launchctl kill SIGTERM gui/$(id -u)/com.tandem.server`, or `systemctl --user stop tandem`. After updating the code, `git pull && bun install && bun run build`, then `launchctl kickstart -k gui/$(id -u)/com.tandem.server`, or `systemctl --user restart tandem`. Output goes to `$TANDEM_HOME/tandem.log` on macOS, and to the journal on Linux (`journalctl --user -u tandem -f`).
+A service has no terminal, so nothing opens at login. Run `bun run start` when you want a pairing link: it finds the running server and prints a fresh one. What the agent reads and the terminals it opens inherit the service's `PATH`: the one you installed from, without the entries that no longer exist. On Linux, `loginctl enable-linger $USER` keeps it running while you are logged out. To stop it for good: `launchctl kill SIGTERM gui/$(id -u)/com.tandem.server`, or `systemctl --user stop tandem`. After updating the code, `git pull && bun install && bun run service restart` rebuilds the web app and starts the server again. Output goes to `$TANDEM_HOME/tandem.log` on macOS, and to the journal on Linux (`journalctl --user -u tandem -f`). macOS lists a background item under the identity of the program it runs, so **System Settings → General → Login Items** shows this one as Node.js Foundation, not by name; `bun run service status` and `launchctl print gui/$(id -u)/com.tandem.server` name it properly.
 
 ### Remote access
 

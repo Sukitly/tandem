@@ -139,17 +139,30 @@ async function install(options: { print: boolean }): Promise<void> {
   await writeFile(file, text);
   console.log(`Wrote ${file}`);
   await load(file);
+  await expectAnswer();
+}
+
+/** Rebuilds the web app and starts the server again, which is what new code needs. */
+async function restart(): Promise<void> {
+  if (!loaded()) throw new Error("The service is not loaded. Install it with `bun run service install`.");
+  run("bun", ["run", "build"]);
+  if (platform === "darwin") run("launchctl", ["kickstart", "-k", target()]);
+  else run("systemctl", ["--user", "restart", SERVICE_UNIT]);
+  await expectAnswer();
+}
+
+async function expectAnswer(): Promise<void> {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (await answers()) {
       console.log(`Tandem answers on ${base}`);
-      console.log(`Pair a browser with \`bun run start\`: it finds the running server and prints a fresh link.`);
+      console.log("Pair a browser with `bun run start`: it finds the running server and prints a fresh link.");
       console.log(`Output: tail -f ${serviceLogPath()}`);
       if (platform !== "darwin")
         console.log(`To keep it running while logged out: loginctl enable-linger ${process.env.USER ?? "$USER"}`);
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await pause(500);
   }
   throw new Error(`The service is loaded but does not answer yet. Look at ${serviceLogPath()}`);
 }
@@ -177,14 +190,16 @@ async function status(): Promise<void> {
 const [action = "", ...rest] = process.argv.slice(2);
 if (platform === "win32") throw new Error("A service is set up on macOS and Linux; on Windows, run `bun run start`.");
 else if (action === "install") await install({ print: rest.includes("--print") });
+else if (action === "restart") await restart();
 else if (action === "uninstall") await uninstall();
 else if (action === "status") await status();
 else
   console.log(
     [
-      "usage: bun run service <install|uninstall|status>",
+      "usage: bun run service <install|restart|status|uninstall>",
       "",
       `  install [--print]   write ${serviceFile(platform)} and load it; --print only shows the file`,
+      "  restart             build the web app and start the server again, after new code",
       "  status              what the service manager says, and whether the server answers",
       "  uninstall           unload the service and remove its file",
     ].join("\n"),

@@ -31,6 +31,7 @@ The backend runs on **Node >= 22.19**, not Bun: pi-durable's SQLite storage need
 | Build, start the app, and open the browser (or reuse the running app) | `bun run start` |
 | Watch backend + Vite, open once, stop both on Ctrl-C | `bun run dev` |
 | Run the server as a service, so closing the terminal does not end it | `bun run service install` |
+| Rebuild the web app and start that service again, after new code | `bun run service restart` |
 | Run the server in watch mode separately; prints a pairing link | `bun run dev:server` |
 | Run the web app on port 5173 (proxies the server's paths) | `bun run dev:web` |
 | Lint and format check, then typecheck | `bun run check` |
