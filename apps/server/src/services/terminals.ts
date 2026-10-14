@@ -15,6 +15,7 @@ import type { WorkspaceCatalog } from "./workspaces.ts";
 export interface TerminalHostOptions {
   /** The program a terminal runs, for tests; the user's login shell by default. */
   command?: readonly string[];
+  onOutput?: (workspaceId: number, data: Buffer) => void;
 }
 
 /**
@@ -32,11 +33,13 @@ export class TerminalHost {
   readonly #state: MutableReplicatedState<TerminalsState> = replicatedState<TerminalsState>({ terminals: [] });
   /** The number of the next terminal of each project, for its title. */
   readonly #opened = new Map<number, number>();
+  readonly #onOutput?: (workspaceId: number, data: Buffer) => void;
   readonly #stop: () => void;
 
   constructor(workspaces: WorkspaceCatalog, paths: ProjectPaths, options: TerminalHostOptions = {}) {
     this.#paths = paths;
     this.#command = options.command;
+    this.#onOutput = options.onOutput;
     this.#stop = workspaces.subscribe(() => {
       for (const summary of this.#state.value.terminals)
         if (!workspaces.isListed(summary.workspaceId)) this.#close(summary.id);
@@ -71,6 +74,7 @@ export class TerminalHost {
       size: TERMINAL_START_SIZE,
       ...(this.#command === undefined ? {} : { command: this.#command }),
       onExit: (exit) => this.#change(id, (summary) => (summary.exit = exit)),
+      onOutput: (data) => this.#onOutput?.(workspaceId, data),
     });
     const number = this.#opened.get(workspaceId) ?? 1;
     this.#opened.set(workspaceId, number + 1);

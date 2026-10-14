@@ -16,10 +16,12 @@ import {
   PAIR_CODE_PATH,
   PAIR_PATH,
   type PairingCode,
+  PREVIEW_PATH,
   PROOF_PATH,
   type ProofRequest,
   type ProofResponse,
   PTY_PATH,
+  parsePreviewTarget,
   RPC_PATH,
   SIGN_OUT_PATH,
   type TunnelState,
@@ -28,7 +30,9 @@ import packageJson from "../package.json" with { type: "json" };
 import { bearerToken, createToken, isAllowedOrigin, tokensMatch } from "./auth.ts";
 import { DeviceSessions, deviceName, PairingError } from "./device-sessions.ts";
 import type { HostedTerminal } from "./hosted-terminal.ts";
+import { handlePreviewHttpRequest, handlePreviewUpgrade } from "./preview-proxy.ts";
 import { type ConnectionServices, createServiceHost } from "./rpc-host.ts";
+import type { PreviewBoard } from "./services/preview.ts";
 import { StaticFiles } from "./static-files.ts";
 import { TerminalSockets } from "./terminal-sockets.ts";
 import type { TunnelControl } from "./tunnel-control.ts";
@@ -51,6 +55,7 @@ export interface StartServerOptions {
   tunnel?: TunnelControl;
   createConnectionServices?: () => ConnectionServices;
   terminal?: (id: string) => HostedTerminal | undefined;
+  preview?: PreviewBoard;
   image?: (ref: ImageRef) => Promise<{ data: string; mimeType: string } | undefined>;
   onError?: (error: Error) => void;
 }
@@ -144,9 +149,24 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     response.setHeader("x-content-type-options", "nosniff");
     response.setHeader("referrer-policy", "no-referrer");
     response.setHeader("cross-origin-resource-policy", "same-origin");
+    const { pathname } = new URL(request.url ?? "/", "http://localhost");
+    const previewTarget = parsePreviewTarget(request.headers.host, request.url ?? "/", hosts);
+    if (previewTarget !== undefined) {
+      const auth = await authorize(request);
+      if (auth === undefined) return sendJson(response, 401, { error: "unauthorized" });
+      const isSubpath = pathname.startsWith(PREVIEW_PATH);
+      handlePreviewHttpRequest({
+        request,
+        response,
+        targetPort: previewTarget.port,
+        targetPath: previewTarget.path,
+        isSubpath,
+        onError,
+      });
+      return;
+    }
     if (!acceptable(request)) return sendJson(response, 403, { error: "forbidden" });
     web?.headers(response, request.headers.host ?? "");
-    const { pathname } = new URL(request.url ?? "/", "http://localhost");
     if (pathname === HEALTH_PATH) {
       const tunnel = options.tunnelState?.();
       const body: HealthResponse = {
@@ -240,6 +260,20 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   http.on("upgrade", (request, socket, head) => {
     const upgrade = async (): Promise<void> => {
       const url = new URL(request.url ?? "/", "http://localhost");
+      const previewTarget = parsePreviewTarget(request.headers.host, request.url ?? "/", hosts);
+      if (previewTarget !== undefined) {
+        const auth = await authorize(request);
+        if (auth === undefined) return rejectUpgrade(socket, 401, "Unauthorized");
+        handlePreviewUpgrade({
+          request,
+          socket,
+          head,
+          targetPort: previewTarget.port,
+          targetPath: previewTarget.path,
+          onError,
+        });
+        return;
+      }
       const terminal = url.pathname.startsWith(`${PTY_PATH}/`);
       if (url.pathname !== RPC_PATH && !terminal) return rejectUpgrade(socket, 404, "Not Found");
       if (!acceptable(request)) return rejectUpgrade(socket, 403, "Forbidden");
@@ -292,6 +326,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     throw error;
   }
   const { port } = http.address() as AddressInfo;
+  options.preview?.ignorePort(port);
   ownOrigin = `http://${hostname}:${port}`;
   for (const host of [hostname, "localhost"]) fixedOrigins.add(`http://${host}:${port}`);
   updateOrigins();

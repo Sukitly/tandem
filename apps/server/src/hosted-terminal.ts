@@ -38,6 +38,7 @@ export interface HostedTerminalOptions {
   /** The program and its arguments; the user's login shell by default. */
   command?: readonly string[];
   onExit(exit: { code: number; signal?: number }): void;
+  onOutput?: (data: Buffer) => void;
 }
 
 /**
@@ -51,6 +52,7 @@ export class HostedTerminal {
   readonly #screen: Screen;
   readonly #serialize = new SerializeAddon();
   readonly #peers = new Map<TerminalPeer, { live: boolean }>();
+  readonly #onOutput?: (data: Buffer) => void;
   #unparsed = 0;
   #paused = false;
   #ended = false;
@@ -58,6 +60,7 @@ export class HostedTerminal {
 
   constructor(options: HostedTerminalOptions) {
     this.id = options.id;
+    this.#onOutput = options.onOutput;
     const size = clampTerminalSize(options.size);
     const [file, ...args] = options.command ?? [process.env.SHELL || "/bin/sh", "-l"];
     this.#screen = new Screen({ ...size, scrollback: TERMINAL_SCROLLBACK, allowProposedApi: true });
@@ -132,6 +135,7 @@ export class HostedTerminal {
   }
 
   #output(data: Buffer): void {
+    this.#onOutput?.(data);
     this.#unparsed += data.length;
     if (!this.#paused && this.#unparsed > MAX_UNPARSED_BYTES) {
       this.#paused = true;

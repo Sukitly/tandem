@@ -18,6 +18,7 @@ import { NoticeBoard } from "./services/conversation.ts";
 import { ConversationCatalog } from "./services/conversations.ts";
 import { FileBrowser } from "./services/files.ts";
 import { ModelCatalog } from "./services/models.ts";
+import { detectPortsFromOutput, PreviewBoard } from "./services/preview.ts";
 import { ProjectDirectoryBrowser } from "./services/project-directories.ts";
 import { ProjectPaths } from "./services/project-path.ts";
 import { PromptLibrary } from "./services/prompts.ts";
@@ -96,11 +97,18 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
       globalEnv: opened.env(globalPromptsDir),
       globalDir: globalPromptsDir,
     });
-    const terminals = new TerminalHost(
-      workspaces,
-      paths,
-      options.terminalCommand === undefined ? {} : { command: options.terminalCommand },
-    );
+    const preview = new PreviewBoard();
+    cleanups.push(async () => preview.dispose());
+    const terminals = new TerminalHost(workspaces, paths, {
+      ...(options.terminalCommand === undefined ? {} : { command: options.terminalCommand }),
+      onOutput: (_workspaceId, data) => {
+        const text = data.toString("utf8");
+        const detected = detectPortsFromOutput(text);
+        for (const item of detected) {
+          void preview.register(item, context).catch(onError);
+        }
+      },
+    });
     cleanups.push(async () => terminals.dispose());
     const usage = new UsageBoard(models, onError);
     const repository = new RepositoryBoard(paths, workspaces);
@@ -109,6 +117,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
       ...pick(options, ["hostname", "port", "allowedOrigins", "webEntry", "webRoot", "tunnelState"]),
       publicUrl,
       tunnel: options.tunnel,
+      preview,
       devices,
       ...stateDir.identity,
       createConnectionServices: () =>
@@ -124,6 +133,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
           comments,
           prompts,
           terminals,
+          preview,
           usage,
           repository,
           images,
