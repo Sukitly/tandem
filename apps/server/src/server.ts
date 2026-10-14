@@ -94,6 +94,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     }),
   );
   const hosts = new Set<string>();
+  let ownPort: number | undefined;
+  const isBlockedPort = (targetPort: number): boolean => {
+    if (ownPort !== undefined && targetPort === ownPort) return true;
+    return options.preview?.isIgnored(targetPort) ?? false;
+  };
   // Explicit local/development origins are stable; the tunnel contributes exactly one replaceable public origin.
   const fixedOrigins = new Set(allowedOrigins);
   let activePublicUrl = options.tunnel?.view.publicUrl ?? publicUrl;
@@ -152,8 +157,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     const { pathname } = new URL(request.url ?? "/", "http://localhost");
     const previewTarget = parsePreviewTarget(request.headers.host, request.url ?? "/", hosts);
     if (previewTarget !== undefined) {
+      if (!acceptable(request)) return sendJson(response, 403, { error: "forbidden" });
       const auth = await authorize(request);
       if (auth === undefined) return sendJson(response, 401, { error: "unauthorized" });
+      if (isBlockedPort(previewTarget.port)) return sendJson(response, 403, { error: "forbidden" });
       const isSubpath = pathname.startsWith(PREVIEW_PATH);
       handlePreviewHttpRequest({
         request,
@@ -262,8 +269,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       const url = new URL(request.url ?? "/", "http://localhost");
       const previewTarget = parsePreviewTarget(request.headers.host, request.url ?? "/", hosts);
       if (previewTarget !== undefined) {
+        if (!acceptable(request)) return rejectUpgrade(socket, 403, "Forbidden");
         const auth = await authorize(request);
         if (auth === undefined) return rejectUpgrade(socket, 401, "Unauthorized");
+        if (!auth.master && request.headers.origin === undefined) return rejectUpgrade(socket, 403, "Forbidden");
+        if (isBlockedPort(previewTarget.port)) return rejectUpgrade(socket, 403, "Forbidden");
         handlePreviewUpgrade({
           request,
           socket,
@@ -326,6 +336,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     throw error;
   }
   const { port } = http.address() as AddressInfo;
+  ownPort = port;
   options.preview?.ignorePort(port);
   ownOrigin = `http://${hostname}:${port}`;
   for (const host of [hostname, "localhost"]) fixedOrigins.add(`http://${host}:${port}`);

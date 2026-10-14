@@ -4,6 +4,22 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { PreviewState, RegisterPortInput, UnregisterPortInput } from "@tandem/contracts";
 import { invalidInput } from "./errors.ts";
 
+export const DANGEROUS_PORTS = new Set([
+  22, // SSH
+  25, // SMTP
+  53, // DNS
+  631, // CUPS
+  2375, // Docker plain
+  2376, // Docker TLS
+  3306, // MySQL
+  5432, // Postgres
+  6379, // Redis
+  9229, // Node inspector
+  10250, // Kubelet
+  11211, // Memcached
+  27017, // MongoDB
+]);
+
 export interface PreviewBoardOptions {
   /** Ports that must never be added to preview (such as Tandem's own port). */
   ignoredPorts?: readonly number[];
@@ -43,13 +59,17 @@ export class PreviewBoard {
     });
   }
 
+  isIgnored(port: number): boolean {
+    return this.#ignoredPorts.has(port) || DANGEROUS_PORTS.has(port);
+  }
+
   async register(input: RegisterPortInput, _context?: Context): Promise<void> {
     if (this.#disposed) return;
     const port = input?.port;
     if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
       throw invalidInput(`Invalid port number: ${String(port)}`);
     }
-    if (this.#ignoredPorts.has(port)) {
+    if (this.isIgnored(port)) {
       return;
     }
     const label = typeof input.label === "string" ? input.label.trim().slice(0, 50) : undefined;

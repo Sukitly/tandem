@@ -56,16 +56,23 @@ export function handlePreviewHttpRequest(options: PreviewHttpOptions): void {
       delete responseHeaders["x-frame-options"];
       // Strip upstream cookies to prevent dev servers from polluting Tandem origin cookies
       delete responseHeaders["set-cookie"];
+      responseHeaders["x-content-type-options"] = "nosniff";
 
       if (responseHeaders["content-security-policy"]) {
         const csp = Array.isArray(responseHeaders["content-security-policy"])
           ? responseHeaders["content-security-policy"].join("; ")
           : responseHeaders["content-security-policy"];
-        // Remove frame-ancestors directive
+        // Remove frame-ancestors directive and prevent allow-same-origin in sandbox directives
         const cleanedCsp = csp
           .split(";")
           .map((part) => part.trim())
           .filter((part) => !part.toLowerCase().startsWith("frame-ancestors"))
+          .map((part) => {
+            if (part.toLowerCase().startsWith("sandbox")) {
+              return part.replace(/\ballow-same-origin\b/gi, "").trim();
+            }
+            return part;
+          })
           .join("; ");
         if (cleanedCsp.length > 0) {
           responseHeaders["content-security-policy"] = cleanedCsp;
