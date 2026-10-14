@@ -117,6 +117,10 @@ describe("chat Markdown typography", () => {
     expect(error.tagName).toBe("P");
     expect(error.hasAttribute("data-chat-markdown")).toBe(false);
     expect(getComputedStyle(error).marginBlock).toBe("");
+    const diagram = element(document.body, '[data-streamdown="mermaid-block"]');
+    expect(getComputedStyle(element(diagram, ":scope > :first-child")).display).toBe("none");
+    expect(getComputedStyle(diagram).padding).toBe("0px");
+    expect(element(diagram, '[data-streamdown="mermaid-block-actions"]')).toBeDefined();
     const paragraph = element(document.body, '[data-chat-markdown="paragraph"]');
     expect(getComputedStyle(paragraph).marginBlock).toBe("0 1em");
   });
@@ -172,6 +176,42 @@ describe("chat Markdown typography", () => {
     expect(root.querySelector("script")).toBeNull();
     expect(root.textContent).toContain("<script>alert(1)</script>");
     expect(root.querySelector('a[href^="javascript:"]')).toBeNull();
+  });
+
+  test.each([false, true])("uses one table surface without a height cap (streaming: %s)", (streaming) => {
+    const root = markdown(
+      "| File | Purpose |\n| --- | --- |\n| `apps/server/src/services/prompt-templates.ts` | Loads templates |",
+      streaming,
+    );
+    const wrapper = element(root, '[data-streamdown="table-wrapper"]');
+    expect(getComputedStyle(wrapper).display).toBe("block");
+    expect(getComputedStyle(wrapper).padding).toBe("0px");
+    const actions = element(wrapper, ":scope > :first-child");
+    expect(getComputedStyle(actions).position).toBe("absolute");
+    expect(actions.querySelectorAll("button")).toHaveLength(3);
+    const scroll = element(wrapper, ":scope > :last-child");
+    // Streamdown normalizes "none" to an absent height limit.
+    expect(scroll.style.maxHeight).toBe("");
+    expect(getComputedStyle(scroll).overflowX).toBe("auto");
+    expect(getComputedStyle(element(root, "td")).verticalAlign).toBe("top");
+    expect(getComputedStyle(element(root, "th")).whiteSpace).toBe("normal");
+    expect(getComputedStyle(element(root, "td code")).padding).toBe("0px");
+  });
+
+  test("uses upright quotes and removes the final paragraph gap", () => {
+    const root = markdown("> First paragraph.\n>\n> Second paragraph.");
+    expect(getComputedStyle(element(root, "blockquote")).fontStyle).toBe("normal");
+    expect(getComputedStyle(element(root, "blockquote > :last-child")).marginBlockEnd).toBe("0");
+  });
+
+  test("only hides actions on devices with hover and keeps keyboard focus visible", () => {
+    const root = markdown("```ts\nconst n = 1;\n```");
+    const button = element(root, '[aria-label="Copy code"]');
+    expect(button.classList.contains("opacity-0")).toBe(false);
+    expect(button.classList.contains("[@media(hover:hover)]:opacity-0")).toBe(true);
+    expect(button.classList.contains("focus-visible:opacity-100")).toBe(true);
+    expect(css).toContain("@media (hover: hover)");
+    expect(css).toContain(":is(:hover, :focus-within)");
   });
 
   test("uses theme variables for inline code and leaves Markdown outside chat untouched", () => {

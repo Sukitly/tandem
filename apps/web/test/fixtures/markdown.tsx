@@ -25,6 +25,14 @@ const sample = [
     '";\n```',
   "> A quoted paragraph.\n>\n> Another quoted paragraph.",
   "- [x] Preserve Markdown safety checks\n- [ ] Check narrow viewports",
+  "## Tables and diagrams use a single surface",
+  "| File | Purpose |\n| --- | --- |\n" +
+    "| `packages/coding-agent/src/core/prompt-templates.ts` | Loads `loadPromptTemplates` and `expandPromptTemplate` |\n" +
+    "| `packages/coding-agent/src/core/slash-commands.ts` | Defines commands and argument hints |\n" +
+    "| `packages/coding-agent/src/core/resource-loader.ts` | Discovers templates and reports name collisions |",
+  "| Item | Status |\n| --- | --- |\n" +
+    Array.from({ length: 16 }, (_, index) => `| Item ${index + 1} | Ready |`).join("\n"),
+  "```mermaid\nflowchart LR\n  Message --> Parse\n  Parse --> Table\n  Parse --> Diagram\n```",
   "## Plugin UI keeps its paragraph spacing",
   "[Open the link confirmation](https://example.com). Its warning paragraph must not receive chat paragraph spacing.",
   "The deliberately invalid diagram below exercises Streamdown's real error paragraph:",

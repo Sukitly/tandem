@@ -84,6 +84,7 @@ export const Markdown = memo(
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
         components={components}
+        tableMaxHeight="none"
         isAnimating={streaming}
       >
         {text}
