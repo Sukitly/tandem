@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { PublicAccessPageProvider, usePublicAccessPage } from "../src/tunnel/public-access.tsx";
@@ -190,7 +190,7 @@ test("shows how to install cloudflared and blocks publishing without it", () => 
   expect(screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled")).toBe(true);
 });
 
-test("reports a connected tunnel, replaces the publish form, and offers to stop", () => {
+test("reports a connected tunnel, replaces the publish form, and offers to stop", async () => {
   mock.state = { status: "connected", cloudflared: true, publicUrl: "https://tandem.example.com" };
   mock.unpublish.mockResolvedValue(undefined);
   setup();
@@ -203,8 +203,27 @@ test("reports a connected tunnel, replaces the publish form, and offers to stop"
   expect(screen.getAllByRole("button", { name: "Stop publishing" })).toHaveLength(1);
   fireEvent.click(within(steps).getByRole("button", { name: "Stop publishing" }));
   expect(mock.unpublish).not.toHaveBeenCalled();
-  fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Stop publishing" }));
+  const dialog = screen.getByRole("alertdialog");
+  expect(dialog).toBeDefined();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Stop publishing" }));
   expect(mock.unpublish).toHaveBeenCalled();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+});
+
+test("shows loading state while publishing and while stopping", async () => {
+  let resolvePublish: () => void = () => {};
+  mock.publish.mockReturnValue(
+    new Promise<void>((resolve) => {
+      resolvePublish = resolve;
+    }),
+  );
+  setup();
+  fill("https://tandem.example.com", "eyJhIjoi");
+  const publishBtn = screen.getByRole("button", { name: "Publish" });
+  fireEvent.click(publishBtn);
+  expect(screen.getByRole("button", { name: /Publishing…/ }).hasAttribute("disabled")).toBe(true);
+  resolvePublish();
+  await waitFor(() => expect(screen.queryByRole("button", { name: /Publishing…/ })).toBeNull());
 });
 
 test("reports the reason a tunnel is not reachable", () => {

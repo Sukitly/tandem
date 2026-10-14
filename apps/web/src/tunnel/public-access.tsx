@@ -87,14 +87,18 @@ function PublicAccessPage({
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
-
-  const run = (operation: () => Promise<unknown>): void => {
-    setError(null);
-    operation().catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)));
-  };
+  const [publishing, setPublishing] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   const installed = state?.cloudflared ?? false;
   const status = state?.status ?? "none";
+  const isPublishing = publishing || status === "starting" || status === "authorizing";
+
+  useEffect(() => {
+    if (status === "connected" || status === "failed" || status === "unavailable" || status === "none") {
+      setPublishing(false);
+    }
+  }, [status]);
   const activeTunnel = state?.tunnel ?? (token ? tunnelTokenIdentity(pastedToken(token) ?? token) : undefined);
 
   return (
@@ -166,15 +170,25 @@ function PublicAccessPage({
           token={token}
           onOriginChange={setOrigin}
           onTokenChange={setToken}
-          onSubmit={(event) => {
+          publishing={isPublishing}
+          onSubmit={async (event) => {
             event.preventDefault();
             const cleanToken = (pastedToken(token) ?? token).trim();
-            run(() => publicAccess.publish({ publicUrl: origin.trim(), token: cleanToken }, BACKGROUND_CONTEXT));
+            setPublishing(true);
+            setError(null);
+            try {
+              await publicAccess.publish({ publicUrl: origin.trim(), token: cleanToken }, BACKGROUND_CONTEXT);
+            } catch (failure: unknown) {
+              setError(failure instanceof Error ? failure.message : String(failure));
+            } finally {
+              setPublishing(false);
+            }
           }}
           tunnel={activeTunnel}
           stopControl={
-            <Button variant="destructive" onClick={() => setConfirmStop(true)}>
-              Stop publishing
+            <Button variant="destructive" disabled={stopping} onClick={() => setConfirmStop(true)}>
+              {stopping && <Spinner />}
+              {stopping ? "Stopping…" : "Stop publishing"}
             </Button>
           }
         />
@@ -183,7 +197,12 @@ function PublicAccessPage({
       </div>
 
       {confirmStop && (
-        <AlertDialog open onOpenChange={() => setConfirmStop(false)}>
+        <AlertDialog
+          open
+          onOpenChange={(open) => {
+            if (!stopping) setConfirmStop(open);
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Stop publishing?</AlertDialogTitle>
@@ -193,9 +212,26 @@ function PublicAccessPage({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => run(() => publicAccess.unpublish(BACKGROUND_CONTEXT))}>
-                Stop publishing
+              <AlertDialogCancel disabled={stopping}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                disabled={stopping}
+                onClick={async (event) => {
+                  event.preventDefault();
+                  setStopping(true);
+                  setError(null);
+                  try {
+                    await publicAccess.unpublish(BACKGROUND_CONTEXT);
+                    setConfirmStop(false);
+                  } catch (failure: unknown) {
+                    setError(failure instanceof Error ? failure.message : String(failure));
+                  } finally {
+                    setStopping(false);
+                  }
+                }}
+              >
+                {stopping && <Spinner />}
+                {stopping ? "Stopping…" : "Stop publishing"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

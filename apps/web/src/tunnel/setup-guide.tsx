@@ -3,6 +3,7 @@ import { type ReactNode, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccessGuide, AccessVerification } from "./access-guide.tsx";
 import {
@@ -25,6 +26,7 @@ export interface PublicAccessFlowProps {
   onOriginChange(value: string): void;
   onTokenChange(value: string): void;
   onSubmit(event: React.FormEvent): void;
+  publishing?: boolean;
   tunnel?: TunnelIdentity;
   stopControl: ReactNode;
 }
@@ -42,6 +44,7 @@ export function PublicAccessFlow({
   onOriginChange,
   onTokenChange,
   onSubmit,
+  publishing = false,
   tunnel,
   stopControl,
 }: PublicAccessFlowProps) {
@@ -146,8 +149,12 @@ export function PublicAccessFlow({
                       </p>
                     </Field>
                     <div>
-                      <Button type="submit" disabled={!installed || !validAddress(origin) || token.trim() === ""}>
-                        Publish
+                      <Button
+                        type="submit"
+                        disabled={!installed || !validAddress(origin) || token.trim() === "" || publishing}
+                      >
+                        {publishing && <Spinner />}
+                        {publishing ? "Publishing…" : "Publish"}
                       </Button>
                     </div>
                   </form>
