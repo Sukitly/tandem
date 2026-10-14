@@ -14,6 +14,10 @@ RUN (sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/deb
   && ln -s /usr/bin/fdfind /usr/local/bin/fd \
   && rm -rf /var/lib/apt/lists/*
 
+# Install cloudflared for Tandem public access integration
+RUN ARCH=$(dpkg --print-architecture) \
+  && (curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}" -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared || true)
+
 # Install Bun package manager
 ENV BUN_INSTALL="/root/.bun"
 ENV PATH="${BUN_INSTALL}/bin:${PATH}"
