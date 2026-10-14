@@ -76,27 +76,22 @@ describe("server preview proxy integration", () => {
     expect(await res.text()).toBe("dev-echo:/hello");
   });
 
-  test("subdomain request with master token is proxied to dev server", async () => {
-    const res = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+  test("request with disallowed host to preview path is rejected with 403", async () => {
+    const res = await new Promise<{ status: number }>((resolve, reject) => {
       const req = httpRequest(
         server.url,
         {
-          path: "/hello",
+          path: `/preview/${devPort}/hello`,
           headers: {
-            Host: `${devPort}--${server.url.host}`,
+            Host: "unauthorized.example.com",
             Authorization: `Bearer ${server.token}`,
           },
         },
-        (res) => {
-          let body = "";
-          res.on("data", (c) => (body += c));
-          res.on("end", () => resolve({ status: res.statusCode ?? 0, text: body }));
-        },
+        (res) => resolve({ status: res.statusCode ?? 0 }),
       );
       req.on("error", reject);
       req.end();
     });
-    expect(res.status).toBe(200);
-    expect(res.text).toBe("dev-echo:/hello");
+    expect(res.status).toBe(403);
   });
 });

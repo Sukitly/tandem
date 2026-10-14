@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { previewPath } from "@tandem/contracts";
+import { previewUrl } from "@tandem/contracts";
 import { ExternalLinkIcon, GlobeIcon, PlusIcon, RotateCwIcon, XIcon } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
@@ -33,7 +33,7 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
 
   const currentUrl = useMemo(() => {
     if (currentPort === null) return "";
-    return `${window.location.origin}${previewPath(currentPort)}`;
+    return previewUrl({ port: currentPort, baseUrl: window.location.origin });
   }, [currentPort]);
 
   const handleAddPort = (e: React.FormEvent) => {
@@ -220,7 +220,7 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
             src={currentUrl}
             title={`Preview port ${currentPort}`}
             className="h-full w-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+            sandbox="allow-scripts allow-forms allow-popups allow-modals"
           />
         ) : (
           <Empty className="h-full">

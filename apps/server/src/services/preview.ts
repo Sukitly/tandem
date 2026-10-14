@@ -96,9 +96,18 @@ export class PreviewBoard {
   async #checkPorts(): Promise<void> {
     if (this.#disposed) return;
     const currentPorts = this.#state.value.ports.map((entry) => entry.port);
-    for (const port of currentPorts) {
-      const open = await isPortOpen(port);
-      if (this.#disposed) return;
+    if (currentPorts.length === 0) return;
+
+    const results = await Promise.all(
+      currentPorts.map(async (port) => ({
+        port,
+        open: await isPortOpen(port),
+      })),
+    );
+    if (this.#disposed) return;
+
+    const toRemove: number[] = [];
+    for (const { port, open } of results) {
       if (open) {
         this.#failureCounts.set(port, 0);
       } else {
@@ -106,27 +115,38 @@ export class PreviewBoard {
         this.#failureCounts.set(port, failures);
         // Remove after 3 consecutive failures
         if (failures >= 3) {
-          this.#state.change(BACKGROUND_CONTEXT, (draft) => {
-            draft.ports = draft.ports.filter((entry) => entry.port !== port);
-          });
-          this.#failureCounts.delete(port);
+          toRemove.push(port);
         }
+      }
+    }
+
+    if (toRemove.length > 0) {
+      const removeSet = new Set(toRemove);
+      this.#state.change(BACKGROUND_CONTEXT, (draft) => {
+        draft.ports = draft.ports.filter((entry) => !removeSet.has(entry.port));
+      });
+      for (const port of toRemove) {
+        this.#failureCounts.delete(port);
       }
     }
   }
 }
 
-export function isPortOpen(port: number): Promise<boolean> {
+export function isPortOpen(port: number, timeoutMs = 1_000): Promise<boolean> {
   return new Promise((resolve) => {
+    let settled = false;
     const socket = createConnection({ host: "127.0.0.1", port });
-    socket.once("connect", () => {
+
+    const finish = (result: boolean): void => {
+      if (settled) return;
+      settled = true;
       socket.destroy();
-      resolve(true);
-    });
-    socket.once("error", () => {
-      socket.destroy();
-      resolve(false);
-    });
+      resolve(result);
+    };
+
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
   });
 }
 

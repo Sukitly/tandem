@@ -39,48 +39,30 @@ export function previewPath(port: number): string {
 }
 
 /**
- * Constructs a preview URL given a base URL, a port, and optional preference for subdomain routing.
+ * Constructs a preview URL given a base URL and a port.
  */
-export function previewUrl(options: { port: number; baseUrl: string; useSubdomain?: boolean }): string {
-  const { port, baseUrl, useSubdomain = false } = options;
-  const parsed = new URL(baseUrl);
-  if (useSubdomain && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-    parsed.hostname = `${port}--${parsed.hostname}`;
-    parsed.pathname = "/";
-    parsed.search = "";
-    parsed.hash = "";
-    return parsed.toString();
-  }
+export function previewUrl(options: { port: number; baseUrl: string }): string {
+  const { port, baseUrl } = options;
   const cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   return `${cleanBase}${previewPath(port)}`;
 }
 
 /**
- * Parses an incoming HTTP request to determine if it targets a preview port, via either
- * subdomain pattern (e.g. 5173--tandem.example.com) or subpath pattern (e.g. /preview/5173/...).
+ * Parses an incoming HTTP request to determine if it targets a preview port via subpath pattern (e.g. /preview/5173/...).
+ * Verifies that the host header matches allowedHosts.
  */
 export function parsePreviewTarget(
   hostHeader: string | undefined,
   requestUrl: string,
   allowedHosts: ReadonlySet<string>,
 ): { port: number; path: string } | undefined {
-  const url = new URL(requestUrl, "http://localhost");
-  const pathWithSearch = `${url.pathname}${url.search}`;
-
-  // 1. Check subdomain pattern: <port>--<baseHost>
-  if (hostHeader) {
-    const subdomainMatch = /^(\d{2,5})--(.+)$/.exec(hostHeader);
-    if (subdomainMatch?.[1] && subdomainMatch[2]) {
-      const port = Number.parseInt(subdomainMatch[1], 10);
-      const baseHost = subdomainMatch[2];
-      const baseHostWithoutPort = baseHost.split(":")[0] ?? "";
-      if (port >= 1 && port <= 65535 && (allowedHosts.has(baseHost) || allowedHosts.has(baseHostWithoutPort))) {
-        return { port, path: pathWithSearch };
-      }
-    }
+  if (!hostHeader) return undefined;
+  const hostWithoutPort = hostHeader.split(":")[0] ?? "";
+  if (!allowedHosts.has(hostHeader) && !allowedHosts.has(hostWithoutPort)) {
+    return undefined;
   }
 
-  // 2. Check subpath pattern: /preview/<port>(/.*)?
+  const url = new URL(requestUrl, "http://localhost");
   const subpathMatch = /^\/preview\/(\d{2,5})(\/.*)?$/.exec(url.pathname);
   if (subpathMatch?.[1]) {
     const port = Number.parseInt(subpathMatch[1], 10);

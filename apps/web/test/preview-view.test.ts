@@ -79,6 +79,8 @@ describe("PreviewView", () => {
     const iframe = screen.getByTitle("Preview port 5173") as HTMLIFrameElement;
     expect(iframe).toBeDefined();
     expect(iframe.src).toContain("/preview/5173/");
+    expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
+    expect(iframe.getAttribute("sandbox")).toContain("allow-scripts");
   });
 
   test("closes active port", () => {

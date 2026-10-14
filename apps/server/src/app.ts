@@ -18,7 +18,7 @@ import { NoticeBoard } from "./services/conversation.ts";
 import { ConversationCatalog } from "./services/conversations.ts";
 import { FileBrowser } from "./services/files.ts";
 import { ModelCatalog } from "./services/models.ts";
-import { detectPortsFromOutput, PreviewBoard } from "./services/preview.ts";
+import { detectPortsFromOutput, isPortOpen, PreviewBoard } from "./services/preview.ts";
 import { ProjectDirectoryBrowser } from "./services/project-directories.ts";
 import { ProjectPaths } from "./services/project-path.ts";
 import { PromptLibrary } from "./services/prompts.ts";
@@ -105,7 +105,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
         const text = data.toString("utf8");
         const detected = detectPortsFromOutput(text);
         for (const item of detected) {
-          void preview.register(item, context).catch(onError);
+          void isPortOpen(item.port).then((open) => {
+            if (open) void preview.register(item, context).catch(onError);
+          });
         }
       },
     });

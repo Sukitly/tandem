@@ -189,3 +189,13 @@ html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
+
+/*
+ * Enforce fixed mobile sidebar width and prevent data-[side=left]:w-3/4 in sheet content from expanding it to 75vw.
+ */
+[data-slot="sheet-content"][data-sidebar="sidebar"] {
+  /* biome-ignore lint/complexity/noImportantStyles: overrides sheet content attribute variant */
+  width: var(--sidebar-width) !important;
+  /* biome-ignore lint/complexity/noImportantStyles: safe boundary on compact mobile screens */
+  max-width: calc(100vw - 3rem) !important;
+}

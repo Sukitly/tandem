@@ -31,6 +31,8 @@ export function handlePreviewHttpRequest(options: PreviewHttpOptions): void {
   delete headers.connection;
   delete headers["keep-alive"];
   delete headers["transfer-encoding"];
+  // Strip credentials from upstream dev servers to protect Tandem session tokens
+  delete headers.cookie;
 
   headers.host = `127.0.0.1:${targetPort}`;
   headers["x-forwarded-host"] = request.headers.host ?? "";
@@ -52,6 +54,9 @@ export function handlePreviewHttpRequest(options: PreviewHttpOptions): void {
 
       // Strip frame restrictions to allow in-app preview iframe
       delete responseHeaders["x-frame-options"];
+      // Strip upstream cookies to prevent dev servers from polluting Tandem origin cookies
+      delete responseHeaders["set-cookie"];
+
       if (responseHeaders["content-security-policy"]) {
         const csp = Array.isArray(responseHeaders["content-security-policy"])
           ? responseHeaders["content-security-policy"].join("; ")
@@ -137,8 +142,13 @@ export function handlePreviewUpgrade(options: PreviewUpgradeOptions): void {
     // Construct forwarded HTTP Upgrade request
     const lines: string[] = [`${request.method ?? "GET"} ${targetPath} HTTP/1.1`];
     for (const [key, value] of Object.entries(request.headers)) {
-      if (key.toLowerCase() === "host") {
+      const lower = key.toLowerCase();
+      if (lower === "host") {
         lines.push(`Host: 127.0.0.1:${targetPort}`);
+      } else if (lower === "origin") {
+        // Rewrite origin to match target to satisfy Vite HMR / strict dev server origin checks
+        lines.push(`Origin: http://127.0.0.1:${targetPort}`);
+      } else if (lower === "cookie") {
       } else if (Array.isArray(value)) {
         for (const item of value) {
           lines.push(`${key}: ${item}`);
@@ -147,7 +157,9 @@ export function handlePreviewUpgrade(options: PreviewUpgradeOptions): void {
         lines.push(`${key}: ${value}`);
       }
     }
-    lines.push("\r\n");
+    // End of HTTP headers is marked by \r\n\r\n
+    lines.push("");
+    lines.push("");
 
     targetSocket.write(lines.join("\r\n"));
     if (head && head.length > 0) {
