@@ -1,8 +1,16 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { FileIcon } from "@react-symbols/icons/utils";
 import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
-import { AlertCircleIcon, Columns2Icon, Maximize2Icon, Minimize2Icon, Rows2Icon, WrapTextIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  AlertCircleIcon,
+  Columns2Icon,
+  Maximize2Icon,
+  Minimize2Icon,
+  Rows2Icon,
+  WrapTextIcon,
+  XIcon,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -58,6 +66,7 @@ export function ChangesView({
   const { openFile, forgetChangeTarget } = useWorkbench();
   const state = useReplicatedState(changes?.state);
   const [selected, setSelected] = useState<string | null>(() => state?.files[0]?.path ?? null);
+  const initialized = useRef(selected !== null);
   /** The place the diff is scrolling to, kept while this panel is shown. */
   const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
   const [inlineStyled, setInlineStyled] = useState<"split" | "unified">(() => storedDiffStyle(false));
@@ -75,6 +84,7 @@ export function ChangesView({
     if (state.status === "ready" && state.files.some((file) => file.path === reveal.path)) {
       setSelected(reveal.path);
       setRevealed(reveal);
+      initialized.current = true;
     } else {
       openFile(reveal.path, {
         ...(reveal.line === undefined ? {} : { line: reveal.line }),
@@ -86,10 +96,13 @@ export function ChangesView({
 
   // The shown file follows the list: a file that leaves it takes the patch with it.
   useEffect(() => {
+    if (!initialized.current && state?.files && state.files.length > 0) {
+      initialized.current = true;
+      setSelected(state.files[0]?.path ?? null);
+      return;
+    }
     setSelected((current) =>
-      current !== null && state?.files.some((file) => file.path === current) === true
-        ? current
-        : (state?.files[0]?.path ?? null),
+      current !== null && state?.files.some((file) => file.path === current) === true ? current : null,
     );
   }, [state]);
 
@@ -201,6 +214,7 @@ export function ChangesView({
                 zoomedWrap={zoomedWrap}
                 onZoomedWrap={setZoomedWrap}
                 comments={comments}
+                onClose={() => setSelected(null)}
               />
             </ResizablePanel>
           </>
@@ -254,6 +268,7 @@ function ChangeView({
   onZoomedWrap,
   comments,
   reveal,
+  onClose,
 }: {
   file: ChangedFile;
   patch: FilePatch | null;
@@ -268,11 +283,13 @@ function ChangeView({
   onZoomedWrap(wrap: boolean): void;
   comments: ProjectComments;
   reveal?: ChangeTarget;
+  onClose(): void;
 }) {
   const [zoomed, setZoomed] = useState(false);
   const styled = zoomed ? zoomedStyled : inlineStyled;
   const wrap = zoomed ? zoomedWrap : inlineWrap;
   const next = styled === "split" ? "unified" : "split";
+  const parts = countParts(file.additions, file.deletions);
 
   useEffect(() => {
     if (!zoomed) return;
@@ -318,6 +335,15 @@ function ChangeView({
         <p className="min-w-0 flex-1 truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
           {file.path}
         </p>
+        {parts.length > 0 && (
+          <span className="flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums">
+            {parts.map((part) => (
+              <span key={part.kind} className={part.kind === "additions" ? ADDITIONS_COLOR : DELETIONS_COLOR}>
+                {part.text}
+              </span>
+            ))}
+          </span>
+        )}
         <Tooltip>
           <TooltipTrigger
             render={
@@ -365,6 +391,17 @@ function ChangeView({
           </TooltipTrigger>
           <TooltipContent>{zoomed ? "Exit full screen" : "Full screen"}</TooltipContent>
         </Tooltip>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Close the diff"
+          onClick={() => {
+            setZoomed(false);
+            onClose();
+          }}
+        >
+          <XIcon />
+        </Button>
       </header>
       <div className="min-h-0 flex-1">
         {failure !== null ? (
