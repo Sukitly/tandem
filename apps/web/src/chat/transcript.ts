@@ -35,6 +35,8 @@ export type TranscriptItem =
       /** `interrupted`: stopped by the user or by a server restart. `streaming`: still being generated. */
       ending: "complete" | "interrupted" | "failed" | "streaming";
       error?: string;
+      /** How many consecutive failure attempts were aggregated into this item. */
+      attempts?: number;
     }
   /** Older messages were summarized from here on; the model sees the summary instead. */
   | { kind: "compaction"; key: string }
@@ -118,16 +120,34 @@ export function toTranscript(view: ConversationView): TranscriptState {
       if (message.role === "user") {
         items.push({ kind: "user", key, text: textOf(message.content), images: imagesOf(message.content) });
       } else if (message.role === "assistant") {
+        const parts = partsOf(message, tool);
+        const ending =
+          message.stopReason === "aborted" ? "interrupted" : message.stopReason === "error" ? "failed" : "complete";
+        const error = message.errorMessage;
+        const used = contextTokens(message.usage);
+        if (used > 0) tokens = used;
+
+        const prev = items[items.length - 1];
+        if (
+          prev !== undefined &&
+          prev.kind === "assistant" &&
+          prev.ending === "failed" &&
+          prev.parts.length === 0 &&
+          ending === "failed" &&
+          parts.length === 0
+        ) {
+          prev.attempts = (prev.attempts ?? 1) + 1;
+          if (error !== undefined) prev.error = error;
+          continue;
+        }
+
         items.push({
           kind: "assistant",
           key,
-          parts: partsOf(message, tool),
-          ending:
-            message.stopReason === "aborted" ? "interrupted" : message.stopReason === "error" ? "failed" : "complete",
-          ...(message.errorMessage === undefined ? {} : { error: message.errorMessage }),
+          parts,
+          ending,
+          ...(error === undefined ? {} : { error }),
         });
-        const used = contextTokens(message.usage);
-        if (used > 0) tokens = used;
       }
     }
   }
