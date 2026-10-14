@@ -18,7 +18,15 @@ import { TerminalsView } from "@/terminals/terminals-view.tsx";
  * both read from disk when they open and when the user refreshes. Changes: what differs from the project's integration
  * branch, followed as the files on disk change. Terminal: the project's shells, which run on the server.
  */
-export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
+export function ProjectPanel({
+  workspaceId,
+  active = true,
+  onClose,
+}: {
+  workspaceId: number;
+  active?: boolean;
+  onClose?: () => void;
+}) {
   const workbench = useWorkbench();
   const { panelTab, showTab, changeTarget } = workbench;
   const files = workbench.projectFiles(workspaceId);
@@ -54,6 +62,17 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
             </TooltipTrigger>
             <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
+        )}
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Close"
+            className={panelTab === "terminal" ? "ml-auto" : undefined}
+            onClick={onClose}
+          >
+            <XIcon />
+          </Button>
         )}
       </header>
       <TabsContent value="files" className="flex min-h-0 flex-col">
@@ -95,7 +114,7 @@ export function ProjectPanel({ workspaceId }: { workspaceId: number }) {
       </TabsContent>
       {/* Kept mounted, so the terminals keep their screens and connections while another tab shows. */}
       <TabsContent value="terminal" keepMounted className="flex min-h-0 flex-col">
-        <TerminalsView workspaceId={workspaceId} active={panelTab === "terminal"} />
+        <TerminalsView workspaceId={workspaceId} active={active && panelTab === "terminal"} />
       </TabsContent>
     </Tabs>
   );

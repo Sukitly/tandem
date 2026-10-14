@@ -339,3 +339,19 @@ function ThemeMenu() {
     </DropdownMenu>
   );
 }
+
+/** A button to open or close the sidebar on small screens. */
+export function SidebarToggle({ className }: { className?: string } = {}) {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={className}
+      aria-label="Expand the sidebar"
+      onClick={toggleSidebar}
+    >
+      <ChevronRightIcon />
+    </Button>
+  );
+}

@@ -3,13 +3,15 @@ import type { ReactNode } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { ProjectPanel } from "./app/project-panel.tsx";
-import { AppSidebar } from "./app/sidebar.tsx";
+import { AppSidebar, SidebarToggle } from "./app/sidebar.tsx";
 import { AppSidebarProvider } from "./app/sidebar-provider.tsx";
 import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
 import { DevicesDialogProvider } from "./auth/devices-dialog.tsx";
@@ -73,7 +75,7 @@ function Main() {
   return (
     <>
       <header className="flex items-center gap-2 border-b px-3 py-2 md:hidden">
-        <SidebarTrigger />
+        <SidebarToggle />
       </header>
       {listed?.length === 0 ? (
         <Empty>
@@ -104,14 +106,42 @@ function Main() {
 }
 
 /** The conversation, and the files panel of its project beside it when shown. Their widths are kept across reloads. */
-function WithFiles({ workspaceId, children }: { workspaceId: number | null; children: ReactNode }) {
-  const { filesShown } = useWorkbench();
+export function WithFiles({ workspaceId, children }: { workspaceId: number | null; children?: ReactNode }) {
+  const { filesShown, showFiles } = useWorkbench();
+  const isMobile = useIsMobile();
   const shown = filesShown && workspaceId !== null;
   const layout = useDefaultLayout({
     id: "tandem.layout",
     panelIds: shown ? ["conversation", "files"] : ["conversation"],
-    storage: localStorage,
+    storage: typeof localStorage !== "undefined" ? localStorage : undefined,
   });
+
+  if (isMobile) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {children}
+        {workspaceId !== null && (
+          <Drawer open={shown} onOpenChange={(open) => showFiles(open)} showSwipeHandle>
+            <DrawerContent keepMounted className="h-[85dvh] max-h-[85dvh] p-0">
+              <DrawerHeader className="sr-only">
+                <DrawerTitle>Project panel</DrawerTitle>
+                <DrawerDescription>Project files, changes, and terminal</DrawerDescription>
+              </DrawerHeader>
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ProjectPanel
+                  key={workspaceId}
+                  workspaceId={workspaceId}
+                  active={shown}
+                  onClose={() => showFiles(false)}
+                />
+              </div>
+            </DrawerContent>
+          </Drawer>
+        )}
+      </div>
+    );
+  }
+
   return (
     <ResizablePanelGroup
       orientation="horizontal"

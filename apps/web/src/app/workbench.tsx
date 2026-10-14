@@ -1,8 +1,9 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import type { ChangeTarget } from "@/changes/change-target.ts";
 import { ProjectComments } from "@/comments/project-comments.ts";
 import { type OpenedFile, ProjectFiles } from "@/files/project-files.ts";
+import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
@@ -73,7 +74,22 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [draft, setDraft] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [filesShown, setFilesShown] = useState(() => localStorage.getItem(FILES_SHOWN_KEY) !== "false");
+  const isMobile = useIsMobile();
+  const [filesShown, setFilesShown] = useState(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      return false;
+    }
+    return localStorage.getItem(FILES_SHOWN_KEY) !== "false";
+  });
+  const wasMobile = useRef(isMobile);
+  useEffect(() => {
+    if (isMobile && !wasMobile.current) {
+      setFilesShown(false);
+    } else if (!isMobile && wasMobile.current) {
+      setFilesShown(localStorage.getItem(FILES_SHOWN_KEY) !== "false");
+    }
+    wasMobile.current = isMobile;
+  }, [isMobile]);
   const [panelTab, setPanelTab] = useState<PanelTab>(() => panelTabOf(localStorage.getItem(PANEL_TAB_KEY)));
   const [changeTarget, setChangeTarget] = useState<ChangeTarget | null>(null);
   const [projects] = useState(() => new Map<number, ProjectFiles>());
@@ -116,7 +132,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     return project;
   };
   const showFiles = (shown: boolean): void => {
-    localStorage.setItem(FILES_SHOWN_KEY, String(shown));
+    if (!isMobile) {
+      localStorage.setItem(FILES_SHOWN_KEY, String(shown));
+    }
     setFilesShown(shown);
   };
   const showTab = (tab: PanelTab): void => {
