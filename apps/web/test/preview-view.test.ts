@@ -80,4 +80,25 @@ describe("PreviewView", () => {
     expect(iframe).toBeDefined();
     expect(iframe.src).toContain("/preview/5173/");
   });
+
+  test("closes active port", () => {
+    mock.state = {
+      ports: [{ port: 5173, label: "Vite", detectedAt: Date.now() }],
+    };
+
+    render(createElement(PreviewView, { active: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Close port 5173" }));
+    expect(mock.unregister).toHaveBeenCalledWith({ port: 5173 }, expect.anything());
+  });
+
+  test("toggles viewport mode between responsive and desktop", () => {
+    mock.state = {
+      ports: [{ port: 5173, label: "Vite", detectedAt: Date.now() }],
+    };
+
+    render(createElement(PreviewView, { active: true }));
+    const toggleBtn = screen.getByRole("button", { name: "Responsive view" });
+    fireEvent.click(toggleBtn);
+    expect(screen.getByRole("button", { name: "Desktop view (1280px)" })).toBeDefined();
+  });
 });
