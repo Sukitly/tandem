@@ -201,3 +201,12 @@
 .chat-markdown [data-streamdown="blockquote"] > :last-child {
   margin-block-end: 0;
 }
+
+/* Code block syntax tokens highlighted by Shiki via inline CSS variables. */
+.code-token {
+  color: var(--code-light, inherit);
+}
+
+.dark .code-token {
+  color: var(--code-dark, var(--code-light, inherit));
+}
