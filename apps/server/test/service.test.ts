@@ -32,6 +32,7 @@ test("a launchd agent runs the server without a terminal, and keeps it up withou
   expect(plist).toContain("<string>--no-open</string>");
   expect(plist).toContain("<key>WorkingDirectory</key>\n  <string>/repo</string>");
   expect(plist).toContain("<string>/state/tandem.log</string>");
+  expect(plist).toContain("<key>TANDEM_SERVICE</key>\n    <string>1</string>");
   // Start at login, restart after a crash, and stay stopped after a clean exit.
   expect(plist).toContain("<key>RunAtLoad</key>\n  <true/>");
   expect(plist).toContain("<key>SuccessfulExit</key>\n    <false/>");
@@ -42,6 +43,7 @@ test("a systemd user unit runs the same server, with the state directory the com
   expect(unit).toContain('ExecStart="/opt/node/bin/node" "/repo/apps/server/src/main.ts" --no-open');
   expect(unit).toContain('Environment="PATH=/opt/node/bin:/usr/bin"');
   expect(unit).toContain('Environment="TANDEM_HOME=/state"');
+  expect(unit).toContain('Environment="TANDEM_SERVICE=1"');
   expect(unit).toContain("Restart=on-failure");
   expect(unit).toContain("WantedBy=default.target");
 });

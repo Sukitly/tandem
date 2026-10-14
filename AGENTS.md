@@ -38,7 +38,7 @@ Internal packages export TypeScript sources directly (`workspace:*`) and are con
 | Run all tests | `bun run test` |
 | Run tests for a single package | `bun run --filter <package> test` |
 | Add a dependency to a package | `cd <package-dir> && bun add <name>` |
-| Manage background service | `bun run service [install\|pair\|restart]` |
+| Manage background service | `bun run service [install\|pair\|restart\|update]` |
 | Manage Cloudflare tunnel | `bun run tunnel [create\|configure\|setup]` |
 
 ### Pre-completion check
@@ -96,6 +96,7 @@ Always run and pass `bun run check` and `bun run test` before finishing any task
 - **Background context:** Resources outliving an RPC call must use `BACKGROUND_CONTEXT`.
 - **Model HTTP setup:** `configureModelHttp()` must be called before initiating model provider requests.
 - **Image handling:** Message images are sanitized, resized in worker threads, and served via authenticated `/image/...` endpoints; image data is never embedded inline in conversation view state.
+- **Meta-development & self-updating:** When updating and restarting Tandem from an agent conversation or remote environment, never invoke synchronous restart commands directly. Run `bun run service update --detach` (or `bun run update`). This executes detached in background via transient systemd units or nohup, runs full checks and tests, restarts the service, monitors `/health`, and automatically rolls back on boot failure to prevent locking the user out.
 
 ## Security guidelines
 

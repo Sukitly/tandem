@@ -96,7 +96,9 @@ export function launchdPlist(config: ServiceConfig): string {
     <key>PATH</key>
     <string>${xml(config.path)}</string>
     <key>TANDEM_HOME</key>
-    <string>${xml(config.stateDir)}</string>${
+    <string>${xml(config.stateDir)}</string>
+    <key>TANDEM_SERVICE</key>
+    <string>1</string>${
       config.publicUrl === undefined
         ? ""
         : `
@@ -136,7 +138,8 @@ Type=simple
 WorkingDirectory=${quotedValue(config.repository)}
 ExecStart=${quotedArgument(config.node)} ${quotedArgument(entryPoint(config))} --no-open
 Environment="PATH=${escaped(config.path)}"
-Environment="TANDEM_HOME=${escaped(config.stateDir)}"${
+Environment="TANDEM_HOME=${escaped(config.stateDir)}"
+Environment="TANDEM_SERVICE=1"${
     config.publicUrl === undefined
       ? ""
       : `
