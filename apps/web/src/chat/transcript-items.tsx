@@ -15,7 +15,6 @@ import {
   XIcon,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -97,14 +96,51 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
           Interrupted
         </Badge>
       )}
-      {item.ending === "failed" && (
-        <Alert variant="destructive">
-          <AlertCircleIcon />
-          <AlertTitle>The answer failed</AlertTitle>
-          {item.error !== undefined && <AlertDescription>{item.error}</AlertDescription>}
-        </Alert>
-      )}
+      {item.ending === "failed" && <ChatError error={item.error} attempts={item.attempts} />}
       {item.ending === "complete" && answer && text !== "" && <CopyButton text={text} className="self-start" />}
+    </div>
+  );
+}
+
+/** A compact, subtle error callout for failed model generations or chat notices. */
+export function ChatError({
+  title = "Answer failed",
+  error,
+  attempts,
+  className,
+}: {
+  title?: string;
+  error?: string;
+  attempts?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "group/error group/message flex w-full max-w-xl flex-col gap-1.5 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm dark:bg-destructive/10",
+        className,
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <AlertCircleIcon className="size-4 shrink-0 text-destructive" />
+          <span className="font-medium text-foreground">{title}</span>
+          {attempts !== undefined && attempts > 1 && (
+            <Badge variant="outline" className="border-destructive/30 px-1.5 py-0 text-[10px] text-muted-foreground">
+              {attempts} attempts
+            </Badge>
+          )}
+        </div>
+        {error !== undefined && error !== "" && (
+          <CopyButton
+            text={error}
+            className="opacity-0 group-hover/error:opacity-100 group-hover/message:opacity-100 focus-visible:opacity-100"
+          />
+        )}
+      </div>
+      {error !== undefined && error !== "" && (
+        <p className="text-xs text-muted-foreground leading-relaxed break-words">{error}</p>
+      )}
     </div>
   );
 }

@@ -1,11 +1,10 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
-import { AlertCircleIcon, ArrowDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { ArrowDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -19,7 +18,7 @@ import { PullRequestLine } from "./pull-request-line.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
 import { TpsLine } from "./tps-line.tsx";
 import { toTranscript } from "./transcript.ts";
-import { TranscriptEntry, WaitingDots } from "./transcript-items.tsx";
+import { ChatError, TranscriptEntry, WaitingDots } from "./transcript-items.tsx";
 import { UsageLine } from "./usage-line.tsx";
 
 /** One conversation: its header, transcript, and the message box. */
@@ -261,13 +260,7 @@ function sameModel(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
 }
 
 function Notice({ notice }: { notice: ConversationNotice }) {
-  return (
-    <Alert variant="destructive">
-      <AlertCircleIcon />
-      <AlertTitle>No answer</AlertTitle>
-      <AlertDescription>{notice.message}</AlertDescription>
-    </Alert>
-  );
+  return <ChatError title="Notice" error={notice.message} />;
 }
 
 /**
