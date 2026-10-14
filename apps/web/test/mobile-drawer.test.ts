@@ -21,6 +21,8 @@ vi.mock("../src/app/workbench.tsx", () => ({
     panelTab: "files",
     showTab: vi.fn(),
     changeTarget: null,
+    showHiddenFiles: false,
+    setShowHiddenFiles: vi.fn(),
     projectFiles: () => ({
       subscribe: () => () => {},
       current: { failure: null, opened: null },
