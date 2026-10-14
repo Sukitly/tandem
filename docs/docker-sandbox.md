@@ -37,6 +37,8 @@ This single command automatically:
 
 ```bash
 bun run sandbox           # Start microVM, launch Tandem, and open browser
+bun run sandbox reload    # Reload and restart Tandem inside the microVM
+bun run sandbox update    # Pull latest git commits, rebuild, and update sandbox with auto-rollback
 bun run sandbox status    # Check running sandbox status
 bun run sandbox logs      # View Tandem logs inside the microVM
 bun run sandbox shell     # Open an interactive shell inside the microVM

@@ -113,6 +113,50 @@ function start_sandbox() {
   fi
 }
 
+function restart_sandbox() {
+  log "Restarting Tandem inside sandbox ${SANDBOX_NAME}..."
+  sbx exec "${SANDBOX_NAME}" /bin/bash -c "for pid in \$(ls /proc | grep '^[0-9]'); do if grep -q 'main.ts' /proc/\$pid/cmdline 2>/dev/null; then kill \$pid 2>/dev/null || true; fi; done" 2>/dev/null || true
+  sleep 1
+  start_sandbox
+}
+
+function update_sandbox() {
+  log "Initiating Tandem sandbox update sequence..."
+  local prev_commit
+  prev_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+  log "Current commit: ${prev_commit}"
+
+  log "Pulling latest changes from remote Git repository..."
+  if ! git pull; then
+    error "Git pull failed. Aborting update."
+    exit 1
+  fi
+
+  local next_commit
+  next_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+  if [ "${prev_commit}" = "${next_commit}" ]; then
+    log "Already up to date on commit ${next_commit}."
+    restart_sandbox
+    return 0
+  fi
+
+  log "Updated to ${next_commit}. Rebuilding template and recreating sandbox..."
+  ensure_template 1
+  stop_sandbox || true
+  remove_sandbox || true
+
+  if ! start_sandbox; then
+    error "Health check failed after update. Rolling back to ${prev_commit}..."
+    git checkout "${prev_commit}"
+    ensure_template 1
+    start_sandbox
+    error "Rollback completed. Service restored on commit ${prev_commit}."
+    exit 1
+  fi
+
+  log "Update completed successfully on commit ${next_commit}."
+}
+
 function stop_sandbox() {
   log "Stopping sandbox ${SANDBOX_NAME}..."
   sbx stop "${SANDBOX_NAME}" || true
@@ -140,6 +184,12 @@ case "${1:-start}" in
   start|"")
     start_sandbox
     ;;
+  restart|reload)
+    restart_sandbox
+    ;;
+  update)
+    update_sandbox
+    ;;
   stop)
     stop_sandbox
     ;;
@@ -162,7 +212,7 @@ case "${1:-start}" in
     sbx ls
     ;;
   *)
-    echo "Usage: $0 {start|stop|rm|rebuild|logs|shell|status}"
+    echo "Usage: $0 {start|restart|reload|update|stop|rm|rebuild|logs|shell|status}"
     exit 1
     ;;
 esac
