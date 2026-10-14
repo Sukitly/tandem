@@ -5,6 +5,7 @@ import { defaultProjectId, isRecord } from "./util.ts";
 
 export interface UsageRead {
   windows: UsageWindow[];
+  groups?: Record<string, UsageWindow[]>;
 }
 
 function parseTokenAndProject(raw: string): { token: string; projectId: string } {
@@ -34,37 +35,76 @@ function parseWindowSeconds(window: string | undefined): number | undefined {
   return undefined;
 }
 
-function normalizeWindowLabel(name: string, windowSeconds?: number): string {
-  const lower = name.toLowerCase();
-  if (lower.includes("5 hour") || lower.includes("5h") || windowSeconds === 18000) return "5h";
-  if (lower.includes("week") || lower.includes("7d") || windowSeconds === 604800) return "7d";
-  if (lower.includes("day") || lower.includes("24h") || windowSeconds === 86400) return "24h";
-  return name.slice(0, 10);
-}
-
 export function normalizeAntigravityUsage(summary: QuotaSummaryRaw): UsageRead {
-  const windows: UsageWindow[] = [];
+  const groupsRecord: Record<string, UsageWindow[]> = {};
+  const allWindows: UsageWindow[] = [];
+
   for (const group of summary.groups ?? []) {
+    const groupName = typeof group.displayName === "string" ? group.displayName : "";
+    const is3P = /claude|gpt|3p/i.test(groupName);
+    const groupKey = is3P ? "claude-gpt" : "gemini";
+    const groupWindows: UsageWindow[] = [];
+
     for (const bucket of group.buckets ?? []) {
       const remaining = clampFraction(bucket.remainingFraction);
       if (remaining === undefined) continue;
       const utilization = Math.max(0, Math.min(100, Math.round((1 - remaining) * 100)));
-      const name = typeof bucket.displayName === "string" ? bucket.displayName : "Limit";
-      const windowSec =
-        parseWindowSeconds(typeof bucket.window === "string" ? bucket.window : undefined) ??
-        (name.toLowerCase().includes("week") ? 7 * 86400 : 5 * 3600);
-      const label = normalizeWindowLabel(name, windowSec);
+      const bucketId = typeof bucket.bucketId === "string" ? bucket.bucketId.toLowerCase() : "";
+      const windowType = typeof bucket.window === "string" ? bucket.window.toLowerCase() : "";
+
+      let windowSeconds = 5 * 3600;
+      if (typeof bucket.window === "string" && bucket.window) {
+        const parsedSec = parseWindowSeconds(bucket.window);
+        if (parsedSec) windowSeconds = parsedSec;
+      }
+
+      const displayName = typeof bucket.displayName === "string" ? bucket.displayName : "";
+      let label = "5h";
+
+      if (
+        windowType === "weekly" ||
+        bucketId.includes("weekly") ||
+        bucketId.includes("7d") ||
+        displayName.toLowerCase().includes("week") ||
+        windowSeconds === 7 * 86400
+      ) {
+        windowSeconds = 7 * 86400;
+        label = "7d";
+      } else if (
+        windowType === "5h" ||
+        bucketId.includes("5h") ||
+        displayName.toLowerCase().includes("5h") ||
+        displayName.toLowerCase().includes("5 hour") ||
+        windowSeconds === 5 * 3600
+      ) {
+        windowSeconds = 5 * 3600;
+        label = "5h";
+      } else if (displayName) {
+        label = displayName;
+      } else if (typeof bucket.window === "string" && bucket.window) {
+        label = bucket.window;
+      }
+
       const resetTime = typeof bucket.resetTime === "string" && bucket.resetTime ? bucket.resetTime : undefined;
 
-      windows.push({
+      groupWindows.push({
         label,
         utilization,
-        windowSeconds: windowSec,
+        windowSeconds,
         ...(resetTime !== undefined ? { resetsAt: resetTime } : {}),
       });
     }
+
+    groupWindows.sort((a, b) => a.windowSeconds - b.windowSeconds);
+    groupsRecord[groupKey] = groupWindows;
+    allWindows.push(...groupWindows);
   }
-  return { windows };
+
+  const defaultWindows = groupsRecord.gemini ?? groupsRecord["claude-gpt"] ?? allWindows;
+  return {
+    windows: defaultWindows,
+    groups: groupsRecord,
+  };
 }
 
 export async function fetchAntigravityUsage(tokenOrApiKey: string): Promise<UsageRead> {

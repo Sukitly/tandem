@@ -316,23 +316,40 @@ describe("SSE stream parsing", () => {
 });
 
 describe("quota usage normalization", () => {
-  test("normalizes aggregate quota summary into windows", () => {
+  test("normalizes aggregate quota summary into groups sorted by windowSeconds", () => {
     const raw = {
       groups: [
+        {
+          displayName: "Claude and GPT models",
+          buckets: [
+            {
+              displayName: "Weekly",
+              window: "weekly",
+              remainingFraction: 0.76,
+              resetTime: "2026-04-07T00:00:00Z",
+            },
+            {
+              displayName: "5 hours",
+              window: "5h",
+              remainingFraction: 0.32,
+              resetTime: "2026-04-01T12:00:00Z",
+            },
+          ],
+        },
         {
           displayName: "Gemini models",
           buckets: [
             {
-              displayName: "5 hours",
-              window: "18000s",
-              remainingFraction: 0.8,
-              resetTime: "2026-04-01T12:00:00Z",
+              displayName: "Weekly",
+              window: "weekly",
+              remainingFraction: 0.48,
+              resetTime: "2026-04-07T00:00:00Z",
             },
             {
-              displayName: "Weekly",
-              window: "604800s",
-              remainingFraction: 0.65,
-              resetTime: "2026-04-07T00:00:00Z",
+              displayName: "5 hours",
+              window: "5h",
+              remainingFraction: 0.0,
+              resetTime: "2026-04-01T12:00:00Z",
             },
           ],
         },
@@ -340,20 +357,36 @@ describe("quota usage normalization", () => {
     };
 
     const usage = normalizeAntigravityUsage(raw);
-    expect(usage.windows).toEqual([
+    expect(usage.groups).toBeDefined();
+    expect(usage.groups?.gemini).toEqual([
       {
         label: "5h",
-        utilization: 20, // (1 - 0.8) * 100
-        windowSeconds: 18000,
+        utilization: 100, // (1 - 0.0) * 100
+        windowSeconds: 5 * 3600,
         resetsAt: "2026-04-01T12:00:00Z",
       },
       {
         label: "7d",
-        utilization: 35, // (1 - 0.65) * 100
-        windowSeconds: 604800,
+        utilization: 52, // (1 - 0.48) * 100
+        windowSeconds: 7 * 86400,
         resetsAt: "2026-04-07T00:00:00Z",
       },
     ]);
+    expect(usage.groups?.["claude-gpt"]).toEqual([
+      {
+        label: "5h",
+        utilization: 68, // (1 - 0.32) * 100
+        windowSeconds: 5 * 3600,
+        resetsAt: "2026-04-01T12:00:00Z",
+      },
+      {
+        label: "7d",
+        utilization: 24, // (1 - 0.76) * 100
+        windowSeconds: 7 * 86400,
+        resetsAt: "2026-04-07T00:00:00Z",
+      },
+    ]);
+    expect(usage.windows).toEqual(usage.groups?.gemini);
   });
 });
 

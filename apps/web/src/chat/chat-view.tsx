@@ -119,7 +119,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
           status={
             <div className="grid gap-1.5">
               <StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />
-              <UsageLine provider={agent.model?.provider} />
+              <UsageLine provider={agent.model?.provider} modelId={agent.model?.modelId} />
             </div>
           }
         />
@@ -197,7 +197,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
                 usage={transcript.usage}
                 onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
               />
-              <UsageLine provider={agent?.model?.provider} active={transcript.busy} />
+              <UsageLine provider={agent?.model?.provider} modelId={agent?.model?.modelId} active={transcript.busy} />
               {tps !== undefined && <TpsLine tps={tps} />}
             </div>
           }

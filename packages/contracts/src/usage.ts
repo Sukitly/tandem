@@ -18,6 +18,8 @@ export interface ProviderUsage {
   provider: string;
   /** The provider's windows, in the order they are shown; empty when it has none. */
   windows: UsageWindow[];
+  /** Model-specific window groups, when a provider has distinct quota pools (e.g. Antigravity gemini vs claude-gpt). */
+  groups?: Record<string, UsageWindow[]>;
   /** Shown instead of windows when the provider has no quota API, such as a native OpenAI subscription. */
   notice?: string;
   /** Why the last read failed, sanitized for display; earlier windows stay. */

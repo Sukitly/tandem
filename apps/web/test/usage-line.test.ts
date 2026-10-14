@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { paceOf } from "../src/chat/usage-line.tsx";
+import { paceOf, resolveWindowsForModel } from "../src/chat/usage-line.tsx";
 
 const NOW = new Date("2026-01-08T00:00:00.000Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,5 +27,32 @@ describe("the pace of a usage window", () => {
 
   test("is nothing when the provider named no reset", () => {
     expect(paceOf({ label: "5h", utilization: 42, windowSeconds: 5 * 3600 })).toBeNull();
+  });
+});
+
+describe("resolveWindowsForModel", () => {
+  const geminiWindows = [{ label: "5h", utilization: 100, windowSeconds: 18000 }];
+  const claudeWindows = [{ label: "5h", utilization: 68, windowSeconds: 18000 }];
+  const usage = {
+    provider: "antigravity",
+    windows: geminiWindows,
+    groups: {
+      gemini: geminiWindows,
+      "claude-gpt": claudeWindows,
+    },
+  };
+
+  test("selects gemini pool for gemini models", () => {
+    expect(resolveWindowsForModel(usage, "gemini-3.8-flash")).toEqual(geminiWindows);
+  });
+
+  test("selects claude-gpt pool for claude or gpt-oss models", () => {
+    expect(resolveWindowsForModel(usage, "claude-sonnet-4-6")).toEqual(claudeWindows);
+    expect(resolveWindowsForModel(usage, "gpt-oss-120b")).toEqual(claudeWindows);
+  });
+
+  test("falls back to default windows when groups are not present", () => {
+    const plainUsage = { provider: "anthropic", windows: geminiWindows };
+    expect(resolveWindowsForModel(plainUsage, "claude-3-7-sonnet")).toEqual(geminiWindows);
   });
 });

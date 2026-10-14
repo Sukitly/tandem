@@ -26,6 +26,7 @@ const SUPPORTED = new Set(["anthropic", "openai-codex", "openai", "antigravity"]
 /** What one provider's usage endpoint returned, normalized. */
 export interface UsageRead {
   windows: UsageWindow[];
+  groups?: Record<string, UsageWindow[]>;
 }
 
 interface AnthropicBucket {
@@ -110,12 +111,19 @@ export class UsageBoard {
       }
       const read = await fetchUsage(provider, token);
       const windows = read?.windows ?? [];
-      this.#publish(provider, { provider, windows, refreshedAt: Date.now() });
+      const groups = read?.groups;
+      this.#publish(provider, {
+        provider,
+        windows,
+        ...(groups === undefined ? {} : { groups }),
+        refreshedAt: Date.now(),
+      });
     } catch (error) {
       const previous = this.#state.value.providers[provider];
       this.#publish(provider, {
         provider,
         windows: previous?.windows ?? [],
+        ...(previous?.groups === undefined ? {} : { groups: previous.groups }),
         ...(previous?.notice === undefined ? {} : { notice: previous.notice }),
         error: formatUsageError(error),
         ...(previous?.refreshedAt === undefined ? {} : { refreshedAt: previous.refreshedAt }),
