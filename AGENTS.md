@@ -1,164 +1,110 @@
 # AGENTS.md
 
-Guidance for coding agents working in this repository. Humans should start with [README.md](README.md).
+Guidance for AI coding agents working in this repository. Human contributors should start with [README.md](README.md).
 
 ## Project overview
 
-Tandem is a local-first agent product built on [pi-durable](https://github.com/earendil-works/pi/tree/main/packages/durable). The first use case is interactive coding in the browser: the user works with an agent on Git repositories on their own machine, and conversations survive page reloads, disconnects, and backend restarts.
+Tandem is a local-first agent product built on [pi-durable](https://github.com/earendil-works/pi/tree/main/packages/durable). It provides interactive coding in the browser on local Git repositories, with persistent conversations that survive page reloads, disconnects, and backend restarts.
 
-The code is the source of truth; there are no design documents in this repository. The rules below capture decisions that the code alone does not yet make obvious. The project is early: the server serves projects and their conversations over WebSocket with real model providers, and the web app lists them and chats in them.
+The code is the source of truth; there are no separate design documents. All repository content (code, comments, documentation, commit messages, test names) must be written in English.
 
 ## Repository layout
 
 | Path | Package | Purpose |
 |---|---|---|
-| `apps/server` | `@tandem/server` | Backend process. Runs on Node; hosts the pi-durable Harness, pi-server, and the projects' terminals |
-| `apps/web` | `@tandem/web` | React + Vite single-page app |
-| `packages/contracts` | `@tandem/contracts` | Constants, types, and service contracts shared by server and clients |
-| `packages/client` | `@tandem/client` | Connects to the server: bootstrap, pi-client over WebSocket, service bindings, reconnects. Used by the web app and by server integration tests |
+| `apps/server` | `@tandem/server` | Backend process (Node). Hosts the pi-durable Harness, pi-server RPC, and pseudo-terminals |
+| `apps/web` | `@tandem/web` | Frontend single-page app (React + Vite + Tailwind + shadcn/ui) |
+| `packages/contracts` | `@tandem/contracts` | Shared types, constants, and service interfaces (runtime-neutral) |
+| `packages/client` | `@tandem/client` | Client connection library: bootstrap, RPC, service bindings, reconnects |
 
-Internal packages export TypeScript sources directly (`"exports": { ".": "./src/index.ts" }`); Node (type stripping) and Vite consume them without a build step. Reference them with `"workspace:*"`.
+Internal packages export TypeScript sources directly (`workspace:*`) and are consumed without a build step.
 
-## Setup and commands
+## Setup & dev commands
 
-Bun is the package manager and script runner. Do not add npm, pnpm, or yarn lockfiles.
+- **Package manager:** Bun. Never add npm, pnpm, or yarn lockfiles.
+- **Server runtime:** Node >= 22.19 (required for `node:sqlite`). Do not run the server on Bun or use `Bun.*` / `bun:*` APIs in server or package code.
 
-The backend runs on **Node >= 22.19**, not Bun: pi-durable's SQLite storage needs `node:sqlite`, which Bun cannot load. Node runs the TypeScript sources directly through type stripping. Do not use `Bun.*` APIs or `bun:*` modules in code.
+### Commands reference
 
 | Task | Command |
 |---|---|
 | Install dependencies | `bun install` |
-| Build, start the app, and open the browser (or reuse the running app) | `bun run start` |
-| Watch backend + Vite, open once, stop both on Ctrl-C | `bun run dev` |
-| Run the server as a service, so closing the terminal does not end it | `bun run service install` |
-| Print a fresh pairing link without building or restarting | `bun run service pair` |
-| Rebuild the web app and start that service again, after new code | `bun run service restart` |
-| Create the Cloudflare tunnel elsewhere and hand its token here | `bun run tunnel create --public-url <origin>`, then `bun run tunnel configure` |
-| Run the server in watch mode separately; prints a pairing link | `bun run dev:server` |
-| Run the web app on port 5173 (proxies the server's paths) | `bun run dev:web` |
-| Lint and format check, then typecheck | `bun run check` |
+| Start full development environment (backend + Vite) | `bun run dev` |
+| Start backend in watch mode | `bun run dev:server` |
+| Start web frontend | `bun run dev:web` |
+| Build all packages | `bun run build` |
+| Run lint and format check, then typecheck | `bun run check` |
 | Apply formatting and safe lint fixes | `bunx biome check --write .` |
 | Run all tests | `bun run test` |
-| Build | `bun run build` |
-| Run one package's script | `bun run --filter @tandem/server test` |
-| Add a dependency to one package | `cd apps/web && bun add <name>` |
+| Run tests for a single package | `bun run --filter <package> test` |
+| Add a dependency to a package | `cd <package-dir> && bun add <name>` |
+| Manage background service | `bun run service [install\|pair\|restart]` |
+| Manage Cloudflare tunnel | `bun run tunnel [create\|configure\|setup]` |
 
-`bun run service` (`apps/server/src/service.ts` dispatches to `service-command.ts`, with the decisions in `service-policy.ts` and the file itself in `service-file.ts`) writes the file an init system reads — a launchd agent, or a systemd user unit — loads it, and reports it. It computes every value from the process that runs it: an init system reads no shell configuration, and none of it may be typed by hand, since a version manager's per-shell shim looks like a Node path and is gone by the next login. The unit restarts the server after an unsuccessful exit and leaves it stopped after a clean one, which is what a `SIGTERM` stop gives.
+### Pre-completion check
 
-Four things there are deliberate. Being registered is not being up: a macOS agent stopped with `SIGTERM` stays loaded, so the command asks the service manager for the process (`running()`), refuses to install while a server that is not that process holds the port, and after loading requires the process to be running and answering — a port that answers on its own means the service found someone else's server and exited. `bootout` returns before the job is gone, so a step that moves the job waits for the job to settle, and `uninstall` removes the file only after verifying the service is gone. The state directory is created at `0700` before the service manager can create it for the log, world-readable. And a path is not configuration syntax: everything that goes into a unit file is escaped per directive, since `%` resolves specifiers, `$` resolves variables in `ExecStart`, and a quote or a backslash ends a value early. No service test needs a real service manager: `service-install.test.ts` runs the command entry point in a child process against stand-in service-manager commands on `PATH`, with real authentication on a random port and an isolated state directory. The internal entry point accepts the test address; the public CLI does not expose a port override. Pairing helpers return success or failure; only the CLI sets the process exit code.
+Always run and pass `bun run check` and `bun run test` before finishing any task.
 
-Before finishing a change, `bun run check` and `bun run test` must pass.
+## Code style & conventions
 
-## State directory
+- **TypeScript:** Strict mode enabled with `noUncheckedIndexedAccess`.
+- **Formatting and linting:** Handled by Biome (`biome.json`). 2-space indentation, double quotes, semicolons, 120-column line limit. Do not add ESLint or Prettier.
+- **Module imports:** ES modules only. Local imports must include explicit `.ts` / `.tsx` extensions for Node type stripping.
+- **Type imports:** Use `import type` (`verbatimModuleSyntax` is enabled).
+- **TypeScript syntax:** Only erasable syntax is permitted. Do not use `enum`, `namespace`, or parameter properties.
+- **Runtime neutrality:** `packages/contracts` and `packages/client` must remain runtime-neutral (no Node or Bun APIs; use standard Web APIs such as `WebSocket` and `fetch`).
 
-The server keeps its data in `$TANDEM_HOME`, default `~/.tandem` (`apps/server/src/state-dir.ts`):
+## State directory (`$TANDEM_HOME`, default `~/.tandem`)
 
-| File | Content |
+| File / Dir | Content & Permissions |
 |---|---|
-| `app.sqlite` | The Harness database: every conversation of every workspace, and the workspace list |
-| `server.json` | Stable server identity and local installation master key, mode `0600`. `authVersion: 2` marks the one-time rotation of the old browser-distributed token |
-| `devices.json` | Paired-device metadata, session hashes, and recovery-code hashes, mode `0600`. Never contains raw credentials |
-| `server.lock` | Held while a server runs: pi-durable allows one process per database |
-| `auth.json` | Model credentials (OAuth tokens, API keys), mode `0600`. Never sent to clients. Tandem does not share pi's `~/.pi/agent/auth.json`: OAuth refresh tokens rotate, so sharing one would sign the other program out |
-| `settings.json` | Preferences such as the default model and thinking level, and the installation's device ID |
+| `app.sqlite` | Harness database: all workspaces, conversations, and documents |
+| `server.json` | Server identity and local installation master key (mode `0600`) |
+| `devices.json` | Paired-device metadata, session hashes, and recovery hashes (mode `0600`) |
+| `server.lock` | Exclusive process lock held while a server runs |
+| `auth.json` | Model credentials (OAuth tokens, API keys, mode `0600`). Never sent to clients |
+| `settings.json` | Settings (default model, thinking level, public URL, device ID) |
 
-## Code style
+## Testing instructions
 
-- TypeScript in strict mode with `noUncheckedIndexedAccess`; shared options are in `tsconfig.base.json`.
-- Biome formats and lints everything (`biome.json`): 2-space indentation, double quotes, semicolons, 120 columns, recommended rules, organized imports. Do not add ESLint or Prettier.
-- ES modules only. Import local files with their `.ts` / `.tsx` extension, as Node's type stripping requires.
-- Use `import type` for type-only imports (`verbatimModuleSyntax` is on). Only erasable TypeScript syntax: no `enum`, no `namespace`, no parameter properties.
-- `packages/contracts` and `packages/client` must stay runtime-neutral: no Node or Bun imports. `packages/client` may use the `WebSocket` and `fetch` globals, which browsers and Node 22+ both provide.
+- **Runner:** Vitest on Node. Tests live in `test/` within each package and end in `*.test.ts`.
+- **Ephemeral resources:** Always start servers on port `0` and close them in `afterEach`.
+- **State directory isolation:** Tests must allocate a temporary directory (`mkdtemp`) for `$TANDEM_HOME`. Never touch `~/.tandem` in tests.
+- **Mock model:** Set `TANDEM_FAUX=1` to run deterministic scripted turns without model credentials.
+- **Coverage:** Add or update tests for any changed behavior.
 
-## Web app
+## Web app guidelines (`apps/web`)
 
-- The UI is shadcn/ui, style `base-nova` on Base UI (`apps/web/components.json`), initialized with `bunx --bun shadcn@latest init --preset b0 --template vite --pointer`. Add components with `bunx --bun shadcn@latest add <name>` from `apps/web`. Base UI composes with the `render` prop, not Radix's `asChild`; a link styled as a button is an `<a>` with `buttonVariants()`.
-- **General controls come from shadcn/ui**: buttons, inputs, dialogs, menus, popovers, lists, alerts, empty states. Do not rebuild them from raw elements or restyle them; use their props and variants, and `className` for layout.
-- **Chat components are Tandem's own**, in `src/chat/`: messages, thoughts, tool calls, the message box, and the status bar. They are built from shadcn/ui parts and Tailwind, and may style themselves. Markdown renders with Streamdown (`src/chat/markdown.tsx`), except fenced code: messages and tool output share `CodeBlock` (`src/chat/code-block.tsx`), highlighted by the Shiki of Streamdown's code plugin; the transcript scrolls with `use-stick-to-bottom`. Do not add AI Elements back: its tool and message components are built around the AI SDK's data, not pi's.
-- **Messages are untrusted Markdown**: the agent may repeat what a file or a web page told it. `untrustedMarkdown` (`src/chat/untrusted-markdown.ts`) shows raw HTML as text (line breaks excepted) and keeps only web, mail, and file links and web images. It replaces Streamdown's rehype-harden, which would turn `src/app.ts` into `/src/app.ts`; Streamdown's sanitizing and its confirmation before opening a web link stay on. File links (`src/app.ts#L12`, `src/app.ts:12`, or an absolute path inside the project; `src/files/file-link.ts`) open the file in the files panel. User messages are rendered as Markdown as well, so a place written in a message—a comment of the review—is a link that shows it; `remark-breaks` makes a single newline a line break, as a person writing in a message box expects. Math reads `$$…$$`, and `\(…\)` and `\[…\]` through `texDelimiters` (`src/chat/tex-delimiters.ts`); a single `$` stays a dollar sign.
-- **The project panel** (`src/app/project-panel.tsx`) sits right of the conversation, with a tab per view of its project (shadcn `Tabs`, line variant); its header has no path, which the conversation header shows already. The Files tab (`src/files/`) shows a tree over the opened file, with each file's size. Tree icons come from the Symbols set (`@react-symbols/icons`) by file and folder name; the library's mapping pulls in every icon it ships, which adds about 170 KB gzip to the main bundle. The tree is built as shadcn's file tree block (`sidebar-11`): sidebar menu items, with collapsible directories, each listed when it first opens. As in the sidebar's project rows, an open or closed folder icon shows whether a directory is expanded; there is no arrow. Rows for Git-ignored entries and excluded metadata entries (e.g. `.git`, `.DS_Store`) are dimmed (`src/files/dimmed.ts`), and so is everything below them. All dimmed entries are hidden by default and toggled via the panel header button, while standard configuration dotfiles (such as `.gitignore` and `.editorconfig`) remain visible at normal opacity. Git decides what is ignored, through `git ls-files --others --ignored --exclude-standard --directory`, which reports an ignored directory as itself; a directory that is not in a repository marks nothing. What the panel shows of a project (listings, open directories, the opened file) lives in a `ProjectFiles` per project, kept by the workbench while the page is open; files are read when they open and on Refresh, and do not follow changes yet. Code is highlighted by the same Shiki as messages (`src/chat/highlight.tsx`), except files over 3,000 lines, which would hold up the page. Whether the panel is shown, and the panels' widths, are kept in `localStorage`.
-- The theme follows the system, and the user can choose light or dark (`src/theme.tsx`; `index.html` applies it before the first paint). Every color comes from the theme's CSS variables or has a `dark:` variant.
-- Text fields have no focus ring and keep their border when focused (`src/index.css`, by `data-slot`); invalid fields keep their red ring.
-- `src/components/ui/` is generated. Compose and style it from the outside rather than editing it, so it can be updated. It is excluded from linting.
-- `src/rpc/` connects to the server and exposes replicated state to React (`useReplicatedState`, `useConversation`). Components read state there and never keep their own copy of replicated server state. One-shot filesystem reads are snapshots, not replicated state: `ProjectFiles` owns the Files panel's reads, and `useProjectDirectory` owns the Add Project dialog's directory reads, dropping results after the request is superseded or the dialog closes.
-- A page opens conversations through `OpenConversations` (`packages/client`), which opens them again after a reconnect.
+- **Component library:** shadcn/ui (`base-nova` preset on Base UI). Add components with `bunx --bun shadcn@latest add <name>`.
+- **Base UI composition:** Compose using the `render` prop (not Radix `asChild`).
+- **UI separation:** General controls (buttons, inputs, dialogs, menus) come from shadcn/ui. Chat components in `src/chat/` are custom Tandem components.
+- **Generated code:** Do not edit `src/components/ui/` directly; compose and style components from the outside.
+- **Replicated state:** UI state in `src/rpc/` uses `useReplicatedState` and `useConversation`. Components render subscriptions and must not store local copies of replicated server state. Snapshot reads (e.g. file trees) are display-only.
+- **Untrusted Markdown:** Agent and user messages are untrusted Markdown. Always sanitize via `untrustedMarkdown` (`src/chat/untrusted-markdown.ts`).
+- **Theming:** Support light and dark modes via theme CSS variables or Tailwind `dark:` variants.
 
-## Models
+## Architecture & deliberate decisions
 
-- Providers are pi-ai's built-in ones (`apps/server/src/models.ts`). API keys in the server's environment work without signing in.
-- Logins run on the server (`apps/server/src/services/models.ts`): the browser shows the flow's events and answers its prompts through the `Models` service, and never receives a credential.
-- `configureModelHttp()` (`apps/server/src/http-setup.ts`) must run before any model request, as pi's coding agent does; without it some providers' streams break off.
-- `TANDEM_FAUX=1` adds a local faux model that needs no credentials. It runs a scripted turn (`demoResponse`): it thinks, lists the directory and reads the README, then answers, so every part of the transcript shows. Tests pass the faux provider only, never the built-in ones.
-- The agent's system prompt is Tandem's own (`apps/server/src/prompt.ts`, extension `tandem.prompt`), in the shape of pi's coding agent, whose prompt code is internal: role, tools, rules, the project's `AGENTS.md` or `CLAUDE.md` from the working directory up to the root, and the working directory.
+- **One Harness:** The server runs a single `pi-durable` Harness over SQLite. Workspaces are data, not separate processes or sessions.
+- **No pi-server Sessions:** Services run at server scope with one `RemoteServiceProvider` per client connection (`apps/server/src/rpc-host.ts`). Clients call `open(id)` to spawn per-connection instances.
+- **Clients render subscriptions:** Authoritative state comes strictly from replicated state subscriptions. Mutation results must not replace subscriptions.
+- **Workspace execution boundary:** All workspace file operations and process execution must go through the Workspace Runtime (`ExecutionEnv`).
+- **Agent lifecycle:** Aborting a conversation stops only the agent; it never terminates pseudo-terminals or managed processes.
+- **Terminals:** Pseudo-terminals run over raw WebSocket endpoints (`/pty/<id>`), not Chord RPC.
+- **Remote service handles:** Chord handles intercept any property access including `then`. Never `await` or resolve a promise with a remote handle directly; wrap handles in an object.
+- **Runtime validation:** Remote service methods receive untrusted JSON. Validate all parameters at runtime; reject invalid data with `invalidInput()` (`RemoteServiceError`).
+- **Background context:** Resources outliving an RPC call must use `BACKGROUND_CONTEXT`.
+- **Model HTTP setup:** `configureModelHttp()` must be called before initiating model provider requests.
+- **Image handling:** Message images are sanitized, resized in worker threads, and served via authenticated `/image/...` endpoints; image data is never embedded inline in conversation view state.
 
-## Services
+## Security guidelines
 
-- Service contracts live in `packages/contracts`; implementations in `apps/server/src/services/`.
-- Reject bad client input with `invalidInput()` (`apps/server/src/services/errors.ts`), which throws a Chord `RemoteServiceError`. pi-server forwards only service and server errors; any other error reaches the client as "Internal server error" and goes to the server's `onError`.
-- Methods receive untrusted JSON. Validate every argument at runtime; the TypeScript types are not checked on the wire.
-- Resources that outlive a call, such as view states and spawned instances, are created with `BACKGROUND_CONTEXT`, not with the call's context.
-- Workspaces are called projects in the UI. The list is a Session document (`tandem.workspaces`, `apps/server/src/services/workspaces.ts`); each conversation records its workspace in `tandem.conversation` and works in the workspace's directory. Removing a workspace only marks it removed, so adding the directory again brings back its conversations.
-- A conversation exists from its first message: `Conversations.start` creates it and submits that message in one call, with the model and thinking level chosen beforehand. Until then, a new conversation lives only in the web app (`NewChat`). Conversations from before this that never got a message have no title and stay out of the list.
-- `Files` (`apps/server/src/services/files.ts`) lists directories and reads files of a project; entries carry their size and whether Git ignores them through the execution environment its agents use, so a sandbox later serves both. Paths are relative to the project; they are resolved with their symbolic links and must stay inside its directory. Files over 1 MB, and binary files (a NUL byte in the first 8,000 bytes, as Git judges), are not sent.
-- `Prompts` (`apps/server/src/services/prompts.ts`, `apps/server/src/services/prompt-templates.ts`) offers a project's slash commands, and expands a message that names one. Templates are Markdown files whose name is the command: the project's `.pi/prompts`, and the user's own under pi's agent directory (`PI_CODING_AGENT_DIR`, else `~/.pi/agent`), shared with pi itself; `StartAppOptions.globalPromptsDir` overrides that, as tests do. The frontmatter's `description` and `argument-hint` are read with a small scalar parser (`yaml` is not a Tandem dependency); a missing description is the first non-empty line. Only direct `.md` children count, hidden files are left out, and a project template wins over a global one of the same name. Loading goes through the project's execution environment, as `Files` does; the global directory is read through an environment of its own, since it lies outside every project. A read is a snapshot, cached per project for one second, not replicated state. Expansion happens on the server, before a message reaches the agent, when `Conversations.start` or `Conversation.submit` receives it: `/name args` becomes the template's text with `parseCommandArgs`/`substituteArgs` applied, and a message that names no template (or does not begin with `/`) is left as it is, so `/foo` is still an ordinary message. Expansion runs before the comments are taken, so a failure leaves them waiting. The web app reads the list with `usePrompts` (`apps/web/src/rpc/use-prompts.ts`): the composer is a combobox, and while a message begins with `/` and holds no argument it offers the matching commands, naming the listbox with `aria-controls` and the highlighted one with `aria-activedescendant`; the transcript shows the expanded text, as pi's does. The suggestion menu is the chat component's own, laid over the box rather than rendered by shadcn's `Popover` or `Command`: those take the input's keys (a `PopoverTrigger` renders it as a button and cancels the keystrokes) and its focus, so ordinary typing, spaces, and Shift+Enter would stop working. The box keeps focus and handles only the keys the menu owns — the arrows, Tab, Escape, and Enter — leaving the rest to the browser; Tab fills the highlighted command into the box so its arguments can be typed, Enter settles it and sends, as pi's editor does, and a press outside the box puts the menu away.
-- `Changes` (`apps/server/src/services/changes.ts`) follows one project's changes while a client holds it open; asking Git is the other half, in `changes-git.ts` (`ChangeReader`). a client opens a project with `Changes.open`, receives a `ProjectChanges` instance with the list in its state, and lets it go with `Changes.close`. A project is tracked once however many clients watch it: `ChangeTrackers` counts holds and ends the tracker with the last one, and a hold is given up once, because the open that takes it and the close that gives it up arrive in either order. The tracker's own reads run under `BACKGROUND_CONTEXT`: a call's context is aborted when the call is done, and a read under an aborted context fails without saying so. A read keeps what it cannot change: whether the directory is a repository, which branch the list is measured against, and the line counts of untracked files whose size and modification time stand still, so a read is about five Git commands and no file is read twice for nothing. A manual refresh — and a watcher that reports uncertain coverage — forgets all of it and asks again. The list is measured against the merge base with the project's integration branch (`origin/HEAD`, else `main` or `master`), so branch commits, staged and unstaged work, and untracked files are one list; a project without an integration branch is compared with its last commit. The names of the changed files and their counts come from `git diff --name-status` and `--numstat`; untracked files come from `git ls-files --others`, with their added lines counted from the file. Everything runs through the project's execution environment, as `Files` does, in the project's directory with `--relative`, so a project that is a subdirectory of its repository still reports its own paths. Changes on disk come from `env.watch` with `.git` and `node_modules` excluded; events settle for 300 ms before the list is read again, an `overflow` reads everything again, and a watcher that stops leaves a message in the state and can be started again with `refresh`. `diff(path)` returns the patch against the same base (`--no-index` for an untracked file); a file Git cannot read is a `FilePatch` outcome with the message, not a rejection, since only a path the client may not ask about is its mistake.
-- A project's changes are shown in the Changes tab of the panel beside the conversation (`src/changes/`), under a list of the changed files with each file's status letter, path, and counts (the row is a plain `SidebarMenuButton`, its parts styled inside it, as the file tree does); the selected file's patch is rendered by `@pierre/diffs` in a split view by default, with a switch to one column. The list and the patch are read again on every published change, so an agent's edits arrive without asking. A patch's item id carries its own text: without that, the renderer keeps the patch it drew before.
-- Comments are threads on a line of a project's file, kept by the server (`Comments`, `apps/server/src/services/comments.ts`) in one session document and shared by every page, so a review survives a reload, another browser, and a restart. A thread belongs to the project, not to a conversation, since it is about the code. Its messages are the user's and the agent's; a user's message that has not been sent waits, and the next message the user sends in the project carries every waiting one: the page sends their IDs with `submit`/`start`, and the server writes them into the message (`Comment #<id> on [path:line](path#Lline)`, the quoted line, then the note, or the thread so far for a reply) and marks them sent with the conversation and the request ID. The agent answers with the tool `reply_to_comment` (`apps/server/src/comment-tool.ts`, extension `tandem.comments`), which writes its reply into the thread through the tool call's commit (`api.commit`), on the Harness's one Session line; the tool is not replayed after a restart, so a reply is never written twice; it reaches only threads of its conversation's project, and a refusal is the tool's result, for the agent to read. An agent's reply is never waiting: it goes back to the agent only as part of the thread when the user replies. The tool is installed once the comment board is loaded, before work resumes, so a conversation that continues after a restart has it. Marking happens after the message is taken, as two commits, because pi-durable admits a message in its own commit; a send in flight holds its messages so that a second send cannot carry them too, and a refused message leaves them waiting. A sent message cannot be edited or taken back. A thread keeps its line's text and up to three lines on each side (`CommentAnchor`), because line numbers move as the agent edits: the page finds the line again by its text, where it was or else the copy whose neighbours match best, nearest the old number on a tie (`relocate`, `src/comments/comment-anchor.ts`); a line that is gone makes the thread outdated, shown above the file or the diff with the code it was written on. A diff shows only its hunks, so a thread missing from it is looked for in the file as it is (`Files.read`), and is outdated only if its line is not there either; a thread on a removed line has no other file to look in. A failed comment action is shown: a box keeps its text with the reason under it, and other actions report through the workbench's failure. A message that was taken succeeds even if its comments could not be marked sent; that goes to the server's error report. In a diff a comment is written by clicking a line's number, or the button beside the number of the line the pointer is on, which is ours and not the library's: the library's hover state belongs to the rendered item, and a comment arriving re-renders that item, which strands its button and its row highlight on the row they were on. The button follows the line the pointer is on, read from the diff's own numbering in its shadow root, and the whole row counts, not only the number column. A comment's row is given the diff's own background (`diff-plain-annotations.ts`); the rule has to be written inside the diff's shadow root, since nothing from outside reaches in. The renderer redraws an item only when its version changes, so the version is derived from the placed threads and the draft. The box a comment is written in is shadcn's input group, with the place and the buttons as its block addons, and a thread takes the same surface. A comment box ends at the right edge of the view it sits in rather than at the longest line's, which both a diff and an opened file would give it (`useCommentWidth`), since that runs past the panel and is cut off. Deleting a thread asks first.
-- The panel's tab lives in the workbench (`src/app/workbench.tsx`), not in the panel, because showing a place has to switch the panel to the view that holds it: a comment of the review opens its file in the Changes tab, at its line, and a file that list does not hold—a comment on a file that did not change—opens in the Files tab instead. Scrolling to a line uses the code view's own scroll target: the diff is virtualized, so a line far from the viewport is not in the DOM to scroll to. A request is honoured once and then dropped, so later changes to the list do not pull the shown file back.
-- Terminals (`apps/server/src/hosted-terminal.ts`, `apps/server/src/services/terminals.ts`) are shells on pseudo-terminals (node-pty) in a project's directory, held in memory by the server: they outlive the page that opened them, and stop with the server and with their project. Removing a project ends its terminals, and adding it again does not bring them back; the dialog that confirms removing it names the ones still running. `Terminals` lists every project's terminals for every page, with a shell's exit code, or the signal that ended it; `create` takes only the project, which is resolved through its execution environment first, so a directory that is gone is refused. A terminal starts at `TERMINAL_START_SIZE` and takes the newest size a page sends; sizes are clamped to `TERMINAL_MIN_SIZE`/`TERMINAL_MAX_SIZE`, and a size that is not whole numbers is refused. A terminal's bytes go over its own WebSocket, `/pty/<id>`, authorized like `/rpc` by a device cookie (or a master-key header for non-browser clients) and the origin, before the ID is decoded (`apps/server/src/terminal-sockets.ts`). Binary frames are bytes each way; text frames are JSON control messages (`TerminalControl`, `TerminalEvent`). The server keeps each terminal's screen with `@xterm/headless`: a page that connects is sent that screen (`@xterm/addon-serialize`) and then the output after it, and a page that falls too far behind is sent the screen again instead of the bytes it missed. The socket closes with `TERMINAL_CLOSED` when the terminal is gone and `TERMINAL_BAD_MESSAGE` when the page sent what the server does not understand; a page connects to it through `TandemConnection.terminal()` (`packages/client/src/terminal-connection.ts`), which sends input in pieces the server accepts and connects again after a drop. The page draws a terminal with xterm (`src/terminals/`), in the Terminal tab of the project panel; closing a running one asks first, and a connection that closed for good shows a way to connect again.
-- node-pty is pinned to 1.2.0-beta.15: the macOS prebuilt `spawn-helper` of 1.1.0, the latest stable release, lacks its execute bit, so every spawn fails with `posix_spawnp failed`. Move to a stable release once 1.2.0 is released, or a 1.1.x fixes that. node-pty is a native module: 1.2.0-beta.15 ships prebuilt binaries for macOS, Linux (x64 and arm64), and Windows; other platforms build it on install, with the build tools of node-gyp.
-- Images go with a message (`SubmitInput.images`, `StartInput.images`: the files as base64, pasted, dropped, or picked in the message box) and come from `read` on an image file. The server reads each type from its bytes and fits the image to the conversation's model (`apps/server/src/images/message-images.ts`): oriented, converted, and shrunk to its `inputLimits.images.resize`, in a worker thread. Refused, with a message the user can act on (`ImageRefused`): a conversation whose model is not available (there are no limits to fit them to, and nothing would answer), a model that takes no images, more than its `maxPerMessage`, a file that is not an image, or over `MAX_MESSAGE_IMAGE_BYTES` together. That limit is derived from pi-protocol's 16 MiB frame, less 1 MiB for the rest of the message, as base64: 11.25 MiB. Images in the wrong shape are the page's fault, refused with `invalidInput`. `ModelSummary.images` tells the page what the model takes; the message box offers images only for an available model that takes them (`ImageSupport`). `read` handles images through `imageReading` (`apps/server/src/image-read.ts`), which wraps pi-durable 1.1.0's `read`, which refuses them. It refuses image files over `MAX_READ_IMAGE_BYTES` (20 MiB), since an image is read whole and decoded in the worker; pi's own `read` has no such limit, so keep it when moving to pi's.
-- `apps/server/src/images/` holds pi's image code, copied unchanged from pi's repository (commit `cdaf6c227`) because pi-durable 1.1.0 does not ship it, and excluded from linting to stay identical; `message-images.ts` is Tandem's own. Once a pi-durable release has `@earendil-works/pi-durable/images/node` and `createCodingTools({ images })`, use those, and delete the copies and `image-read.ts`.
-- **A page never receives image data in a view.** `Conversation.view` is pi-durable's view with every image block replaced by `{ type: "image", mimeType, ref }` (`pageView`, `apps/server/src/conversation-view.ts`; the type is `ConversationView` in the contracts). A page fetches an image from `GET /image/<server>/<conversation>/<entry>/<messageIndex>/<blockIndex>` using its same-origin device cookie (`TandemConnection.imageUrl()`); non-browser clients may use `Authorization: Bearer` (`TandemConnection.image()`), never a URL token; the server reads it from the stored entry and serves only PNG, JPEG, GIF, and WebP, with `nosniff`. Responses are cached as immutable, so the path names the state directory through its server ID: entry IDs repeat across state directories served on the same port, and a path of another server ID is a 404. An image of a queued message has no entry yet, so no `ref`.
-- The conversation list carries what the sidebar needs without opening a conversation: the last activity, and whether the agent is running, which comes from the Harness's task graph.
-- Remote service handles accept any member name, including `then`. Never resolve a promise with a handle or `await` one: that calls `then` as a remote method. Wrap handles in an object instead.
-
-## Language
-
-All content in this repository is written in English: code, comments, identifiers, documentation, commit messages, and test names. Do not add text in any other language.
-
-## Testing
-
-- Tests use Vitest (running on Node) and live in each package's `test/` directory, named `*.test.ts`.
-- Start servers on port `0` in tests and stop them in `afterEach`.
-- Give every test server its own temporary state directory (`mkdtemp`). Never touch `~/.tandem` in tests.
-- Add or update tests for the behavior you change.
-
-## Architecture rules
-
-These are deliberate decisions. Do not break them without discussing it first:
-
-- **One Harness.** The backend runs one pi-durable Harness over one SQLite database for every workspace. Workspaces are data, not processes or Sessions.
-- **No pi-server Sessions.** Every service is served at pi-server's server scope, with one `RemoteServiceProvider` per client connection (`apps/server/src/rpc-host.ts`). Shared state, such as the conversation list, is one `ReplicatedState` object provided to every connection.
-- **Per-connection instances, not global keyed services.** A Chord keyed subscription snapshot carries the state of every instance, so a global keyed service would send every conversation to every client. Clients call `open(id)` and the server spawns that instance on their connection only.
-- **Clients render subscriptions.** Authoritative application state comes from replicated state the client subscribes to. Mutation results do not replace subscriptions. One-shot file and directory reads may return filesystem snapshots for display; snapshots do not update the project catalog or any other authoritative application state. The client holds no authoritative state.
-- **One execution path per workspace.** File access and process execution inside a workspace only go through its Workspace Runtime (ExecutionEnv, terminals, ProcessManager). No other module touches a repository directly. For now, terminals are the exception: one `TerminalHost` serves every project and spawns node-pty on this machine directly, since `ExecutionEnv` has no pseudo-terminals; only the project's directory is resolved through its `ExecutionEnv`. A sandbox must give each workspace its own way to start a terminal, and move them to it.
-- **Stop only stops the agent.** Aborting a conversation never kills terminals or managed processes.
-- **Terminals are raw byte streams** on their own WebSocket; they do not go through Chord.
-- **Upstream pi packages are experimental.** Pin their versions and keep calls into them in a small number of adapter modules.
-
-## Security
-
-- The server binds to `127.0.0.1` only. Do not change the default host.
-- There is no sandbox yet: the agent runs with the user's permissions. Do not describe the product as isolated.
-- Model credentials stay in the backend and are never sent to clients.
-- Browsers authenticate with per-device HttpOnly, SameSite=Strict cookies; public HTTPS origins use Secure cookies. Every WebSocket endpoint checks the cookie and requires an allowed Origin. Non-browser clients may instead present the local installation master key in an Authorization header, with no Origin; credentials are never accepted in URL query parameters.
-- Pairing links carry a 128-bit one-use code in the URL fragment, expire after five minutes, and are redeemed via an origin-checked JSON POST. Recovery codes are one-use and displayed only when generated. Five failed redemption attempts make further invalid attempts return 429 for one minute; a valid 128-bit pairing or recovery code still succeeds, so anonymous failures cannot lock out the owner.
-- A launcher that reuses a running server proves that server holds the installation key before sending that key: `POST /auth/proof` answers with `HMAC-SHA256` of the launcher's nonce under the master key. Any local program can hold the port, and the key must not reach one that is not ours. That answer also names the server, and `/auth/code` reports `entry`, where a browser must open the page when the running server does not serve it itself, as in development.
-- Session hashes and recovery-code hashes live in devices.json. Device revocation closes its existing RPC and terminal sockets immediately. Bootstrap returns the browser's public device ID; all devices belong to the same owner, so device management does not require identity in pi-server's attachClient API.
-- Allowed Origins and Hosts are explicit: local endpoints, Vite in development, and --public-url (or settings.publicUrl). Never infer trust from loopback source IP or forwarded proxy headers. The tunnel contributes one replaceable public origin: changing or removing it removes the old Host and Origin and closes sockets admitted through either. Pairing sets a cookie from the required browser Origin; public cookies are `Secure`. Bootstrap never rewrites cookies, since a GET may omit Origin and a tunnel may rewrite Host. Cookies have a fixed 400-day browser lifetime, independently of the server's 30-day idle limit. Unpublishing cancels pending authorization, waits for configuration writes and starts to finish, and only then removes configuration; an old task must never reopen the tunnel after unpublish returns.
-- The page reaches the tunnel through the `PublicAccess` service (`services/public-access.ts`), which reads `TunnelControl` (`tunnel-control.ts`) — the one owner of the tunnel process and of what a page is told about it — and replicates its view. Publishing is slow and partly interactive, so `publish` returns once the work has started and the state carries the rest, including the approval URL.
-- Creating a tunnel needs account authority; running one needs only that tunnel's connector token. The two are separate commands on purpose: `bun run tunnel create` (where authority is acceptable) prints the token, and `bun run tunnel configure` (on the host) keeps it in `~/.tandem/tunnel.json` at 0600. Never suggest running `tunnel setup` on a machine that is not the owner's alone, and never let a test near the real service file: `runTunnel` takes the service file and the reload as options for exactly that reason.
-- `bun run tunnel setup` (`tunnel-setup.ts`) is the other route, for a machine that is the owner's alone: authorize it with `cloudflared tunnel login`, create the tunnel, route the hostname, and write `~/.tandem/cloudflared.yml`, whose one ingress rule reaches this server and whose second rule refuses everything else. It copies no token, but `cert.pem` then manages this account's tunnels and that domain's DNS, so it is deliberately not the default. Taking it replaces the file the other route uses. `cloudflared` is called through `cloudflared.ts`, which is also where a test stands in for it.
-- `bun run tunnel` (`tunnel-command.ts`, with the file in `tunnel-config.ts` and the process in `tunnel-runner.ts`) runs `cloudflared` as a child of the server, so it starts and stops with it and one service covers both. The token travels in the child's environment, never in its arguments, and the tunnel's origin hop is kept off any proxy by merging `127.0.0.1,localhost` into `NO_PROXY`; an installer's proxy variables are carried into the service file, since an init system reads no shell configuration. A local configuration file wins over a token, so a machine that ran `setup` never needs one. The public origin from that file is this server's public origin. `/health` reports the tunnel state, and a failed tunnel is retried with backoff. Whether Cloudflare preserves `Host` still needs a real tunnel and a real domain to confirm.
-- The built web app is served by the backend with CSP, nosniff, no-referrer, and same-origin CORP. Index HTML is no-store; hashed assets are immutable. Static paths and resolved symbolic links stay under the build root.
-- Future workspace app previews must not share Tandem's authenticated origin: untrusted preview JavaScript must not be able to call the agent or terminal APIs.
-
-## Upstream references
-
-Tandem builds on the [earendil-works/pi](https://github.com/earendil-works/pi) monorepo. Useful sources:
-
-- `packages/durable`: Harness, conversations, tasks, documents, tools, storage. `README.md` and `test/examples/` show every feature.
-- `packages/server`, `packages/protocol`, `packages/client`: routing, wire protocol, and client.
-- `packages/chord`: services, replicated state, facets.
-- `packages/coding-agent/src/experimental/`: upstream's experimental server, durable TUI, and service contracts (`AgentController`, `Transcript`).
+- **Network binding:** Server binds strictly to `127.0.0.1`. Do not change the default host.
+- **Sandbox status:** There is currently no sandbox; the agent runs with the host user's permissions.
+- **Credential isolation:** Model credentials in `auth.json` stay on the backend and are never sent to clients.
+- **Authentication:**
+  - Browser clients authenticate using per-device `HttpOnly`, `SameSite=Strict` cookies (and `Secure` on HTTPS).
+  - Non-browser clients authenticate using `Authorization: Bearer <master-key>`.
+  - Credentials must never appear in URL query parameters.
+- **Origin & Host validation:** All HTTP, WebSocket, and RPC endpoints enforce strict `Origin` and `Host` checks against allowed local and configured public endpoints.
+- **Web security headers:** Static files and HTML are served with CSP, nosniff, no-referrer, and same-origin CORP.
