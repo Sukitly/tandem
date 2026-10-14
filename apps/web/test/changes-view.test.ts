@@ -117,6 +117,19 @@ describe("file type icons in the changed files list", () => {
     expect(markup).toContain('aria-label="Full screen"');
   });
 
+  test("shows close button for the selected diff", () => {
+    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
+    const markup = changes();
+    expect(markup).toContain('aria-label="Close the diff"');
+  });
+
+  test("shows line count parts in the selected diff header", () => {
+    state.changes.files = [{ path: "src/app.tsx", status: "modified", additions: 8, deletions: 3 }];
+    const markup = changes();
+    expect(markup).toContain("+8");
+    expect(markup).toContain("−3");
+  });
+
   test("stores and defaults diff style separately for inline and zoomed states", () => {
     expect(storedDiffStyle(false)).toBe("unified");
     expect(storedDiffStyle(true)).toBe("split");

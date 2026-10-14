@@ -10,7 +10,6 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { formatSize } from "./format-size.ts";
 import { type OpenedFile, type ProjectFiles, useProjectFiles } from "./project-files.ts";
 
 /** Highlighting a longer file would hold up the page for a second or more; it shows as plain text instead. */
@@ -44,8 +43,10 @@ export function FileView({ files, comments }: { files: ProjectFiles; comments: P
         <p className="min-w-0 flex-1 truncate font-mono text-xs" title={opened.path}>
           {opened.path}
         </p>
-        {content?.status === "ready" && (
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">{formatSize(content.value.size)}</span>
+        {content?.status === "ready" && content.value.kind === "text" && (
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">
+            {formatLines(countLines(content.value.text))}
+          </span>
         )}
         <Tooltip>
           <TooltipTrigger
@@ -222,4 +223,14 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
       </pre>
     </div>
   );
+}
+
+export function countLines(text: string): number {
+  if (text.length === 0) return 0;
+  const body = text.endsWith("\n") ? text.slice(0, -1) : text;
+  return body.split("\n").length;
+}
+
+export function formatLines(count: number): string {
+  return `${count.toLocaleString()} L`;
 }
