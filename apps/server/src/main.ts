@@ -83,7 +83,6 @@ if (existing !== undefined) {
   }
   console.log(`Tandem listening on ${server.url}`);
   const pair = server.pair();
-  const printUrl = server.url.hostname === "0.0.0.0" ? new URL(`http://localhost:${port}`) : server.url;
-  await showPairing(pairingUrl(webOrigin ?? printUrl, pair.code), !values["no-open"]);
+  await showPairing(pairingUrl(webOrigin ?? server.url, pair.code), !values["no-open"]);
   if (server.publicUrl !== undefined) console.log(`Remote pairing: ${pairingUrl(server.publicUrl, pair.code)}`);
 }

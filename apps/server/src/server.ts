@@ -342,8 +342,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   const { port } = http.address() as AddressInfo;
   ownPort = port;
   options.preview?.ignorePort(port);
-  ownOrigin = `http://${hostname}:${port}`;
-  for (const host of [hostname, "127.0.0.1", "localhost"]) fixedOrigins.add(`http://${host}:${port}`);
+  const resolvedHost = hostname === "0.0.0.0" ? "127.0.0.1" : hostname;
+  ownOrigin = `http://${resolvedHost}:${port}`;
+  for (const host of [resolvedHost, "localhost"]) fixedOrigins.add(`http://${host}:${port}`);
   updateOrigins();
   const activityTimer = setInterval(
     () => {
@@ -353,7 +354,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   );
   activityTimer.unref();
   return {
-    url: new URL(`http://${hostname}:${port}/`),
+    url: new URL(`http://${resolvedHost}:${port}/`),
     serverId,
     token,
     publicUrl,

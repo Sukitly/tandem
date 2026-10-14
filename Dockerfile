@@ -1,7 +1,11 @@
 FROM node:24.19.0-slim
 
-# Switch to mirror if needed and install system dependencies, git, and search tools
-RUN (sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list 2>/dev/null || true) \
+ARG APT_MIRROR=""
+
+# Install system dependencies, git, and search tools (optionally switch apt mirror via build-arg)
+RUN if [ -n "${APT_MIRROR}" ]; then \
+      (sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list 2>/dev/null || true); \
+    fi \
   && apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -20,7 +24,8 @@ RUN (sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/deb
 
 # Install cloudflared for Tandem public access integration
 RUN ARCH=$(dpkg --print-architecture) \
-  && (curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}" -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared || true)
+  && curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}" -o /usr/local/bin/cloudflared \
+  && chmod +x /usr/local/bin/cloudflared
 
 # Install Bun package manager
 ENV BUN_INSTALL="/root/.bun"
