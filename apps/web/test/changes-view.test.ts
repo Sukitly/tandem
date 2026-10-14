@@ -93,4 +93,21 @@ describe("file type icons in the changed files list", () => {
     expect(markup).toContain("+12");
     expect(markup).toContain("−3");
   });
+
+  test("shows word wrap toggle button for the selected diff", () => {
+    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
+    const markup = changes();
+    expect(markup).toContain('aria-label="Wrap lines"');
+    expect(markup).toContain('aria-pressed="false"');
+  });
+
+  test("respects stored diff wrap preference", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => (key === "tandem.diffWrap" ? "true" : null),
+    });
+    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
+    const markup = changes();
+    expect(markup).toContain('aria-label="Do not wrap lines"');
+    expect(markup).toContain('aria-pressed="true"');
+  });
 });
