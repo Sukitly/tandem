@@ -51,7 +51,7 @@ function CopyCode({ code }: { code: string }) {
       variant="ghost"
       size="icon-xs"
       aria-label={copied ? "Copied" : "Copy code"}
-      className="absolute top-1.5 right-1.5 opacity-0 group-hover/code:opacity-100 focus-visible:opacity-100"
+      className="absolute top-1.5 right-1.5 [@media(hover:hover)]:opacity-0 group-hover/code:opacity-100 focus-visible:opacity-100"
       onClick={() => {
         void navigator.clipboard.writeText(code).then(() => {
           setCopied(true);
