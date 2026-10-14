@@ -36,7 +36,7 @@ export function TranscriptEntry({ item }: { item: TranscriptItem }) {
         <div className="group/message flex flex-col items-end gap-1">
           <TranscriptImages images={item.images} className="max-w-[85%] justify-end" />
           {item.text !== "" && (
-            <div className="max-w-[85%] rounded-lg bg-muted px-4 py-2.5 break-words">
+            <div className="max-w-[85%] rounded-2xl border border-border/40 bg-muted/70 px-4 py-2.5 break-words">
               <Markdown text={item.text} />
             </div>
           )}
@@ -97,7 +97,11 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
         </Badge>
       )}
       {item.ending === "failed" && <ChatError error={item.error} attempts={item.attempts} />}
-      {item.ending === "complete" && answer && text !== "" && <CopyButton text={text} className="self-start" />}
+      {item.ending === "complete" && answer && text !== "" && (
+        <div className="flex items-center gap-1.5 pt-1 text-muted-foreground">
+          <CopyButton text={text} className="self-start" />
+        </div>
+      )}
     </div>
   );
 }
@@ -234,7 +238,7 @@ function StatusIcon({ status }: { status: ToolStatus }) {
 /** The edit tool's diff: one line per change, `+`/`-`/space, the line number, and the text. */
 function Diff({ diff }: { diff: string }) {
   return (
-    <pre className="max-h-80 overflow-auto rounded-md bg-muted py-3 font-mono text-xs">
+    <pre className="max-h-80 overflow-auto rounded-xl border border-border/50 bg-muted/40 py-3 font-mono text-xs">
       {diff.split("\n").map((line, index) => (
         <div
           // biome-ignore lint/suspicious/noArrayIndexKey: a finished diff never changes.
@@ -293,7 +297,10 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
     <Button
       variant="ghost"
       size="icon-xs"
-      className={cn("opacity-0 group-hover/message:opacity-100 focus-visible:opacity-100", className)}
+      className={cn(
+        "text-muted-foreground hover:text-foreground opacity-0 group-hover/message:opacity-100 focus-visible:opacity-100 transition-opacity",
+        className,
+      )}
       aria-label={copied ? "Copied" : "Copy"}
       onClick={() => {
         void navigator.clipboard.writeText(text).then(() => {
@@ -302,7 +309,11 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
         });
       }}
     >
-      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? (
+        <CheckIcon className="size-3.5 text-green-600 dark:text-green-400" />
+      ) : (
+        <CopyIcon className="size-3.5" />
+      )}
     </Button>
   );
 }

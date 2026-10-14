@@ -27,9 +27,25 @@ export function CodeBlock({
   // A final newline would render as an empty last line.
   const text = code.endsWith("\n") ? code.slice(0, -1) : code;
   const tokens = useHighlighted(text, language, streaming);
+  const displayLanguage = language || (tall ? "output" : "code");
+
   return (
-    <div className={cn("group/code relative min-w-0 rounded-md bg-muted", className)}>
-      <pre className={cn("overflow-x-auto p-3 font-mono text-xs leading-relaxed", tall && "max-h-80 overflow-y-auto")}>
+    <div
+      className={cn(
+        "group/code relative min-w-0 overflow-hidden rounded-xl border border-border/60 bg-muted/40",
+        className,
+      )}
+    >
+      <div className="flex h-8 items-center justify-between border-b border-border/40 bg-muted/30 px-3.5 text-xs text-muted-foreground select-none">
+        <span className="font-mono text-[11px] font-medium lowercase tracking-wide">{displayLanguage}</span>
+        <CopyCode code={code} />
+      </div>
+      <pre
+        className={cn(
+          "overflow-x-auto p-3.5 font-mono text-[13px] leading-relaxed",
+          tall && "max-h-80 overflow-y-auto",
+        )}
+      >
         <code>
           {tokens === undefined
             ? text
@@ -39,7 +55,6 @@ export function CodeBlock({
               ))}
         </code>
       </pre>
-      <CopyCode code={code} />
     </div>
   );
 }
@@ -51,7 +66,7 @@ function CopyCode({ code }: { code: string }) {
       variant="ghost"
       size="icon-xs"
       aria-label={copied ? "Copied" : "Copy code"}
-      className="absolute top-1.5 right-1.5 [@media(hover:hover)]:opacity-0 group-hover/code:opacity-100 focus-visible:opacity-100"
+      className="h-6 w-6 text-muted-foreground hover:text-foreground transition-colors [@media(hover:hover)]:opacity-0 group-hover/code:opacity-100 focus-visible:opacity-100"
       onClick={() => {
         void navigator.clipboard.writeText(code).then(() => {
           setCopied(true);
@@ -59,7 +74,11 @@ function CopyCode({ code }: { code: string }) {
         });
       }}
     >
-      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? (
+        <CheckIcon className="size-3.5 text-green-600 dark:text-green-400" />
+      ) : (
+        <CopyIcon className="size-3.5" />
+      )}
     </Button>
   );
 }

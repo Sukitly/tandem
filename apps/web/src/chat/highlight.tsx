@@ -20,7 +20,7 @@ export function HighlightedLine({ tokens, className }: { tokens: Token[]; classN
         <span
           // biome-ignore lint/suspicious/noArrayIndexKey: tokens are positions in the line.
           key={index}
-          className="text-(--code-light) dark:text-(--code-dark)"
+          className="code-token"
           style={tokenStyle(token)}
         >
           {token.content}
