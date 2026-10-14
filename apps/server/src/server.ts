@@ -343,7 +343,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   ownPort = port;
   options.preview?.ignorePort(port);
   ownOrigin = `http://${hostname}:${port}`;
-  for (const host of [hostname, "localhost"]) fixedOrigins.add(`http://${host}:${port}`);
+  for (const host of [hostname, "127.0.0.1", "localhost"]) fixedOrigins.add(`http://${host}:${port}`);
   updateOrigins();
   const activityTimer = setInterval(
     () => {

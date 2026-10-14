@@ -1,0 +1,32 @@
+services:
+  tandem:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tandem:latest
+    container_name: tandem
+    restart: unless-stopped
+    ports:
+      # Bound strictly to host loopback interface (127.0.0.1) to prevent intranet exposure
+      - "127.0.0.1:4820:4820"
+    environment:
+      - TANDEM_HOST=0.0.0.0
+      - TANDEM_HOME=/data
+    volumes:
+      # Persistent storage for Tandem database, paired devices, and settings
+      - tandem_data:/data
+      # Mount project workspace directory
+      - ./workspace:/workspace
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+
+volumes:
+  tandem_data:
+    name: tandem_data
