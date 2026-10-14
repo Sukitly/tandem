@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { FileIcon } from "@react-symbols/icons/utils";
 import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
-import { AlertCircleIcon, Columns2Icon, Rows2Icon } from "lucide-react";
+import { AlertCircleIcon, Columns2Icon, Rows2Icon, WrapTextIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
@@ -27,6 +27,7 @@ import {
 import type { ChangeTarget } from "./change-target.ts";
 
 const DIFF_STYLE_KEY = "tandem.diffStyle";
+const DIFF_WRAP_KEY = "tandem.diffWrap";
 
 /** A patch with the file it belongs to, so that another file's patch is never shown in its place. */
 interface LoadedPatch {
@@ -54,10 +55,11 @@ export function ChangesView({
 }) {
   const { openFile, forgetChangeTarget } = useWorkbench();
   const state = useReplicatedState(changes?.state);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(() => state?.files[0]?.path ?? null);
   /** The place the diff is scrolling to, kept while this panel is shown. */
   const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
   const [styled, setStyled] = useState<"split" | "unified">(storedDiffStyle);
+  const [wrap, setWrap] = useState<boolean>(storedDiffWrap);
   const [loaded, setLoaded] = useState<LoadedPatch | null>(null);
   const [readFailure, setReadFailure] = useState<string | null>(null);
 
@@ -188,6 +190,8 @@ export function ChangesView({
                 failure={readFailure}
                 styled={styled}
                 onStyled={setStyled}
+                wrap={wrap}
+                onWrap={setWrap}
                 comments={comments}
               />
             </ResizablePanel>
@@ -227,13 +231,15 @@ function titleOf(status: "ready" | "notRepository" | "error"): string {
   return status === "error" ? "Cannot read the changes" : "Changes";
 }
 
-/** The selected file's patch, with the one control that changes how it is shown. */
+/** The selected file's patch, with the controls that change how it is shown. */
 function ChangeView({
   file,
   patch,
   failure,
   styled,
   onStyled,
+  wrap,
+  onWrap,
   comments,
   reveal,
 }: {
@@ -242,6 +248,8 @@ function ChangeView({
   failure: string | null;
   styled: "split" | "unified";
   onStyled(style: "split" | "unified"): void;
+  wrap: boolean;
+  onWrap(wrap: boolean): void;
   comments: ProjectComments;
   reveal?: ChangeTarget;
 }) {
@@ -252,6 +260,26 @@ function ChangeView({
         <p className="min-w-0 flex-1 truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
           {file.path}
         </p>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={wrap ? "secondary" : "ghost"}
+                size="icon-xs"
+                aria-label={wrap ? "Do not wrap lines" : "Wrap lines"}
+                aria-pressed={wrap}
+                onClick={() => {
+                  const nextWrap = !wrap;
+                  localStorage.setItem(DIFF_WRAP_KEY, String(nextWrap));
+                  onWrap(nextWrap);
+                }}
+              />
+            }
+          >
+            <WrapTextIcon />
+          </TooltipTrigger>
+          <TooltipContent>{wrap ? "Do not wrap lines" : "Wrap lines"}</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -289,7 +317,7 @@ function ChangeView({
             </EmptyHeader>
           </Empty>
         ) : (
-          <ChangeDiff path={file.path} patch={patch} style={styled} comments={comments} reveal={reveal} />
+          <ChangeDiff path={file.path} patch={patch} style={styled} wrap={wrap} comments={comments} reveal={reveal} />
         )}
       </div>
     </section>
@@ -298,4 +326,8 @@ function ChangeView({
 
 function storedDiffStyle(): "split" | "unified" {
   return localStorage.getItem(DIFF_STYLE_KEY) === "unified" ? "unified" : "split";
+}
+
+function storedDiffWrap(): boolean {
+  return localStorage.getItem(DIFF_WRAP_KEY) === "true";
 }

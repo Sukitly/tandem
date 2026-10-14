@@ -34,12 +34,14 @@ export function ChangeDiff({
   path,
   patch,
   style,
+  wrap = false,
   comments,
   reveal,
 }: {
   path: string;
   patch: FilePatch;
   style: "split" | "unified";
+  wrap?: boolean;
   comments: ProjectComments;
   /** A place of this file asked for, which the diff scrolls to. */
   reveal?: ChangeTarget;
@@ -157,7 +159,7 @@ export function ChangeDiff({
             themeType: choice,
             diffStyle: style,
             disableFileHeader: true,
-            overflow: "scroll",
+            overflow: wrap ? "wrap" : "scroll",
             // Clicking a line's number writes a comment on it too. The library's own hover button is left off: its button
             // and the row it marks belong to the item, and a comment arriving re-renders the item, which strands both on
             // the row they were on.
