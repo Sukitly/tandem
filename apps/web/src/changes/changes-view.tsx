@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { FileIcon } from "@react-symbols/icons/utils";
 import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
-import { AlertCircleIcon, Columns2Icon, Rows2Icon, WrapTextIcon } from "lucide-react";
+import { AlertCircleIcon, Columns2Icon, Maximize2Icon, Minimize2Icon, Rows2Icon, WrapTextIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
@@ -27,7 +27,9 @@ import {
 import type { ChangeTarget } from "./change-target.ts";
 
 const DIFF_STYLE_KEY = "tandem.diffStyle";
+const DIFF_STYLE_ZOOMED_KEY = "tandem.diffStyle.zoomed";
 const DIFF_WRAP_KEY = "tandem.diffWrap";
+const DIFF_WRAP_ZOOMED_KEY = "tandem.diffWrap.zoomed";
 
 /** A patch with the file it belongs to, so that another file's patch is never shown in its place. */
 interface LoadedPatch {
@@ -58,8 +60,10 @@ export function ChangesView({
   const [selected, setSelected] = useState<string | null>(() => state?.files[0]?.path ?? null);
   /** The place the diff is scrolling to, kept while this panel is shown. */
   const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
-  const [styled, setStyled] = useState<"split" | "unified">(storedDiffStyle);
-  const [wrap, setWrap] = useState<boolean>(storedDiffWrap);
+  const [inlineStyled, setInlineStyled] = useState<"split" | "unified">(() => storedDiffStyle(false));
+  const [zoomedStyled, setZoomedStyled] = useState<"split" | "unified">(() => storedDiffStyle(true));
+  const [inlineWrap, setInlineWrap] = useState<boolean>(() => storedDiffWrap(false));
+  const [zoomedWrap, setZoomedWrap] = useState<boolean>(() => storedDiffWrap(true));
   const [loaded, setLoaded] = useState<LoadedPatch | null>(null);
   const [readFailure, setReadFailure] = useState<string | null>(null);
 
@@ -188,10 +192,14 @@ export function ChangesView({
                 reveal={revealed ?? undefined}
                 patch={loaded?.path === selectedFile.path ? loaded.patch : null}
                 failure={readFailure}
-                styled={styled}
-                onStyled={setStyled}
-                wrap={wrap}
-                onWrap={setWrap}
+                inlineStyled={inlineStyled}
+                onInlineStyled={setInlineStyled}
+                zoomedStyled={zoomedStyled}
+                onZoomedStyled={setZoomedStyled}
+                inlineWrap={inlineWrap}
+                onInlineWrap={setInlineWrap}
+                zoomedWrap={zoomedWrap}
+                onZoomedWrap={setZoomedWrap}
                 comments={comments}
               />
             </ResizablePanel>
@@ -236,26 +244,76 @@ function ChangeView({
   file,
   patch,
   failure,
-  styled,
-  onStyled,
-  wrap,
-  onWrap,
+  inlineStyled,
+  onInlineStyled,
+  zoomedStyled,
+  onZoomedStyled,
+  inlineWrap,
+  onInlineWrap,
+  zoomedWrap,
+  onZoomedWrap,
   comments,
   reveal,
 }: {
   file: ChangedFile;
   patch: FilePatch | null;
   failure: string | null;
-  styled: "split" | "unified";
-  onStyled(style: "split" | "unified"): void;
-  wrap: boolean;
-  onWrap(wrap: boolean): void;
+  inlineStyled: "split" | "unified";
+  onInlineStyled(style: "split" | "unified"): void;
+  zoomedStyled: "split" | "unified";
+  onZoomedStyled(style: "split" | "unified"): void;
+  inlineWrap: boolean;
+  onInlineWrap(wrap: boolean): void;
+  zoomedWrap: boolean;
+  onZoomedWrap(wrap: boolean): void;
   comments: ProjectComments;
   reveal?: ChangeTarget;
 }) {
+  const [zoomed, setZoomed] = useState(false);
+  const styled = zoomed ? zoomedStyled : inlineStyled;
+  const wrap = zoomed ? zoomedWrap : inlineWrap;
   const next = styled === "split" ? "unified" : "split";
+
+  useEffect(() => {
+    if (!zoomed) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setZoomed(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [zoomed]);
+
+  const toggleWrap = (): void => {
+    const nextWrap = !wrap;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(zoomed ? DIFF_WRAP_ZOOMED_KEY : DIFF_WRAP_KEY, String(nextWrap));
+    }
+    if (zoomed) {
+      onZoomedWrap(nextWrap);
+    } else {
+      onInlineWrap(nextWrap);
+    }
+  };
+
+  const toggleStyled = (): void => {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(zoomed ? DIFF_STYLE_ZOOMED_KEY : DIFF_STYLE_KEY, next);
+    }
+    if (zoomed) {
+      onZoomedStyled(next);
+    } else {
+      onInlineStyled(next);
+    }
+  };
+
   return (
-    <section className="flex h-full min-h-0 flex-col" aria-label={`Diff of ${file.path}`}>
+    <section
+      className={cn("flex min-h-0 flex-col bg-background", zoomed ? "fixed inset-0 z-40 h-dvh w-dvw" : "h-full")}
+      aria-label={`Diff of ${file.path}`}
+    >
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <p className="min-w-0 flex-1 truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
           {file.path}
@@ -268,11 +326,7 @@ function ChangeView({
                 size="icon-xs"
                 aria-label={wrap ? "Do not wrap lines" : "Wrap lines"}
                 aria-pressed={wrap}
-                onClick={() => {
-                  const nextWrap = !wrap;
-                  localStorage.setItem(DIFF_WRAP_KEY, String(nextWrap));
-                  onWrap(nextWrap);
-                }}
+                onClick={toggleWrap}
               />
             }
           >
@@ -287,16 +341,29 @@ function ChangeView({
                 variant="ghost"
                 size="icon-xs"
                 aria-label={next === "split" ? "Show the diff in two columns" : "Show the diff in one column"}
-                onClick={() => {
-                  localStorage.setItem(DIFF_STYLE_KEY, next);
-                  onStyled(next);
-                }}
+                onClick={toggleStyled}
               />
             }
           >
             {styled === "split" ? <Columns2Icon /> : <Rows2Icon />}
           </TooltipTrigger>
           <TooltipContent>{next === "split" ? "Two columns" : "One column"}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={zoomed ? "secondary" : "ghost"}
+                size="icon-xs"
+                aria-label={zoomed ? "Exit full screen" : "Full screen"}
+                aria-pressed={zoomed}
+                onClick={() => setZoomed((current) => !current)}
+              />
+            }
+          >
+            {zoomed ? <Minimize2Icon /> : <Maximize2Icon />}
+          </TooltipTrigger>
+          <TooltipContent>{zoomed ? "Exit full screen" : "Full screen"}</TooltipContent>
         </Tooltip>
       </header>
       <div className="min-h-0 flex-1">
@@ -324,10 +391,19 @@ function ChangeView({
   );
 }
 
-function storedDiffStyle(): "split" | "unified" {
-  return localStorage.getItem(DIFF_STYLE_KEY) === "unified" ? "unified" : "split";
+export function storedDiffStyle(zoomed: boolean): "split" | "unified" {
+  if (typeof localStorage === "undefined") return zoomed ? "split" : "unified";
+  if (zoomed) {
+    return localStorage.getItem(DIFF_STYLE_ZOOMED_KEY) === "unified" ? "unified" : "split";
+  }
+  const stored = localStorage.getItem(DIFF_STYLE_KEY);
+  return stored === "split" ? "split" : "unified";
 }
 
-function storedDiffWrap(): boolean {
+export function storedDiffWrap(zoomed: boolean): boolean {
+  if (typeof localStorage === "undefined") return false;
+  if (zoomed) {
+    return localStorage.getItem(DIFF_WRAP_ZOOMED_KEY) === "true";
+  }
   return localStorage.getItem(DIFF_WRAP_KEY) === "true";
 }

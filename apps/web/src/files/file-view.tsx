@@ -1,4 +1,4 @@
-import { AlertCircleIcon, FileIcon, XIcon } from "lucide-react";
+import { AlertCircleIcon, FileIcon, Maximize2Icon, Minimize2Icon, XIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { HighlightedLine, languageOfFile, useHighlighted } from "@/chat/highlight.tsx";
 import { anchorAt, placeThreads, revealedLine } from "@/comments/comment-anchor.ts";
@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatSize } from "./format-size.ts";
 import { type OpenedFile, type ProjectFiles, useProjectFiles } from "./project-files.ts";
@@ -19,9 +20,26 @@ const MAX_HIGHLIGHTED_LINES = 3000;
 export function FileView({ files, comments }: { files: ProjectFiles; comments: ProjectComments }) {
   const opened = useProjectFiles(files, (current) => current.opened);
   const content = useProjectFiles(files, (current) => current.content);
+  const [zoomed, setZoomed] = useState(false);
+
+  useEffect(() => {
+    if (!zoomed) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setZoomed(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [zoomed]);
+
   if (opened === null) return null;
   return (
-    <section className="flex h-full min-h-0 flex-col" aria-label={`File ${opened.path}`}>
+    <section
+      className={cn("flex min-h-0 flex-col bg-background", zoomed ? "fixed inset-0 z-40 h-dvh w-dvw" : "h-full")}
+      aria-label={`File ${opened.path}`}
+    >
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <p className="min-w-0 flex-1 truncate font-mono text-xs" title={opened.path}>
           {opened.path}
@@ -29,7 +47,31 @@ export function FileView({ files, comments }: { files: ProjectFiles; comments: P
         {content?.status === "ready" && (
           <span className="shrink-0 font-mono text-xs text-muted-foreground">{formatSize(content.value.size)}</span>
         )}
-        <Button variant="ghost" size="icon-xs" aria-label="Close the file" onClick={() => files.close()}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={zoomed ? "secondary" : "ghost"}
+                size="icon-xs"
+                aria-label={zoomed ? "Exit full screen" : "Full screen"}
+                aria-pressed={zoomed}
+                onClick={() => setZoomed((current) => !current)}
+              />
+            }
+          >
+            {zoomed ? <Minimize2Icon /> : <Maximize2Icon />}
+          </TooltipTrigger>
+          <TooltipContent>{zoomed ? "Exit full screen" : "Full screen"}</TooltipContent>
+        </Tooltip>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Close the file"
+          onClick={() => {
+            setZoomed(false);
+            files.close();
+          }}
+        >
           <XIcon />
         </Button>
       </header>

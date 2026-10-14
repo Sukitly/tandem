@@ -3,7 +3,7 @@ import type { ChangedFile, ChangesState } from "@tandem/contracts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ChangesView } from "../src/changes/changes-view.tsx";
+import { ChangesView, storedDiffStyle, storedDiffWrap } from "../src/changes/changes-view.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
 import { SidebarProvider } from "../src/components/ui/sidebar.tsx";
 
@@ -109,5 +109,38 @@ describe("file type icons in the changed files list", () => {
     const markup = changes();
     expect(markup).toContain('aria-label="Do not wrap lines"');
     expect(markup).toContain('aria-pressed="true"');
+  });
+
+  test("shows full screen zoom toggle button for the selected diff", () => {
+    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
+    const markup = changes();
+    expect(markup).toContain('aria-label="Full screen"');
+  });
+
+  test("stores and defaults diff style separately for inline and zoomed states", () => {
+    expect(storedDiffStyle(false)).toBe("unified");
+    expect(storedDiffStyle(true)).toBe("split");
+
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => {
+        if (key === "tandem.diffStyle") return "split";
+        if (key === "tandem.diffStyle.zoomed") return "unified";
+        return null;
+      },
+    });
+    expect(storedDiffStyle(false)).toBe("split");
+    expect(storedDiffStyle(true)).toBe("unified");
+  });
+
+  test("stores diff wrap separately for inline and zoomed states", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => {
+        if (key === "tandem.diffWrap") return "true";
+        if (key === "tandem.diffWrap.zoomed") return "false";
+        return null;
+      },
+    });
+    expect(storedDiffWrap(false)).toBe(true);
+    expect(storedDiffWrap(true)).toBe(false);
   });
 });
