@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import type { TunnelState } from "@tandem/contracts";
+import { type TunnelIdentity, type TunnelState, tunnelTokenIdentity } from "@tandem/contracts";
 import { CLOUDFLARED, cloudflaredMissing } from "./cloudflared.ts";
 import { defaultStateDirPath } from "./state-dir.ts";
 import { loadTunnelConfig, saveTunnelConfig, type TunnelConfig, tunnelConfigPath } from "./tunnel-config.ts";
-import { tunnelFileYamlPath } from "./tunnel-file.ts";
+import { localTunnelIdentity, tunnelFileYamlPath } from "./tunnel-file.ts";
 import { startTunnel, type TunnelRunner } from "./tunnel-runner.ts";
 import { setupTunnel } from "./tunnel-setup.ts";
 
@@ -14,6 +14,8 @@ export interface PublicAccessView {
   readonly publicUrl?: string;
   readonly authorizationUrl?: string;
   readonly message?: string;
+  /** The tunnel that is configured, when it can be told, for a page to link to its dashboard. */
+  readonly tunnel?: TunnelIdentity;
 }
 
 /**
@@ -130,15 +132,22 @@ export class TunnelControl {
   }
 
   #start(config: TunnelConfig): void {
-    void this.#stopRunner().then(() => {
+    void Promise.all([this.#stopRunner(), this.#identify(config)]).then(([, tunnel]) => {
+      const known = tunnel === undefined ? {} : { tunnel };
       this.#runner = startTunnel(config, {
         stateDir: this.#stateDir,
         executable: this.#executable,
         onLog: this.#onLog,
-        onState: (status) => this.#report({ status, publicUrl: config.publicUrl }),
+        onState: (status) => this.#report({ status, publicUrl: config.publicUrl, ...known }),
       });
-      this.#report({ status: this.#runner.state(), publicUrl: config.publicUrl });
+      this.#report({ status: this.#runner.state(), publicUrl: config.publicUrl, ...known });
     });
+  }
+
+  /** Which tunnel runs, read the way the runner chooses: the file this machine wrote wins over a token. */
+  async #identify(config: TunnelConfig): Promise<TunnelIdentity | undefined> {
+    if (existsSync(tunnelFileYamlPath(this.#stateDir))) return localTunnelIdentity(this.#stateDir);
+    return config.token === undefined ? undefined : tunnelTokenIdentity(config.token);
   }
 
   async #stopRunner(): Promise<void> {

@@ -43,5 +43,6 @@ function snapshot(control: TunnelControl): PublicAccessState {
     ...(view.publicUrl === undefined ? {} : { publicUrl: view.publicUrl }),
     ...(view.authorizationUrl === undefined ? {} : { authorizationUrl: view.authorizationUrl }),
     ...(view.message === undefined ? {} : { message: view.message }),
+    ...(view.tunnel === undefined ? {} : { tunnel: view.tunnel }),
   };
 }

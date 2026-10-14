@@ -61,7 +61,7 @@ import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { type ThemeChoice, useTheme } from "@/theme.tsx";
-import { usePublicAccessDialog } from "@/tunnel/public-access.tsx";
+import { usePublicAccessPage } from "@/tunnel/public-access.tsx";
 import { useWorkbench } from "./workbench.tsx";
 
 /**
@@ -75,7 +75,7 @@ export function AppSidebar() {
   const { selected, addProject } = useWorkbench();
   const providers = useProvidersDialog();
   const devices = useDevicesDialog();
-  const publicAccess = usePublicAccessDialog();
+  const publicAccess = usePublicAccessPage();
   const names = new Map(projects.map((project) => [project.id, project.name]));
   return (
     // Collapsed, the sidebar keeps a column of icons; the lists hide.
@@ -146,7 +146,10 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Public access" onClick={() => publicAccess.open()}>
+            <SidebarMenuButton
+              tooltip="Public access"
+              render={<a href={publicAccess.href} onClick={publicAccess.onClick} />}
+            >
               <GlobeIcon />
               <span>Public access</span>
             </SidebarMenuButton>

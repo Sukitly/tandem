@@ -1,5 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_HOST, DEFAULT_PORT } from "@tandem/contracts";
+import { checkedIdentity, DEFAULT_HOST, DEFAULT_PORT, type TunnelIdentity } from "@tandem/contracts";
 import { defaultStateDirPath } from "./state-dir.ts";
 
 /**
@@ -51,4 +52,21 @@ export function tunnelFileYaml(tunnel: LocalTunnel): string {
     "  - service: http_status:404",
     "",
   ].join("\n");
+}
+
+/**
+ * Which tunnel the file this machine wrote runs: its ID from the file, its account from the credentials the file
+ * names. `undefined` when either cannot be read, since this only serves a link to the dashboard.
+ */
+export async function localTunnelIdentity(stateDir?: string): Promise<TunnelIdentity | undefined> {
+  try {
+    const yaml = await readFile(tunnelFileYamlPath(stateDir), "utf8");
+    const tunnelId = /^tunnel:\s*(\S+)\s*$/m.exec(yaml)?.[1];
+    const credentialsFile = /^credentials-file:\s*(.+?)\s*$/m.exec(yaml)?.[1];
+    if (tunnelId === undefined || credentialsFile === undefined) return undefined;
+    const credentials = JSON.parse(await readFile(credentialsFile, "utf8")) as { AccountTag?: unknown };
+    return checkedIdentity(credentials.AccountTag, tunnelId);
+  } catch {
+    return undefined;
+  }
 }
