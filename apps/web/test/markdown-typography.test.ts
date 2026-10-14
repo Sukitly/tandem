@@ -75,6 +75,21 @@ describe("chat Markdown typography", () => {
     expect(getComputedStyle(element(root, "h4")).fontSize).toBe("1em");
   });
 
+  test("renders inline and display math through Streamdown with the patched KaTeX dependency", () => {
+    const root = markdown("Area \\(\\pi r^2\\)\n\n\\[ \\frac{1}{2} + \\sqrt{x} \\]");
+    expect(root.querySelectorAll(".katex")).toHaveLength(2);
+    expect(root.querySelector(".katex-display")).not.toBeNull();
+    expect(root.querySelector(".katex-error")).toBeNull();
+    expect(root.querySelectorAll("math")).toHaveLength(2);
+  });
+
+  test("math cannot create trusted links or load external images", () => {
+    const root = markdown(
+      "\\[ \\href{javascript:alert(1)}{click} \\]\n\n\\[ \\includegraphics{https://evil.example/track} \\]",
+    );
+    expect(root.querySelector("a, img, script")).toBeNull();
+  });
+
   test("spaces paragraphs and sections without adding gaps at the message boundaries", () => {
     const root = markdown("# First\n\nOne paragraph.\n\nAnother paragraph.\n\n## Next\n\nLast paragraph.");
     expect(getComputedStyle(element(root, "h1")).marginBlockStart).toBe("0");

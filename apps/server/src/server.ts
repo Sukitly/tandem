@@ -88,24 +88,27 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       return url.origin;
     }),
   );
-  if (publicUrl !== undefined) allowedOrigins.add(publicUrl);
   const hosts = new Set<string>();
-  const registerOrigin = (urlStr: string | undefined): void => {
-    if (urlStr === undefined) return;
-    try {
-      const origin = publicOrigin(urlStr);
-      allowedOrigins.add(origin);
-      hosts.add(new URL(origin).host);
-    } catch {
-      /* ignore invalid origins */
+  // Explicit local/development origins are stable; the tunnel contributes exactly one replaceable public origin.
+  const fixedOrigins = new Set(allowedOrigins);
+  let activePublicUrl = options.tunnel?.view.publicUrl ?? publicUrl;
+  const upgraded = new Map<Duplex, { host: string; origin: string | undefined }>();
+  const updateOrigins = (): void => {
+    allowedOrigins.clear();
+    hosts.clear();
+    for (const origin of fixedOrigins) allowedOrigins.add(origin);
+    if (activePublicUrl !== undefined) allowedOrigins.add(publicOrigin(activePublicUrl));
+    for (const origin of allowedOrigins) hosts.add(new URL(origin).host);
+    for (const [socket, source] of upgraded) {
+      if (!hosts.has(source.host) || !isAllowedOrigin(source.origin, allowedOrigins)) socket.destroy();
     }
   };
-  registerOrigin(publicUrl);
-  registerOrigin(options.tunnel?.view.publicUrl);
-  options.tunnel?.onChange((view) => {
-    registerOrigin(view.publicUrl);
+  updateOrigins();
+  const stopOrigins = options.tunnel?.onChange((view) => {
+    activePublicUrl = view.publicUrl;
+    updateOrigins();
   });
-  const currentPublicUrl = (): string | undefined => options.tunnel?.view.publicUrl ?? publicUrl;
+  const currentPublicUrl = (): string | undefined => activePublicUrl;
   const sockets = new Map<string, Set<Duplex>>();
   const stopRevocations = devices.onRevoke((id) => {
     for (const socket of sockets.get(id) ?? []) socket.destroy();
@@ -133,7 +136,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   const sessionCookie = (request: IncomingMessage, secret: string, clear = false): string => {
     const pub = currentPublicUrl();
     const secure = pub !== undefined && cameFromPublicOrigin(request, pub);
-    // Cookie lifetime exceeds the idle limit; authentication enforces 30 days without activity server-side.
+    // Fixed browser lifetime; authentication separately enforces 30 days without activity server-side.
     return `${cookieName}=${secret}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${clear ? 0 : 400 * 24 * 60 * 60}${secure ? "; Secure" : ""}`;
   };
 
@@ -173,24 +176,26 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
         (input as { code: string }).code,
         deviceName(request.headers["user-agent"]),
       );
+      if (!acceptable(request)) return sendJson(response, 403, { error: "forbidden" });
       response.setHeader("set-cookie", sessionCookie(request, secret));
       return sendJson(response, 200, { paired: true });
     }
     if ([BOOTSTRAP_PATH, PAIR_CODE_PATH, SIGN_OUT_PATH].includes(pathname) || pathname.startsWith(`${IMAGE_PATH}/`)) {
       const auth = await authorize(request);
+      if (!acceptable(request)) return sendJson(response, 403, { error: "forbidden" });
       if (auth === undefined) return sendJson(response, 401, { error: "unauthorized" });
       if (pathname === BOOTSTRAP_PATH && request.method === "GET") {
         const body: BootstrapResponse = {
           serverId,
           ...(auth.deviceId === undefined ? {} : { deviceId: auth.deviceId }),
         };
-        const secret = cookie(request, cookieName);
-        if (!auth.master && secret !== undefined) response.setHeader("set-cookie", sessionCookie(request, secret));
+        // Do not rewrite cookies on GET: Origin may be absent and a tunnel may rewrite Host. Reconstructing
+        // cookie attributes here could downgrade a public Secure cookie. Pairing sets its fixed lifetime.
         return sendJson(response, 200, body);
       }
       if (pathname === PAIR_CODE_PATH && request.method === "POST") {
         if (!auth.master) return sendJson(response, 403, { error: "The installation master key is required" });
-        const issued = devices.issue(publicUrl);
+        const issued = devices.issue(currentPublicUrl());
         // Where a launcher that reuses this server must open the browser: its own page, or the one configured for it.
         const entry = options.webEntry ?? (web === undefined ? undefined : ownOrigin);
         return sendJson(response, 200, entry === undefined ? issued : { ...issued, entry });
@@ -242,6 +247,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       if (auth === undefined) return rejectUpgrade(socket, 401, "Unauthorized");
       // Browser cookies require an Origin on upgrades; only explicit bearer clients may omit it.
       if (!auth.master && request.headers.origin === undefined) return rejectUpgrade(socket, 403, "Forbidden");
+      // Origins can change while authentication waits for persistent device state.
+      if (!acceptable(request)) return rejectUpgrade(socket, 403, "Forbidden");
+      upgraded.set(socket, { host: request.headers.host ?? "", origin: request.headers.origin });
+      socket.once("close", () => upgraded.delete(socket));
       if (auth.deviceId !== undefined) {
         const id = auth.deviceId;
         const held = sockets.get(id) ?? new Set<Duplex>();
@@ -277,14 +286,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     });
   } catch (error) {
     stopRevocations();
+    stopOrigins?.();
     terminalSockets.close();
     await rpc.close();
     throw error;
   }
   const { port } = http.address() as AddressInfo;
   ownOrigin = `http://${hostname}:${port}`;
-  for (const host of [hostname, "localhost"]) allowedOrigins.add(`http://${host}:${port}`);
-  for (const origin of allowedOrigins) hosts.add(new URL(origin).host);
+  for (const host of [hostname, "localhost"]) fixedOrigins.add(`http://${host}:${port}`);
+  updateOrigins();
   const activityTimer = setInterval(
     () => {
       void devices.touchActive().catch(onError);
@@ -301,6 +311,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     async stop() {
       clearInterval(activityTimer);
       stopRevocations();
+      stopOrigins?.();
       terminalSockets.close();
       await rpc.close();
       await new Promise<void>((resolve, reject) => {

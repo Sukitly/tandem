@@ -16,6 +16,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { WebSocket } from "ws";
 import { DeviceSessions } from "../src/device-sessions.ts";
 import { publicOrigin, startServer, type TandemServer } from "../src/server.ts";
+import type { PublicAccessView, TunnelControl } from "../src/tunnel-control.ts";
 
 /** fetch controls Host itself; use HTTP directly to test the tunnel boundary's forwarded Host. */
 function rawHttp(url: URL, headers: Record<string, string>, body?: string): Promise<Response> {
@@ -80,7 +81,7 @@ describe("device authentication at the HTTP boundary", () => {
     const cookie = set.split(";")[0] as string;
     const bootstrap = await fetch(new URL(BOOTSTRAP_PATH, server.url), { headers: { cookie } });
     expect(await bootstrap.json()).toMatchObject({ serverId: server.serverId, deviceId: expect.any(String) });
-    expect(bootstrap.headers.get("set-cookie")).toContain("HttpOnly");
+    expect(bootstrap.headers.get("set-cookie")).toBeNull();
     const ws = await socket(server, { cookie, origin: server.url.origin });
     expect(ws).toBeInstanceOf(WebSocket);
     expect(await socket(server, { cookie, origin: "https://evil.example" })).toBe(403);
@@ -168,6 +169,14 @@ describe("device authentication at the HTTP boundary", () => {
     );
     expect(rewritten.status).toBe(200);
     expect(rewritten.headers.get("set-cookie")).toContain("; Secure");
+    const cookie = rewritten.headers.get("set-cookie")?.split(";")[0] as string;
+    // Same-origin GET normally omits Origin; the rewritten Host must not downgrade the existing cookie.
+    const bootstrap = await rawHttp(new URL(BOOTSTRAP_PATH, server.url), {
+      host: new URL(server.url).host,
+      cookie,
+    });
+    expect(bootstrap.status).toBe(200);
+    expect(bootstrap.headers.get("set-cookie")).toBeNull();
 
     // A request that says it came from somewhere else is not the public origin, whatever Host it addressed.
     const elsewhere = await rawHttp(
@@ -183,6 +192,55 @@ describe("device authentication at the HTTP boundary", () => {
     const blocked = await pair("wrong");
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get("retry-after")).toBe("60");
+  });
+  test("anonymous failures cannot prevent valid pairing or recovery through HTTP", async () => {
+    const { server, devices, pair } = await start();
+    const code = server.pair().code;
+    const recovery = (await devices.regenerateRecoveryCodes())[0] as string;
+    for (let i = 0; i < 5; i++) await pair("wrong");
+    expect((await pair("wrong")).status).toBe(429);
+    expect((await pair(code)).status).toBe(200);
+    expect((await pair(recovery)).status).toBe(200);
+    expect((await pair(code)).status).toBe(429);
+    expect((await pair(recovery)).status).toBe(429);
+  });
+  test("replacing or removing a public origin revokes old HTTP and WebSocket access", async () => {
+    const oldOrigin = "https://old.example.com";
+    const nextOrigin = "https://next.example.com";
+    let changed: ((view: PublicAccessView) => void) | undefined;
+    const tunnel = {
+      view: { status: "connected", publicUrl: oldOrigin },
+      onChange(listener: (view: PublicAccessView) => void) {
+        changed = listener;
+        return () => {
+          changed = undefined;
+        };
+      },
+    } as TunnelControl;
+    // The initial CLI origin must not reappear after unpublish either.
+    const { server, pair } = await start({ tunnel, publicUrl: oldOrigin });
+    const paired = await pair(server.pair().code, { origin: oldOrigin });
+    const cookie = paired.headers.get("set-cookie")?.split(";")[0] as string;
+    const ws = (await socket(server, { cookie, origin: oldOrigin })) as WebSocket;
+    const closed = new Promise((resolve) => ws.once("close", resolve));
+    changed?.({ status: "connected", publicUrl: nextOrigin });
+    await closed;
+    expect(await socket(server, { cookie, origin: oldOrigin })).toBe(403);
+    expect((await rawHttp(server.url, { host: "old.example.com" })).status).toBe(403);
+    expect((await pair(server.pair().code, { origin: oldOrigin })).status).toBe(403);
+    expect(await socket(server, { cookie, origin: nextOrigin })).toBeInstanceOf(WebSocket);
+    const code = await fetch(new URL(PAIR_CODE_PATH, server.url), {
+      method: "POST",
+      headers: { authorization: `Bearer ${server.token}` },
+    });
+    expect((await code.json()).publicUrl).toBe(nextOrigin);
+    changed?.({ status: "none" });
+    expect(server.pair().publicUrl).toBeUndefined();
+    expect(await socket(server, { cookie, origin: nextOrigin })).toBe(403);
+    expect((await rawHttp(server.url, { host: "next.example.com" })).status).toBe(403);
+    expect((await rawHttp(server.url, { host: "old.example.com" })).status).toBe(403);
+    // Local access remains available after removing the public origin.
+    expect(await socket(server, { cookie, origin: server.url.origin })).toBeInstanceOf(WebSocket);
   });
 });
 

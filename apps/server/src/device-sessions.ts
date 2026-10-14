@@ -57,11 +57,13 @@ export class DeviceSessions {
   redeem(code: string, name: string): Promise<{ secret: string; device: DeviceSummary }> {
     return this.#queue.run(async () => {
       const now = this.#now();
-      if (now < this.#blockedUntil) throw new PairingError("Too many failed attempts. Try again in one minute.", 429);
       const hash = digest(normalize(code));
       const expires = this.#codes.get(hash);
       const recovery = this.#stored.recoveryHashes.indexOf(hash);
       if (!(expires !== undefined && expires > now) && recovery < 0) {
+        // A valid 128-bit code proves possession even during an anonymous failure flood. Never let wrong guesses
+        // lock out its owner. Invalid attempts still receive the shared backoff without creating devices or writes.
+        if (now < this.#blockedUntil) throw new PairingError("Too many failed attempts. Try again in one minute.", 429);
         this.#failures += 1;
         if (this.#failures >= 5) {
           this.#blockedUntil = now + 60_000;

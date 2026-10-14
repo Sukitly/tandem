@@ -57,14 +57,19 @@ describe("device sessions", () => {
     await restarted.regenerateRecoveryCodes();
     await expect(restarted.redeem(codes[1] as string, "Old")).rejects.toThrow();
   });
-  test("five failed attempts block even a correct code for a minute", async () => {
+  test("invalid attempts back off without blocking valid pairing or recovery codes", async () => {
     let now = 100;
     const store = await DeviceSessions.load(undefined, () => now);
     const pair = store.issue();
     for (let i = 0; i < 5; i++) await expect(store.redeem("wrong", "A")).rejects.toThrow();
-    await expect(store.redeem(pair.code, "A")).rejects.toMatchObject({ status: 429 });
-    now += 60_000;
+    await expect(store.redeem("wrong", "A")).rejects.toMatchObject({ status: 429 });
+    const recovery = await store.regenerateRecoveryCodes();
     expect((await store.redeem(pair.code, "A")).secret).toBeDefined();
+    expect((await store.redeem(recovery[0] as string, "B")).secret).toBeDefined();
+    await expect(store.redeem(pair.code, "Replay")).rejects.toMatchObject({ status: 429 });
+    await expect(store.redeem(recovery[0] as string, "Replay")).rejects.toMatchObject({ status: 429 });
+    now += 60_000;
+    await expect(store.redeem("wrong", "A")).rejects.toMatchObject({ status: 400 });
   });
   test("revoking others preserves the selected device and publishes metadata without secrets", async () => {
     const store = await DeviceSessions.load();
