@@ -69,9 +69,9 @@ describe("chat Markdown typography", () => {
     const root = markdown("# First\n\nBody text.\n\n## Second\n\n### Third\n\n#### Fourth", streaming);
     expect(getComputedStyle(root).fontSize).toBe("1rem");
     expect(getComputedStyle(root).lineHeight).toBe("1.75");
-    expect(getComputedStyle(element(root, "h1")).fontSize).toBe("1.25em");
-    expect(getComputedStyle(element(root, "h2")).fontSize).toBe("1.125em");
-    expect(getComputedStyle(element(root, "h3")).fontSize).toBe("1em");
+    expect(getComputedStyle(element(root, "h1")).fontSize).toBe("1.35em");
+    expect(getComputedStyle(element(root, "h2")).fontSize).toBe("1.2em");
+    expect(getComputedStyle(element(root, "h3")).fontSize).toBe("1.1em");
     expect(getComputedStyle(element(root, "h4")).fontSize).toBe("1em");
   });
 
@@ -93,8 +93,8 @@ describe("chat Markdown typography", () => {
   test("spaces paragraphs and sections without adding gaps at the message boundaries", () => {
     const root = markdown("# First\n\nOne paragraph.\n\nAnother paragraph.\n\n## Next\n\nLast paragraph.");
     expect(getComputedStyle(element(root, "h1")).marginBlockStart).toBe("0");
-    expect(getComputedStyle(element(root, "p")).marginBlock).toBe("0 1em");
-    expect(getComputedStyle(element(root, "h2")).marginBlock).toBe("1.5em 0.5em");
+    expect(getComputedStyle(element(root, "p")).marginBlock).toBe("0 1rem");
+    expect(getComputedStyle(element(root, "h2")).marginBlock).toBe("1.75rem 0.5rem");
     expect(getComputedStyle(element(root, ":scope > :last-child")).marginBlockEnd).toBe("0");
   });
 
@@ -137,7 +137,7 @@ describe("chat Markdown typography", () => {
     expect(getComputedStyle(diagram).padding).toBe("0px");
     expect(element(diagram, '[data-streamdown="mermaid-block-actions"]')).toBeDefined();
     const paragraph = element(document.body, '[data-chat-markdown="paragraph"]');
-    expect(getComputedStyle(paragraph).marginBlock).toBe("0 1em");
+    expect(getComputedStyle(paragraph).marginBlock).toBe("0 1rem");
   });
 
   test("aligns wrapped list text and keeps loose paragraphs and nested lists separate", () => {
@@ -151,13 +151,13 @@ describe("chat Markdown typography", () => {
     const ordered = element(root, "ol");
     const nested = element(root, "li > ul");
     expect(getComputedStyle(ordered).listStylePosition).toBe("outside");
-    expect(getComputedStyle(ordered).paddingInlineStart).toBe("1.5em");
+    expect(getComputedStyle(ordered).paddingInlineStart).toBe("1.5rem");
     expect(getComputedStyle(nested).listStylePosition).toBe("outside");
     expect(getComputedStyle(nested).marginBlock).toBe("0.5em 0");
     const paragraphs = root.querySelectorAll("ol > li:first-child > p");
     expect(paragraphs).toHaveLength(2);
     for (const paragraph of paragraphs) expect(getComputedStyle(paragraph).display).toBe("block");
-    expect(getComputedStyle(element(root, "ol > li + li")).marginBlockStart).toBe("0.5em");
+    expect(getComputedStyle(element(root, "ol > li + li")).marginBlockStart).toBe("0.375rem");
     expect(getComputedStyle(ordered).marginBlockEnd).toBe("0");
   });
 
@@ -230,7 +230,7 @@ describe("chat Markdown typography", () => {
   });
 
   test("uses theme variables for inline code and leaves Markdown outside chat untouched", () => {
-    expect(css).toContain("color-mix(in oklab, var(--muted) 65%, transparent)");
+    expect(css).toContain("color-mix(in oklab, var(--foreground) 5.5%, transparent)");
     markdown("A paragraph.");
     const outside = document.createElement("code");
     outside.dataset.streamdown = "inline-code";

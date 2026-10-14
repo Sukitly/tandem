@@ -36,6 +36,16 @@ const components: Components = {
   // Delegate to Streamdown so images and fenced blocks still omit their paragraph wrapper.
   p: (props: object) =>
     createElement(defaultComponents.p, { ...props, "data-chat-markdown": "paragraph" } as ComponentProps<"p">),
+  ol: (props: object) =>
+    createElement(defaultComponents.ol, {
+      ...props,
+      className: (props as { className?: string }).className?.replace(/\blist-inside\b/g, "list-outside"),
+    } as ComponentProps<"ol">),
+  ul: (props: object) =>
+    createElement(defaultComponents.ul, {
+      ...props,
+      className: (props as { className?: string }).className?.replace(/\blist-inside\b/g, "list-outside"),
+    } as ComponentProps<"ul">),
   // Links to files open them in the files panel; links to the web keep Streamdown's, which asks before leaving.
   a: (props: object) => {
     const { href, children } = props as ComponentProps<"a">;
@@ -56,7 +66,7 @@ const components: Components = {
 
 function FencedCode({ code: text, language }: { code: string; language: string | undefined }) {
   const incomplete = useIsCodeFenceIncomplete();
-  return <CodeBlock code={text} language={language} streaming={incomplete} className="my-3" />;
+  return <CodeBlock code={text} language={language} streaming={incomplete} className="my-4" />;
 }
 
 function textOf(children: ReactNode): string {
