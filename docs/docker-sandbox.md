@@ -15,7 +15,39 @@ This document describes how to run Tandem inside an isolated Docker Sandbox envi
 
 ---
 
-## 2. Quick Start with Docker Compose
+## 2. One-Click Launch with Docker Sandboxes (`sbx` microVM)
+
+Tandem provides an integrated one-click runner for Docker's dedicated Agent microVM platform (`sbx`):
+
+### Starting the Sandbox
+
+Simply run:
+```bash
+bun run sandbox
+```
+
+This single command automatically:
+1. Verifies prerequisites and initializes Docker Sandboxes network policy (`balanced`).
+2. Builds and loads the `tandem:latest` template into the Docker Sandboxes microVM runtime.
+3. Launches the hardware-isolated microVM with port `127.0.0.1:4820` published.
+4. Starts Tandem securely inside the microVM.
+5. Automatically extracts the pairing URL and opens your host browser!
+
+### Management Commands
+
+```bash
+bun run sandbox           # Start microVM, launch Tandem, and open browser
+bun run sandbox status    # Check running sandbox status
+bun run sandbox logs      # View Tandem logs inside the microVM
+bun run sandbox shell     # Open an interactive shell inside the microVM
+bun run sandbox stop      # Stop the sandbox
+bun run sandbox rm        # Remove the sandbox
+bun run sandbox rebuild   # Rebuild the image and reload the template
+```
+
+---
+
+## 3. Alternative: Docker Compose Deployment
 
 ### Prerequisites
 - Docker Engine or Docker Desktop running.
@@ -41,7 +73,7 @@ This document describes how to run Tandem inside an isolated Docker Sandbox envi
 
 ---
 
-## 3. Persistent Data & Workspace Mounting
+## 4. Persistent Data & Workspace Mounting
 
 ### Persistent State
 Tandem stores conversation histories, task snapshots, paired devices, and model API credentials in `/data` inside the container. This is mapped to the named volume `tandem_data` defined in `compose.yaml`, surviving container restarts and image updates.
@@ -61,7 +93,7 @@ Inside Tandem's web UI, click **Add project** and choose `/workspace` (or subdir
 
 ---
 
-## 4. Environment Variables
+## 5. Environment Variables
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
