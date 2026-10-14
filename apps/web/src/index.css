@@ -176,3 +176,16 @@
   border-color: var(--input);
   box-shadow: none;
 }
+
+/*
+ * Prevent iOS Safari and mobile browsers from auto-zooming the viewport when focusing xterm's hidden helper textarea.
+ */
+.xterm .xterm-helper-textarea {
+  /* biome-ignore lint/complexity/noImportantStyles: xterm.css declares font-size with !important */
+  font-size: 16px !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}

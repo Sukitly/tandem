@@ -1,15 +1,23 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
-import { AlertCircleIcon, ArrowDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  ArrowDownIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+} from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
+import { SidebarToggle } from "@/app/sidebar.tsx";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation } from "@/rpc/use-conversation.ts";
 import { usePrompts } from "@/rpc/use-prompts.ts";
@@ -222,7 +230,7 @@ function ChatFrame({
       {/* As tall as the files panel's header beside it, so that their borders line up. */}
       <header className="flex h-13 min-w-0 shrink-0 items-center gap-2 border-b px-3">
         {/* On a narrow screen the sidebar is a drawer, out of sight, so the header opens it. */}
-        <SidebarTrigger className="md:hidden" />
+        <SidebarToggle className="md:hidden" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-mono text-xs text-muted-foreground">{cwd}</p>
           <h1 className="truncate text-sm font-medium">{title}</h1>
@@ -237,6 +245,7 @@ function ChatFrame({
 /** Shows or hides the files panel beside the conversation. */
 function FilesToggle() {
   const { filesShown, showFiles } = useWorkbench();
+  const isMobile = useIsMobile();
   const label = filesShown ? "Hide files" : "Show files";
   return (
     <Button
@@ -246,7 +255,17 @@ function FilesToggle() {
       aria-pressed={filesShown}
       onClick={() => showFiles(!filesShown)}
     >
-      {filesShown ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+      {isMobile ? (
+        filesShown ? (
+          <ChevronDownIcon />
+        ) : (
+          <ChevronUpIcon />
+        )
+      ) : filesShown ? (
+        <ChevronRightIcon />
+      ) : (
+        <ChevronLeftIcon />
+      )}
     </Button>
   );
 }

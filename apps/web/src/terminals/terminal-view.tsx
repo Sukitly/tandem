@@ -6,6 +6,7 @@ import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 
 /** How a page draws a terminal; the server keeps as many lines. */
@@ -29,6 +30,7 @@ const HIDE_CURSOR = "\x1b[?25l";
  */
 export function TerminalView({ id, active, ended }: { id: string; active: boolean; ended: boolean }) {
   const { openTerminal } = useConnected();
+  const isMobile = useIsMobile();
   const box = useRef<HTMLDivElement>(null);
   const [link, setLink] = useState<TerminalLink>("connecting");
   const parts = useRef<Parts | null>(null);
@@ -42,13 +44,15 @@ export function TerminalView({ id, active, ended }: { id: string; active: boolea
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(element);
-    // Drawn on the GPU where it can be; xterm's own renderer otherwise, or once the GPU context is lost.
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      terminal.loadAddon(webgl);
-    } catch {
-      // No WebGL: the DOM renderer stays.
+    // Drawn on the GPU where it can be (desktop); DOM renderer on mobile or once the GPU context is lost.
+    if (!isMobile) {
+      try {
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => webgl.dispose());
+        terminal.loadAddon(webgl);
+      } catch {
+        // No WebGL: the DOM renderer stays.
+      }
     }
     const connection = openTerminal(
       id,
@@ -92,7 +96,7 @@ export function TerminalView({ id, active, ended }: { id: string; active: boolea
       terminal.dispose();
       parts.current = null;
     };
-  }, [id, openTerminal]);
+  }, [id, openTerminal, isMobile]);
 
   useEffect(() => {
     endedRef.current = ended;
