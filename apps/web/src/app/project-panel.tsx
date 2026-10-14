@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { AlertCircleIcon, RotateCwIcon, XIcon } from "lucide-react";
+import { AlertCircleIcon, EyeIcon, EyeOffIcon, RotateCwIcon, XIcon } from "lucide-react";
 import { panelTabOf, useWorkbench } from "@/app/workbench.tsx";
 import { ChangesView } from "@/changes/changes-view.tsx";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -28,7 +28,7 @@ export function ProjectPanel({
   onClose?: () => void;
 }) {
   const workbench = useWorkbench();
-  const { panelTab, showTab, changeTarget } = workbench;
+  const { panelTab, showTab, changeTarget, showHiddenFiles = false, setShowHiddenFiles } = workbench;
   const files = workbench.projectFiles(workspaceId);
   const comments = workbench.comments(workspaceId);
   const changes = useProjectChanges(workspaceId);
@@ -45,35 +45,49 @@ export function ProjectPanel({
           <TabsTrigger value="terminal">Terminal</TabsTrigger>
         </TabsList>
         {/* A terminal draws itself as the shell writes: there is nothing to read again. */}
-        {panelTab !== "terminal" && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label="Refresh"
-                  className="ml-auto"
-                  onClick={() => (panelTab === "files" ? files.refresh() : changes?.refresh(BACKGROUND_CONTEXT))}
-                />
-              }
-            >
-              <RotateCwIcon />
-            </TooltipTrigger>
-            <TooltipContent>Refresh</TooltipContent>
-          </Tooltip>
-        )}
-        {onClose && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Close"
-            className={panelTab === "terminal" ? "ml-auto" : undefined}
-            onClick={onClose}
-          >
-            <XIcon />
-          </Button>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {panelTab === "files" && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
+                    aria-pressed={showHiddenFiles}
+                    className={showHiddenFiles ? "text-foreground" : undefined}
+                    onClick={() => setShowHiddenFiles?.(!showHiddenFiles)}
+                  />
+                }
+              >
+                {showHiddenFiles ? <EyeIcon /> : <EyeOffIcon />}
+              </TooltipTrigger>
+              <TooltipContent>{showHiddenFiles ? "Hide hidden files" : "Show hidden files"}</TooltipContent>
+            </Tooltip>
+          )}
+          {panelTab !== "terminal" && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Refresh"
+                    onClick={() => (panelTab === "files" ? files.refresh() : changes?.refresh(BACKGROUND_CONTEXT))}
+                  />
+                }
+              >
+                <RotateCwIcon />
+              </TooltipTrigger>
+              <TooltipContent>Refresh</TooltipContent>
+            </Tooltip>
+          )}
+          {onClose && (
+            <Button variant="ghost" size="icon-xs" aria-label="Close" onClick={onClose}>
+              <XIcon />
+            </Button>
+          )}
+        </div>
       </header>
       <TabsContent value="files" className="flex min-h-0 flex-col">
         {failure !== null && (
@@ -92,7 +106,7 @@ export function ProjectPanel({
         )}
         <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
           <ResizablePanel id="tree" minSize={80} className="overflow-auto p-2">
-            <FileTree files={files} />
+            <FileTree files={files} showHidden={showHiddenFiles} />
           </ResizablePanel>
           {opened && (
             <>

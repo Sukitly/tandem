@@ -22,23 +22,40 @@ import { type ProjectFiles, useProjectFiles } from "./project-files.ts";
  * without one shows the closed and open folders instead, so expanding stays visible. A directory is listed when it
  * first opens.
  */
-export function FileTree({ files }: { files: ProjectFiles }) {
+export function FileTree({ files, showHidden = false }: { files: ProjectFiles; showHidden?: boolean }) {
   return (
     <SidebarMenu aria-label="Files">
-      <Entries files={files} path="" />
+      <Entries files={files} path="" showHidden={showHidden} />
     </SidebarMenu>
   );
 }
 
 /** `dimmed` comes from the directory an entry is in: everything below a hidden or ignored directory is dimmed too. */
-interface EntryProps {
+interface DirectoryProps {
+  files: ProjectFiles;
+  entry: FileEntry;
+  dimmed: boolean;
+  showHidden: boolean;
+}
+
+interface FileProps {
   files: ProjectFiles;
   entry: FileEntry;
   dimmed: boolean;
 }
 
 /** A directory's entries, listed when they are first shown. */
-function Entries({ files, path, dimmed = false }: { files: ProjectFiles; path: string; dimmed?: boolean }) {
+function Entries({
+  files,
+  path,
+  dimmed = false,
+  showHidden = false,
+}: {
+  files: ProjectFiles;
+  path: string;
+  dimmed?: boolean;
+  showHidden?: boolean;
+}) {
   const listed = useProjectFiles(files, (current) => current.directory(path));
   useEffect(() => files.load(path), [files, path]);
   if (listed === undefined || listed.status === "loading") {
@@ -49,17 +66,18 @@ function Entries({ files, path, dimmed = false }: { files: ProjectFiles; path: s
     );
   }
   if (listed.status === "failed") return null;
-  return listed.value.map((entry) => {
+  const entries = showHidden ? listed.value : listed.value.filter((entry) => !isDimmed(entry, dimmed));
+  return entries.map((entry) => {
     const entryDimmed = isDimmed(entry, dimmed);
     return entry.kind === "directory" ? (
-      <Directory key={entry.path} files={files} entry={entry} dimmed={entryDimmed} />
+      <Directory key={entry.path} files={files} entry={entry} dimmed={entryDimmed} showHidden={showHidden} />
     ) : (
       <File key={entry.path} files={files} entry={entry} dimmed={entryDimmed} />
     );
   });
 }
 
-function Directory({ files, entry, dimmed }: EntryProps) {
+function Directory({ files, entry, dimmed, showHidden }: DirectoryProps) {
   const open = useProjectFiles(files, (current) => current.isExpanded(entry.path));
   // A folder with an icon of its own keeps it open or closed; one without shows the closed and open folders.
   const named = isValidElement(getIconForFolder({ folderName: entry.name }));
@@ -72,14 +90,14 @@ function Directory({ files, entry, dimmed }: EntryProps) {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <SidebarMenuSub>
-          <Entries files={files} path={entry.path} dimmed={dimmed} />
+          <Entries files={files} path={entry.path} dimmed={dimmed} showHidden={showHidden} />
         </SidebarMenuSub>
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
-function File({ files, entry, dimmed }: EntryProps) {
+function File({ files, entry, dimmed }: FileProps) {
   // Only the opened file's row follows what is opened, so opening a file renders two rows, not the whole tree.
   const opened = useProjectFiles(files, (current) => (current.opened?.path === entry.path ? current.opened : null));
   const button = useRef<HTMLButtonElement>(null);

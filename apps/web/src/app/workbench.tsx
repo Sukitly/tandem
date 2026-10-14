@@ -10,6 +10,7 @@ import { AddProjectDialog } from "./add-project-dialog.tsx";
 
 const FILES_SHOWN_KEY = "tandem.filesShown";
 const PANEL_TAB_KEY = "tandem.panelTab";
+const SHOW_HIDDEN_FILES_KEY = "tandem.showHiddenFiles";
 
 /** The view of the panel beside the conversation. */
 export type PanelTab = "files" | "changes" | "terminal";
@@ -35,6 +36,9 @@ interface Workbench {
   /** The panel beside the conversation is shown; the user's choice, kept across reloads. */
   filesShown: boolean;
   showFiles(shown: boolean): void;
+  /** Whether hidden/excluded files (such as `.git`) are shown in the files tree. */
+  showHiddenFiles: boolean;
+  setShowHiddenFiles(show: boolean): void;
   /** Which view of the panel is shown, kept across reloads. Opening a file shows its own. */
   panelTab: PanelTab;
   showTab(tab: PanelTab): void;
@@ -90,6 +94,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     }
     wasMobile.current = isMobile;
   }, [isMobile]);
+  const [showHiddenFiles, setShowHiddenFilesState] = useState(() => {
+    return typeof window !== "undefined" && localStorage.getItem(SHOW_HIDDEN_FILES_KEY) === "true";
+  });
   const [panelTab, setPanelTab] = useState<PanelTab>(() => panelTabOf(localStorage.getItem(PANEL_TAB_KEY)));
   const [changeTarget, setChangeTarget] = useState<ChangeTarget | null>(null);
   const [projects] = useState(() => new Map<number, ProjectFiles>());
@@ -141,6 +148,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(PANEL_TAB_KEY, tab);
     setPanelTab(tab);
   };
+  const setShowHiddenFiles = (show: boolean): void => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(SHOW_HIDDEN_FILES_KEY, String(show));
+    }
+    setShowHiddenFilesState(show);
+  };
 
   const workbench: Workbench = {
     selected,
@@ -153,6 +166,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     workspaceId,
     filesShown,
     showFiles,
+    showHiddenFiles,
+    setShowHiddenFiles,
     panelTab,
     showTab,
     changeTarget,
