@@ -17,6 +17,40 @@ export interface PublicAccessState {
   readonly message?: string;
   /** Whether the `cloudflared` program is on this machine, so a page can say to install it. */
   readonly cloudflared: boolean;
+  /** The tunnel that is configured here, when Tandem can tell which one, so a page can link to its dashboard. */
+  readonly tunnel?: TunnelIdentity;
+}
+
+/**
+ * Which Cloudflare account and tunnel a connector runs. Neither is a secret: the tunnel ID is in the hostname's DNS
+ * record. Together they name the dashboard pages about that tunnel.
+ */
+export interface TunnelIdentity {
+  readonly accountId: string;
+  readonly tunnelId: string;
+}
+
+const ACCOUNT_ID = /^[0-9a-f]{32}$/i;
+const TUNNEL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Reads the account and tunnel out of a connector token, which is base64 of `{"a": account, "t": tunnel, "s":
+ * secret}`. `undefined` for anything else, since the token's shape is Cloudflare's and not a promise.
+ */
+export function tunnelTokenIdentity(token: string): TunnelIdentity | undefined {
+  try {
+    const decoded: unknown = JSON.parse(atob(token.trim().replaceAll("-", "+").replaceAll("_", "/")));
+    return checkedIdentity((decoded as { a?: unknown })?.a, (decoded as { t?: unknown })?.t);
+  } catch {
+    return undefined;
+  }
+}
+
+/** An identity only when both parts look like Cloudflare's, so that neither can bend a dashboard URL. */
+export function checkedIdentity(accountId: unknown, tunnelId: unknown): TunnelIdentity | undefined {
+  if (typeof accountId !== "string" || typeof tunnelId !== "string") return undefined;
+  if (!ACCOUNT_ID.test(accountId) || !TUNNEL_ID.test(tunnelId)) return undefined;
+  return { accountId: accountId.toLowerCase(), tunnelId: tunnelId.toLowerCase() };
 }
 
 /**

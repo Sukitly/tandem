@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { DEFAULT_HOST, DEFAULT_PORT } from "@tandem/contracts";
@@ -37,16 +39,16 @@ if (existing !== undefined) {
   if (existing.publicUrl !== undefined) console.log(`Remote pairing: ${pairingUrl(existing.publicUrl, existing.code)}`);
 } else {
   configureModelHttp();
+  const distDir = fileURLToPath(new URL("../../web/dist", import.meta.url));
+  const hasDist = existsSync(join(distDir, "index.html"));
   const faux = process.env.TANDEM_FAUX === "1";
   const server = await startApp({
     port,
     publicUrl,
     tunnel: control,
     tunnelState: () => control.tunnelState(),
-    ...(webOrigin === undefined ? {} : { webEntry: webOrigin }),
-    ...(webOrigin === undefined
-      ? { webRoot: fileURLToPath(new URL("../../web/dist", import.meta.url)) }
-      : { allowedOrigins: [webOrigin] }),
+    ...(webOrigin === undefined ? {} : { webEntry: webOrigin, allowedOrigins: [webOrigin] }),
+    ...(hasDist ? { webRoot: distDir } : {}),
     providers: [
       ...defaultProviders(),
       ...(faux ? [createFauxProvider({ tokensPerSecond: 40, respond: demoResponse })] : []),
@@ -66,11 +68,10 @@ if (existing !== undefined) {
       await server.stop();
       process.exit(0);
     });
-  // A development server does not serve the page, so a tunnel to it would publish nothing.
-  if (configured !== undefined && webOrigin === undefined) {
+  if (configured !== undefined) {
     await control.resume();
     console.log(`Tunnel: publishing ${configured.publicUrl}`);
-  } else if (configured !== undefined) console.log("Tunnel: not started while a development server serves the page.");
+  }
   console.log(`Tandem listening on ${server.url}`);
   const pair = server.pair();
   await showPairing(pairingUrl(webOrigin ?? server.url, pair.code), !values["no-open"]);

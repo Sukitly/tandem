@@ -302,7 +302,10 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
 function PairingLink({ pair }: { pair: PairingCode }) {
   const [qr, setQr] = useState<string>();
   const [failure, setFailure] = useState<string>();
-  const url = new URL("/pair", pair.publicUrl ?? window.location.origin);
+  const connected = useConnected() as { publicAccess?: { state: Parameters<typeof useReplicatedState>[0] } };
+  const publicAccessState = useReplicatedState(connected.publicAccess?.state) as { publicUrl?: string } | undefined;
+  const activeOrigin = pair.publicUrl ?? publicAccessState?.publicUrl ?? window.location.origin;
+  const url = new URL("/pair", activeOrigin);
   url.hash = pair.code;
   const href = url.href;
   useEffect(() => {
@@ -327,9 +330,9 @@ function PairingLink({ pair }: { pair: PairingCode }) {
       <p className="text-sm text-muted-foreground">
         Expires {new Date(pair.expiresAt).toLocaleTimeString()}. Anyone with this link can control Tandem.
       </p>
-      {pair.publicUrl === undefined && (
+      {pair.publicUrl === undefined && publicAccessState?.publicUrl === undefined && (
         <p className="text-sm text-muted-foreground">
-          This address is local. Configure --public-url before pairing a remote device.
+          This address is local. Configure public access before pairing a remote device.
         </p>
       )}
       {failure !== undefined && <FieldError>{failure}</FieldError>}

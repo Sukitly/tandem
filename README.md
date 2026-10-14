@@ -48,35 +48,39 @@ After `install`, open the printed pairing link to authorize your first browser. 
 
 ### Remote access
 
-The server still binds only to `127.0.0.1`, so reaching it from outside this machine means a Cloudflare Tunnel in front of it. Tandem runs the tunnel itself, as a child of the server, so it starts and stops with the server and one service covers both.
+Use your phone or another computer over the internet, without sharing a Wi-Fi network or forwarding router ports. This publishes **Tandem itself**, not your project's preview server. The Tandem host must stay awake and running; the server still binds only to `127.0.0.1`.
 
-Creating a tunnel needs authority over the Cloudflare account. Running a tunnel needs only the connector token of that one tunnel. Those are two different things, so they are two commands, and they are meant for two different machines:
+Open **Public access** from the sidebar, or go to `/#public-access` directly. The page is bookmarkable and returns to your conversation with **Back to workspace**. Every step there says where you are operating and what finishing it looks like; the notes below are the same flow in plain text.
 
-```bash
-# Where authority is acceptable: your own machine.
-bun run tunnel create --public-url https://tandem.example.com
-# → authorizes cloudflared once in a browser, creates the tunnel, points the
-#   hostname at it, and prints the token.
+Set up one hostname for the whole flow, e.g. `tandem.example.com`. A tunnel name is only a label, creating a tunnel does not bind a domain, and entering an address in Tandem does not configure Cloudflare. Run Tandem on its default port `4820`; the origin service is `http://127.0.0.1:4820`, not HTTPS.
 
-# On the machine that runs Tandem, which never needs that authority:
-pbpaste | bun run tunnel configure --public-url https://tandem.example.com --token-file -
-bun run service restart
-bun run tunnel status --verify
-```
+#### Create through the Cloudflare website
 
-A connector token runs that one tunnel: it cannot create tunnels or change DNS records, the dashboard revokes it, and it is the only credential the machine running Tandem holds. `create` writes nothing locally; `configure` reads the token from standard input or `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600.
+1. **In Cloudflare, create the tunnel.** Open [Cloudflare Tunnels](https://dash.cloudflare.com/?to=/:account/tunnels), select your account, and choose **Create a tunnel**. Name it (e.g. `tandem-macbook`) and save. Cloudflare displays the connector setup page showing **Install and run a connector**.
+2. **In Tandem, connect this machine.** On the Cloudflare page from step 1, copy the token string after `--token` under **Or, run tunnel (manual)** (or copy the entire command). Open **Public access**, enter `https://tandem.example.com` and the token, and click **Publish**. The page reports **Tunnel connected**.
+3. **In Cloudflare, protect the hostname.** Follow [Protect the hostname with Cloudflare Access](#protect-the-hostname-with-cloudflare-access) below, using `tandem.example.com` without `https://`. Do this before the route exists, so the address is never reachable unprotected.
+4. **In Cloudflare, publish the route.** Jump directly to your tunnel via **Open Tunnel in Cloudflare** on the Public access page (or click **Continue** on the page from step 1). Go to **Routes → Add route → Published application**. Set Subdomain `tandem`, Domain your domain, Path empty, Service type **HTTP**, URL `127.0.0.1:4820`, and save. Cloudflare creates the DNS record, and the hostname now reaches Tandem through this tunnel.
+5. **On your phone, verify and pair.** In a private window, open `https://tandem.example.com` and confirm Cloudflare asks you to log in before Tandem appears, that your email gets in, and that an unlisted email is refused. Then follow [Connect your phone and check the result](#connect-your-phone-and-check-the-result).
 
-**If the machine running Tandem is yours alone**, the two roles collapse into one command, and no token is copied:
+#### Protect the hostname with Cloudflare Access
 
-```bash
-bun run tunnel setup --public-url https://tandem.example.com
-```
+A connected tunnel does **not** mean Access is configured. Tandem does not inspect or verify your Cloudflare policies. Complete these steps for both dashboard and CLI setups before pairing your phone; configure Access before adding the public route when possible to avoid an unprotected interval.
 
-`setup` does the same work as `create` and then writes `~/.tandem/cloudflared.yml`, whose one ingress rule sends that hostname to `http://127.0.0.1:4820` and whose second rule refuses everything else. It leaves `~/.cloudflared/cert.pem` behind, which can create and delete this account's tunnels and edit that domain's DNS, so do not run it on a shared machine, in a sync folder, or anywhere its home directory is readable by others. `--force` replaces a DNS record that is already there; without it, `create` and `setup` stop and say so. Taking either route replaces the file the other one uses.
+1. Open [Cloudflare Access applications](https://one.dash.cloudflare.com/?to=/:account/access-controls/apps). Sign in and select your account if prompted, then choose **Add an application → Self-hosted**.
+2. Name it **Tandem**. Set **Public hostname** to your Tandem hostname, such as `tandem.example.com` (without `https://`). Leave **Path** empty to protect the entire site.
+3. Add an access policy: **Action → Allow**, **Include → Emails**, then enter your exact email address. Do not choose **Everyone** or **Bypass**. Remove any existing broad allow or bypass policies covering this hostname.
+4. Select your identity provider, or enable **One-time PIN** in Zero Trust login methods and select it for the application to sign in by email code. Save the application and policy.
+5. After configuring the tunnel's public route, open the HTTPS address in a private browser window. Cloudflare must ask you to sign in **before** Tandem appears. Verify that your allowed email works and a different, unlisted email cannot enter. If Tandem appears without the Access gate, fix the policy before proceeding.
 
-Install `cloudflared` first (`brew install cloudflared`); Tandem does not download it. Both commands name the address, so a second run reuses the same tunnel.
+Cloudflare Access login and Tandem pairing are separate checks; passing one does not replace the other. Keep the connector token private even with Access enabled.
 
-The same two roles are in the app: **Public access** in the sidebar footer takes the address and the tunnel token, and reports what the tunnel is doing, so the machine that runs Tandem needs no terminal either.
+#### Connect your phone and check the result
+
+1. Wait for **Public access** to show **Tunnel connected for**, then open the HTTPS address on your phone (mobile data works).
+2. Pass the Cloudflare Access login you verified above. In an already paired Tandem browser, open **Devices** and create a pairing link. Open that public-hostname link on your phone within five minutes; it works once. Never send a `127.0.0.1` or `localhost` link to the phone.
+3. After pairing, bookmark the HTTPS address. Keep the Tandem host awake; use `bun run service install` if it should survive closing your terminal.
+
+Check locally with `bun run tunnel status --verify` and `bun run service status`. If the connector is connected but the public page fails, check the published application route, DNS, and that Tandem answers at `http://127.0.0.1:4820` on the host. A connected tunnel alone does not prove the hostname routes to Tandem.
 
 The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
 

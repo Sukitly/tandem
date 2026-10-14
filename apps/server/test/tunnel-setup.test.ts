@@ -174,7 +174,7 @@ test("the command does the same thing, with no flags beyond the origin", { timeo
     vi.restoreAllMocks();
   }
   expect(await loadTunnelConfig(b.state)).toEqual({ publicUrl: PUBLIC_URL });
-  expect(lines.join("\n")).toContain("Tunnel " + TUNNEL_ID + " is ready.");
+  expect(lines.join("\n")).toContain(`Tunnel ${TUNNEL_ID} is ready.`);
   // The origin is the only thing the person supplies: the tool is found on PATH, as the server would find it.
   expect(await readFile(b.calls, "utf8")).toContain("tunnel create tandem");
 });

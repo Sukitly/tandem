@@ -205,6 +205,23 @@ test("publishes with a dashboard token, and needs no authorization for it", { ti
   }
 });
 
+test("identifies the tunnel from the token so the page can link to its dashboard", { timeout: 20_000 }, async () => {
+  const b = await bench();
+  const token = Buffer.from(
+    JSON.stringify({ a: "1234567890abcdef1234567890abcdef", t: TUNNEL_ID, s: "secret" }),
+  ).toString("base64");
+  try {
+    await b.control.publish({ publicUrl: PUBLIC_URL, token });
+    expect(await settled(b.control)).toBe("connected");
+    expect(b.control.view.tunnel).toEqual({
+      accountId: "1234567890abcdef1234567890abcdef",
+      tunnelId: TUNNEL_ID,
+    });
+  } finally {
+    await b.control.stop();
+  }
+});
+
 test("a token replaces a self-managed configuration rather than losing to it", { timeout: 20_000 }, async () => {
   const b = await bench();
   try {

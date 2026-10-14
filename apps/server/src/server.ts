@@ -31,6 +31,7 @@ import type { HostedTerminal } from "./hosted-terminal.ts";
 import { type ConnectionServices, createServiceHost } from "./rpc-host.ts";
 import { StaticFiles } from "./static-files.ts";
 import { TerminalSockets } from "./terminal-sockets.ts";
+import type { TunnelControl } from "./tunnel-control.ts";
 import { WebSocketListener } from "./websocket-listener.ts";
 
 export interface StartServerOptions {
@@ -47,6 +48,7 @@ export interface StartServerOptions {
   devices?: DeviceSessions;
   /** Where the tunnel this installation runs has got to, for `/health`. */
   tunnelState?: () => TunnelState | undefined;
+  tunnel?: TunnelControl;
   createConnectionServices?: () => ConnectionServices;
   terminal?: (id: string) => HostedTerminal | undefined;
   image?: (ref: ImageRef) => Promise<{ data: string; mimeType: string } | undefined>;
@@ -88,6 +90,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
   );
   if (publicUrl !== undefined) allowedOrigins.add(publicUrl);
   const hosts = new Set<string>();
+  const registerOrigin = (urlStr: string | undefined): void => {
+    if (urlStr === undefined) return;
+    try {
+      const origin = publicOrigin(urlStr);
+      allowedOrigins.add(origin);
+      hosts.add(new URL(origin).host);
+    } catch {
+      /* ignore invalid origins */
+    }
+  };
+  registerOrigin(publicUrl);
+  registerOrigin(options.tunnel?.view.publicUrl);
+  options.tunnel?.onChange((view) => {
+    registerOrigin(view.publicUrl);
+  });
+  const currentPublicUrl = (): string | undefined => options.tunnel?.view.publicUrl ?? publicUrl;
   const sockets = new Map<string, Set<Duplex>>();
   const stopRevocations = devices.onRevoke((id) => {
     for (const socket of sockets.get(id) ?? []) socket.destroy();
@@ -113,7 +131,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     return device === undefined ? undefined : { master: false, deviceId: device.id };
   };
   const sessionCookie = (request: IncomingMessage, secret: string, clear = false): string => {
-    const secure = publicUrl !== undefined && cameFromPublicOrigin(request, publicUrl);
+    const pub = currentPublicUrl();
+    const secure = pub !== undefined && cameFromPublicOrigin(request, pub);
     // Cookie lifetime exceeds the idle limit; authentication enforces 30 days without activity server-side.
     return `${cookieName}=${secret}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${clear ? 0 : 400 * 24 * 60 * 60}${secure ? "; Secure" : ""}`;
   };
@@ -278,7 +297,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     serverId,
     token,
     publicUrl,
-    pair: () => devices.issue(publicUrl),
+    pair: () => devices.issue(currentPublicUrl()),
     async stop() {
       clearInterval(activityTimer);
       stopRevocations();

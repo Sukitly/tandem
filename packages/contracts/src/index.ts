@@ -103,10 +103,13 @@ export {
   terminalPath,
 } from "./terminals.ts";
 export {
+  checkedIdentity,
   PublicAccess,
   type PublicAccessState,
   type PublicAccessStatus,
   type PublishInput,
+  type TunnelIdentity,
+  tunnelTokenIdentity,
 } from "./tunnel.ts";
 export {
   type ProviderUsage,
