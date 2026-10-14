@@ -36,15 +36,6 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
     return previewUrl({ port: currentPort, baseUrl: window.location.origin });
   }, [currentPort]);
 
-  const newTabUrl = useMemo(() => {
-    if (currentPort === null) return "";
-    const hostname = window.location.hostname;
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return `http://${hostname}:${currentPort}/`;
-    }
-    return currentUrl;
-  }, [currentPort, currentUrl]);
-
   const handleAddPort = (e: React.FormEvent) => {
     e.preventDefault();
     const port = Number.parseInt(manualPort.trim(), 10);
@@ -167,7 +158,7 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
                       variant="ghost"
                       size="icon-xs"
                       aria-label="Open in new tab"
-                      onClick={() => window.open(newTabUrl, "_blank", "noopener,noreferrer")}
+                      onClick={() => window.open(currentUrl, "_blank", "noopener,noreferrer")}
                       className="size-7"
                     >
                       <ExternalLinkIcon className="size-3.5" />

@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { WebSocket, WebSocketServer } from "ws";
 import { startServer, type TandemServer } from "../src/server.ts";
 import { PreviewBoard } from "../src/services/preview.ts";
 
@@ -103,6 +104,75 @@ describe("server preview proxy integration", () => {
       },
     });
     expect(res.status).toBe(403);
+  });
+
+  test("request with null origin to preview path is accepted", async () => {
+    const res = await fetch(new URL(`/preview/${devPort}/hello`, server.url), {
+      headers: {
+        Authorization: `Bearer ${server.token}`,
+        Origin: "null",
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("dev-echo:/hello");
+  });
+
+  test("websocket upgrade with null origin to preview path is accepted", async () => {
+    const wssServer = createServer();
+    const wss = new WebSocketServer({ server: wssServer });
+    wss.on("connection", (ws) => {
+      ws.send("connected");
+    });
+    await new Promise<void>((resolve) => wssServer.listen(0, "127.0.0.1", resolve));
+    const wsPort = (wssServer.address() as AddressInfo).port;
+
+    try {
+      const client = new WebSocket(`ws://${server.url.host}/preview/${wsPort}/`, {
+        headers: {
+          Authorization: `Bearer ${server.token}`,
+          Origin: "null",
+        },
+      });
+      const messagePromise = new Promise<string>((resolve, reject) => {
+        client.on("message", (data) => resolve(data.toString()));
+        client.on("error", reject);
+      });
+      expect(await messagePromise).toBe("connected");
+      client.close();
+    } finally {
+      await new Promise<void>((resolve) => wss.close(() => wssServer.close(() => resolve())));
+    }
+  });
+
+  test("websocket upgrade with disallowed origin to preview path is rejected with 403", async () => {
+    const client = new WebSocket(`ws://${server.url.host}/preview/${devPort}/`, {
+      headers: {
+        Authorization: `Bearer ${server.token}`,
+        Origin: "http://evil.com",
+      },
+    });
+    const errorPromise = new Promise<number>((resolve) => {
+      client.on("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0));
+    });
+    expect(await errorPromise).toBe(403);
+  });
+
+  test("server without preview board still blocks dangerous and own ports", async () => {
+    const standalone = await startServer({ port: 0 });
+    try {
+      const dangerousRes = await fetch(new URL("/preview/6379/test", standalone.url), {
+        headers: { Authorization: `Bearer ${standalone.token}` },
+      });
+      expect(dangerousRes.status).toBe(403);
+
+      const ownPort = Number(standalone.url.port);
+      const ownRes = await fetch(new URL(`/preview/${ownPort}/test`, standalone.url), {
+        headers: { Authorization: `Bearer ${standalone.token}` },
+      });
+      expect(ownRes.status).toBe(403);
+    } finally {
+      await standalone.stop();
+    }
   });
 
   test("request to dangerous port via preview path is rejected with 403", async () => {

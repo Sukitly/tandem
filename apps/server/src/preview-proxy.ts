@@ -2,6 +2,22 @@ import { request as httpRequest, type IncomingMessage, type ServerResponse } fro
 import { connect as netConnect } from "node:net";
 import type { Duplex } from "node:stream";
 
+export const DANGEROUS_PORTS = new Set([
+  22, // SSH
+  25, // SMTP
+  53, // DNS
+  631, // CUPS
+  2375, // Docker plain
+  2376, // Docker TLS
+  3306, // MySQL
+  5432, // Postgres
+  6379, // Redis
+  9229, // Node inspector
+  10250, // Kubelet
+  11211, // Memcached
+  27017, // MongoDB
+]);
+
 export interface PreviewHttpOptions {
   request: IncomingMessage;
   response: ServerResponse;
@@ -62,17 +78,11 @@ export function handlePreviewHttpRequest(options: PreviewHttpOptions): void {
         const csp = Array.isArray(responseHeaders["content-security-policy"])
           ? responseHeaders["content-security-policy"].join("; ")
           : responseHeaders["content-security-policy"];
-        // Remove frame-ancestors directive and prevent allow-same-origin in sandbox directives
+        // Remove frame-ancestors directive
         const cleanedCsp = csp
           .split(";")
           .map((part) => part.trim())
           .filter((part) => !part.toLowerCase().startsWith("frame-ancestors"))
-          .map((part) => {
-            if (part.toLowerCase().startsWith("sandbox")) {
-              return part.replace(/\ballow-same-origin\b/gi, "").trim();
-            }
-            return part;
-          })
           .join("; ");
         if (cleanedCsp.length > 0) {
           responseHeaders["content-security-policy"] = cleanedCsp;

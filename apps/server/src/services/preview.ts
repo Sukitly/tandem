@@ -2,23 +2,8 @@ import { createConnection } from "node:net";
 import { type Context, type MutableReplicatedState, replicatedState } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { PreviewState, RegisterPortInput, UnregisterPortInput } from "@tandem/contracts";
+import { DANGEROUS_PORTS } from "../preview-proxy.ts";
 import { invalidInput } from "./errors.ts";
-
-export const DANGEROUS_PORTS = new Set([
-  22, // SSH
-  25, // SMTP
-  53, // DNS
-  631, // CUPS
-  2375, // Docker plain
-  2376, // Docker TLS
-  3306, // MySQL
-  5432, // Postgres
-  6379, // Redis
-  9229, // Node inspector
-  10250, // Kubelet
-  11211, // Memcached
-  27017, // MongoDB
-]);
 
 export interface PreviewBoardOptions {
   /** Ports that must never be added to preview (such as Tandem's own port). */
@@ -70,7 +55,7 @@ export class PreviewBoard {
       throw invalidInput(`Invalid port number: ${String(port)}`);
     }
     if (this.isIgnored(port)) {
-      return;
+      throw invalidInput(`Port ${port} is restricted and cannot be previewed`);
     }
     const label = typeof input.label === "string" ? input.label.trim().slice(0, 50) : undefined;
     const detectedAt = Date.now();

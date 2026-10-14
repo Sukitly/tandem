@@ -105,8 +105,9 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
         const text = data.toString("utf8");
         const detected = detectPortsFromOutput(text);
         for (const item of detected) {
+          if (preview.isIgnored(item.port)) continue;
           void isPortOpen(item.port).then((open) => {
-            if (open) void preview.register(item, context).catch(onError);
+            if (open && !preview.isIgnored(item.port)) void preview.register(item, context).catch(onError);
           });
         }
       },
