@@ -35,9 +35,19 @@ export function cloudflaredRun(
   executable: string,
   args: readonly string[],
   onLine: (line: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(executable, [...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let killTimer: NodeJS.Timeout | undefined;
+    const abort = (): void => {
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => child.kill("SIGKILL"), 5_000);
+      killTimer.unref();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    let spawnError: Error | undefined;
     let output = "";
     for (const stream of [child.stdout, child.stderr]) {
       let pending = "";
@@ -54,9 +64,15 @@ export function cloudflaredRun(
         if (pending !== "") onLine(pending);
       });
     }
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code === 0) resolve();
+    child.on("error", (error) => {
+      spawnError = error;
+    });
+    child.on("close", (code) => {
+      signal?.removeEventListener("abort", abort);
+      clearTimeout(killTimer);
+      if (signal?.aborted) reject(signal.reason);
+      else if (spawnError !== undefined) reject(spawnError);
+      else if (code === 0) resolve();
       else reject(new Error(`cloudflared ${args.join(" ")} exited with ${code ?? "a signal"}\n${output.trim()}`));
     });
   });

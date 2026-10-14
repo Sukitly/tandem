@@ -31,6 +31,7 @@ export interface TunnelSetupOptions {
   readonly report: (line: string) => void;
   /** The URL the person approves this machine at, as cloudflared prints it while it waits. */
   readonly onAuthorizationUrl?: (url: string) => void;
+  readonly signal?: AbortSignal;
 }
 
 export interface SetupOptions extends TunnelSetupOptions {
@@ -65,6 +66,7 @@ export async function createTunnelHere(options: TunnelSetupOptions): Promise<Cre
 export async function setupTunnel(options: SetupOptions): Promise<SetupResult> {
   const stateDir = options.stateDir ?? defaultStateDirPath();
   const { executable, tunnelId, hostname } = await ensureTunnel(options);
+  options.signal?.throwIfAborted();
   routeDns(executable, tunnelId, hostname, options.force ?? false, options.report);
 
   const tunnelFile = tunnelFileYamlPath(stateDir);
@@ -78,6 +80,7 @@ export async function setupTunnel(options: SetupOptions): Promise<SetupResult> {
       port: DEFAULT_PORT,
     }),
   );
+  options.signal?.throwIfAborted();
   const configPath = await saveTunnelConfig({ publicUrl: options.publicUrl }, stateDir);
   options.report(`Wrote ${configPath} and ${tunnelFile}`);
   return { tunnelId, configPath, tunnelFile };
@@ -87,6 +90,7 @@ export async function setupTunnel(options: SetupOptions): Promise<SetupResult> {
 async function ensureTunnel(
   options: TunnelSetupOptions,
 ): Promise<{ executable: string; tunnelId: string; hostname: string }> {
+  options.signal?.throwIfAborted();
   const executable = options.executable ?? CLOUDFLARED;
   const name = options.name ?? TUNNEL_NAME;
   if (cloudflaredMissing(executable))
@@ -95,15 +99,21 @@ async function ensureTunnel(
 
   if (!existsSync(originCertPath(options.home))) {
     options.report("Authorizing this machine with Cloudflare: a browser window opens, and the rest is automatic.");
-    await cloudflaredRun(executable, ["tunnel", "login"], (line) => {
-      options.report(line);
-      const url = /https:\/\/\S+/.exec(line)?.[0];
-      if (url !== undefined) options.onAuthorizationUrl?.(url);
-    });
+    await cloudflaredRun(
+      executable,
+      ["tunnel", "login"],
+      (line) => {
+        options.report(line);
+        const url = /https:\/\/\S+/.exec(line)?.[0];
+        if (url !== undefined) options.onAuthorizationUrl?.(url);
+      },
+      options.signal,
+    );
   }
 
+  options.signal?.throwIfAborted();
   const existing = listTunnels(executable, name);
-  const tunnelId = existing[0] ?? (await createTunnel(executable, name, options.report));
+  const tunnelId = existing[0] ?? (await createTunnel(executable, name, options.report, options.signal));
   options.report(existing[0] === undefined ? `Created the tunnel ${name}.` : `Using the tunnel ${name}.`);
   return { executable, tunnelId, hostname };
 }
@@ -124,8 +134,14 @@ function listTunnels(executable: string, name: string): string[] {
     .map((item) => item.id);
 }
 
-async function createTunnel(executable: string, name: string, report: (line: string) => void): Promise<string> {
-  await cloudflaredRun(executable, ["tunnel", "create", name], report);
+async function createTunnel(
+  executable: string,
+  name: string,
+  report: (line: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  await cloudflaredRun(executable, ["tunnel", "create", name], report, signal);
+  signal?.throwIfAborted();
   const created = listTunnels(executable, name);
   if (created[0] === undefined) throw new Error(`cloudflared created no tunnel named ${name}`);
   return created[0];

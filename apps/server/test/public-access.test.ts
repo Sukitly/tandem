@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { createPublicAccessService } from "../src/services/public-access.ts";
+import * as tunnelConfig from "../src/tunnel-config.ts";
 import { loadTunnelConfig, tunnelConfigPath } from "../src/tunnel-config.ts";
 import { type PublicAccessView, TunnelControl } from "../src/tunnel-control.ts";
 import { tunnelFileYamlPath } from "../src/tunnel-file.ts";
@@ -14,7 +15,7 @@ const TUNNEL_ID = "c4648dd8-acd3-48f5-9004-3f3dc20192c2";
  * A stand-in for cloudflared that answers every subcommand and stays connected, so the whole publish path runs
  * without an account, a browser, or a network.
  */
-async function bench() {
+async function bench(pauseLogin = false) {
   const root = await mkdtemp(join(tmpdir(), "tandem-control-"));
   const home = join(root, "home");
   await mkdir(home, { recursive: true });
@@ -27,6 +28,7 @@ case "$*" in
 esac
 case "$1 $2" in
   "tunnel login")
+    ${pauseLogin ? 'echo "https://dash.cloudflare.com/argotunnel?waiting=1"; while :; do sleep 0.02; done' : ""}
     mkdir -p "$HOME/.cloudflared"
     printf 'origin certificate' > "$HOME/.cloudflared/cert.pem"
     echo "A browser window should have opened at the following URL:"
@@ -130,6 +132,86 @@ test("stops publishing here and leaves nothing configured", { timeout: 20_000 },
     expect(b.control.tunnelState()).toBeUndefined();
     expect(await stat(tunnelFileYamlPath(b.stateDir)).catch(() => undefined)).toBeUndefined();
     expect(await stat(tunnelConfigPath(b.stateDir)).catch(() => undefined)).toBeUndefined();
+  } finally {
+    await b.control.stop();
+  }
+});
+
+test("unpublish cancels pending authorization before reporting that public access is off", {
+  timeout: 20_000,
+}, async () => {
+  const b = await bench(true);
+  try {
+    await b.control.publish({ publicUrl: PUBLIC_URL });
+    await until(b.control, (view) => view.authorizationUrl !== undefined);
+    expect(b.control.view.authorizationUrl).toBeDefined();
+    const closing = b.control.unpublish();
+    await expect(b.control.publish({ publicUrl: PUBLIC_URL })).rejects.toThrow(/stopped/);
+    await closing;
+    expect(b.control.view.status).toBe("none");
+    expect(await loadTunnelConfig(b.stateDir)).toBeUndefined();
+    expect(await stat(tunnelFileYamlPath(b.stateDir)).catch(() => undefined)).toBeUndefined();
+    expect(await readFile(b.calls, "utf8")).not.toContain(" run");
+    // Cancellation does not poison the next explicit publish.
+    await b.control.publish({ publicUrl: PUBLIC_URL, token: "dashboard-token" });
+    expect(await settled(b.control)).toBe("connected");
+  } finally {
+    await b.control.stop();
+  }
+});
+
+test("unpublish drains an in-flight token write and removes its configuration", async () => {
+  const b = await bench();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const events: string[] = [];
+  const save = tunnelConfig.saveTunnelConfig;
+  const writing = vi.spyOn(tunnelConfig, "saveTunnelConfig").mockImplementation(async (config, stateDir) => {
+    expect(stateDir).toBe(b.stateDir);
+    events.push("write started");
+    started.resolve();
+    await release.promise;
+    const path = await save(config, stateDir);
+    expect(await loadTunnelConfig(stateDir)).toEqual(config);
+    events.push("write finished");
+    return path;
+  });
+  try {
+    await b.control.publish({ publicUrl: PUBLIC_URL, token: "dashboard-token" });
+    await started.promise;
+    let closed = false;
+    const closing = Promise.all([b.control.unpublish(), b.control.stop(), b.control.unpublish()]).then(() => {
+      closed = true;
+      events.push("closed");
+    });
+    // Let shutdown run while the write is deliberately held, rather than racing filesystem timing.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(closed).toBe(false);
+    expect(b.control.view.status).not.toBe("none");
+    release.resolve();
+    await closing;
+    expect(events).toEqual(["write started", "write finished", "closed"]);
+    expect(b.control.view.status).toBe("none");
+    expect(await loadTunnelConfig(b.stateDir)).toBeUndefined();
+    expect(await readFile(b.calls, "utf8").catch(() => "")).not.toContain(" run");
+  } finally {
+    release.resolve();
+    await b.control.stop();
+    writing.mockRestore();
+  }
+});
+
+test("unpublish prevents an in-flight resume from starting the saved tunnel", async () => {
+  const b = await bench();
+  try {
+    await b.control.publish({ publicUrl: PUBLIC_URL, token: "dashboard-token" });
+    await settled(b.control);
+    await b.control.stop();
+    const resumed = b.control.resume().catch(() => {});
+    await b.control.unpublish();
+    await resumed;
+    expect(b.control.view.status).toBe("none");
+    expect(await loadTunnelConfig(b.stateDir)).toBeUndefined();
   } finally {
     await b.control.stop();
   }

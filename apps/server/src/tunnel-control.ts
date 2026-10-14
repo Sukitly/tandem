@@ -32,6 +32,9 @@ export class TunnelControl {
   #config: TunnelConfig | undefined;
   #runner: TunnelRunner | undefined;
   #working: Promise<void> | undefined;
+  #controller: AbortController | undefined;
+  #closing: Promise<void> | undefined;
+  #removeOnClose = false;
 
   constructor(options: { stateDir?: string; executable?: string; onLog: (line: string) => void }) {
     this.#stateDir = options.stateDir ?? defaultStateDirPath();
@@ -61,51 +64,84 @@ export class TunnelControl {
 
   /** Starts what is already configured, at server startup. */
   async resume(): Promise<void> {
-    this.#config = await loadTunnelConfig(this.#stateDir);
-    if (this.#config === undefined) return;
-    this.#start(this.#config);
+    await this.#begin(async (signal) => {
+      this.#config = await loadTunnelConfig(this.#stateDir);
+      signal.throwIfAborted();
+      if (this.#config !== undefined) await this.#start(this.#config, signal);
+    });
   }
 
   /** Publishes at that origin. Returns once the work has started; the view carries what happens next. */
   async publish(input: { publicUrl: string; token?: string }): Promise<void> {
-    if (this.#working !== undefined) throw new Error("A tunnel is already being set up");
-    const work = this.#publish(input).finally(() => {
-      this.#working = undefined;
-    });
-    this.#working = work;
+    void this.#begin((signal) => this.#publish(input, signal));
   }
 
   /** Stops the tunnel here. What Cloudflare holds stays, so publishing again needs no authorization. */
   async unpublish(): Promise<void> {
-    await this.#stopRunner();
-    await rm(tunnelFileYamlPath(this.#stateDir), { force: true });
-    await rm(tunnelConfigPath(this.#stateDir), { force: true });
-    this.#config = undefined;
-    this.#report({ status: "none" });
+    await this.#close(true);
   }
 
   async stop(): Promise<void> {
-    await this.#working?.catch(() => {});
-    await this.#stopRunner();
+    await this.#close(false);
   }
 
-  async #publish(input: { publicUrl: string; token?: string }): Promise<void> {
+  #begin(operation: (signal: AbortSignal) => Promise<void>): Promise<void> {
+    if (this.#working !== undefined || this.#closing !== undefined)
+      throw new Error("A tunnel is already being set up or stopped");
+    this.#controller?.abort();
+    const controller = new AbortController();
+    this.#controller = controller;
+    const work = operation(controller.signal).finally(() => {
+      this.#working = undefined;
+    });
+    this.#working = work;
+    return work;
+  }
+
+  async #close(remove: boolean): Promise<void> {
+    // An explicit unpublish wins over a simultaneous stop that would otherwise preserve the configuration.
+    this.#removeOnClose ||= remove;
+    if (this.#closing !== undefined) return this.#closing;
+    this.#controller?.abort();
+    const closing = (async () => {
+      // Wait for all writes and starts, including a cancelled authorization child, before deleting anything.
+      await this.#working?.catch(() => {});
+      await this.#stopRunner();
+      if (this.#removeOnClose) {
+        await rm(tunnelFileYamlPath(this.#stateDir), { force: true });
+        await rm(tunnelConfigPath(this.#stateDir), { force: true });
+        this.#config = undefined;
+      }
+      this.#report({ status: "none" });
+    })().finally(() => {
+      this.#closing = undefined;
+      this.#removeOnClose = false;
+    });
+    this.#closing = closing;
+    await closing;
+  }
+
+  async #publish(input: { publicUrl: string; token?: string }, signal: AbortSignal): Promise<void> {
     const { publicUrl } = input;
     this.#report({ status: input.token === undefined ? "authorizing" : "starting", publicUrl });
     try {
-      if (input.token === undefined) await this.#authorize(publicUrl);
+      await this.#stopRunner();
+      signal.throwIfAborted();
+      if (input.token === undefined) await this.#authorize(publicUrl, signal);
       else await this.#adopt(input.token, publicUrl);
+      signal.throwIfAborted();
       const config = await loadTunnelConfig(this.#stateDir);
+      signal.throwIfAborted();
       if (config === undefined) throw new Error("The tunnel configuration was not written");
       this.#config = config;
-      this.#start(config);
+      await this.#start(config, signal);
     } catch (error) {
-      this.#report({ status: "failed", publicUrl, message: message(error) });
+      if (!signal.aborted) this.#report({ status: "failed", publicUrl, message: message(error) });
     }
   }
 
   /** A tunnel this machine manages itself: authorize it, create it, and point the hostname at it. */
-  async #authorize(publicUrl: string): Promise<void> {
+  async #authorize(publicUrl: string, signal: AbortSignal): Promise<void> {
     if (!this.cloudflared)
       throw new Error(`${this.#executable} is not installed. Install it with \`brew install cloudflared\`.`);
     await setupTunnel({
@@ -113,7 +149,10 @@ export class TunnelControl {
       stateDir: this.#stateDir,
       executable: this.#executable,
       report: (line) => this.#onLog(line),
-      onAuthorizationUrl: (url) => this.#report({ status: "authorizing", publicUrl, authorizationUrl: url }),
+      signal,
+      onAuthorizationUrl: (url) => {
+        if (!signal.aborted) this.#report({ status: "authorizing", publicUrl, authorizationUrl: url });
+      },
     });
   }
 
@@ -131,17 +170,19 @@ export class TunnelControl {
     await saveTunnelConfig({ publicUrl, token }, this.#stateDir);
   }
 
-  #start(config: TunnelConfig): void {
-    void Promise.all([this.#stopRunner(), this.#identify(config)]).then(([, tunnel]) => {
-      const known = tunnel === undefined ? {} : { tunnel };
-      this.#runner = startTunnel(config, {
-        stateDir: this.#stateDir,
-        executable: this.#executable,
-        onLog: this.#onLog,
-        onState: (status) => this.#report({ status, publicUrl: config.publicUrl, ...known }),
-      });
-      this.#report({ status: this.#runner.state(), publicUrl: config.publicUrl, ...known });
+  async #start(config: TunnelConfig, signal: AbortSignal): Promise<void> {
+    const [, tunnel] = await Promise.all([this.#stopRunner(), this.#identify(config)]);
+    signal.throwIfAborted();
+    const known = tunnel === undefined ? {} : { tunnel };
+    this.#runner = startTunnel(config, {
+      stateDir: this.#stateDir,
+      executable: this.#executable,
+      onLog: this.#onLog,
+      onState: (status) => {
+        if (!signal.aborted) this.#report({ status, publicUrl: config.publicUrl, ...known });
+      },
     });
+    this.#report({ status: this.#runner.state(), publicUrl: config.publicUrl, ...known });
   }
 
   /** Which tunnel runs, read the way the runner chooses: the file this machine wrote wins over a token. */
