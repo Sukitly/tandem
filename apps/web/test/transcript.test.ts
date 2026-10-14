@@ -57,6 +57,18 @@ describe("toTranscript", () => {
     ]);
   });
 
+  test("aggregates consecutive failed attempts with no parts into one item with attempts count", () => {
+    const { items } = toTranscript(
+      view([
+        { id: 1, kind: "pi.assistant", model: [assistant([], "error", { errorMessage: "first failure" })] },
+        { id: 2, kind: "pi.assistant", model: [assistant([], "error", { errorMessage: "second failure" })] },
+      ]),
+    );
+    expect(items).toEqual([
+      { kind: "assistant", key: "1:0", parts: [], ending: "failed", error: "second failure", attempts: 2 },
+    ]);
+  });
+
   test("puts thinking, text, and tool calls in order, with results, running output, and diffs", () => {
     const calls = [
       { type: "toolCall", id: "a", name: "bash", arguments: { command: "ls" } },
