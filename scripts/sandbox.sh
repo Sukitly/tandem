@@ -28,6 +28,12 @@ function check_prerequisites() {
     error "Docker daemon is not running. Please start Docker Desktop."
     exit 1
   fi
+
+  if ! sbx diagnose 2>/dev/null | grep -iE "Authentication.*authenticated" >/dev/null 2>&1; then
+    log "Docker Sandboxes is not signed in. Initiating login..."
+    log "A browser window will open. Please complete the login, and the script will automatically continue."
+    sbx login
+  fi
 }
 
 function ensure_policy() {

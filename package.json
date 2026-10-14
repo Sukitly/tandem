@@ -12,6 +12,7 @@
     "service": "node apps/server/src/service.ts",
     "tunnel": "node apps/server/src/tunnel.ts",
     "sandbox": "bash scripts/sandbox.sh",
+    "sandboxes": "bash scripts/sandbox.sh",
     "update": "bash scripts/self-update.sh",
     "dev:server": "bun run --filter @tandem/server dev",
     "dev:web": "bun run --filter @tandem/web dev",
