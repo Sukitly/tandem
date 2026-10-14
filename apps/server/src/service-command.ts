@@ -202,6 +202,22 @@ export async function runService(
     await expectUp(logHints(platform, config.logPath, targets()));
   }
 
+  /** Safely pulls, checks, builds, restarts the service, and rolls back if unhealthy. */
+  async function update(updateArgs: readonly string[]): Promise<void> {
+    const script = join(repository, "scripts", "self-update.sh");
+    if (!existsSync(script)) throw new Error(`Update script not found at ${script}`);
+    const result = spawnSync("bash", [script, ...updateArgs], {
+      cwd: repository,
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        TANDEM_HOME: serviceConfig().stateDir,
+      },
+    });
+    if (result.error !== undefined) throw result.error;
+    if (result.status !== 0) exitCode = result.status ?? 1;
+  }
+
   async function expectUp(hints: { follow: string; status: string }): Promise<void> {
     const deadline = Date.now() + 30_000;
     for (;;) {
@@ -261,16 +277,18 @@ export async function runService(
   else if (action === "install") await install({ print: rest.includes("--print") });
   else if (action === "pair") await printServicePairing(new URL(base));
   else if (action === "restart") await restart();
+  else if (action === "update") await update(rest);
   else if (action === "uninstall") await uninstall();
   else if (action === "status") await status();
   else
     console.log(
       [
-        "usage: bun run service <install|pair|restart|status|uninstall>",
+        "usage: bun run service <install|pair|restart|update|status|uninstall>",
         "",
         `  install [--print]   write ${targets().file} and load it; --print only shows the file`,
         "  pair                print a fresh pairing link without building or restarting",
         "  restart             build the web app and start the server again, after new code",
+        "  update [--detach]   safely pull, verify, build, restart, and rollback if unhealthy",
         "  status              what the service manager says, and whether the server answers",
         "  uninstall           unload the service and remove its file",
       ].join("\n"),

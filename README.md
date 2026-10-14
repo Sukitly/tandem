@@ -83,6 +83,7 @@ bun run service install        # Install and start the background service
 bun run service pair           # Generate a fresh pairing link for a new browser
 bun run service status         # Check service status and health
 bun run service restart        # Rebuild the web app and restart the service
+bun run service update         # Safely pull, test, build, restart, and rollback if unhealthy
 bun run service uninstall      # Stop and remove the service
 ```
 
