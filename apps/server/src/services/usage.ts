@@ -2,6 +2,7 @@ import { type MutableReplicatedState, replicatedState } from "@earendil-works/ch
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { MutableModels } from "@earendil-works/pi-ai";
 import type { ProviderUsage, UsageState, UsageWindow } from "@tandem/contracts";
+import { fetchAntigravityUsage } from "../antigravity/usage.ts";
 import { invalidInput } from "./errors.ts";
 
 const HOUR_SECONDS = 60 * 60;
@@ -20,7 +21,7 @@ export const OPENAI_SUBSCRIPTION_NOTICE =
   "OpenAI subscription: quota query unavailable — https://chatgpt.com/settings/usage";
 
 /** The providers this board can say anything about. */
-const SUPPORTED = new Set(["anthropic", "openai-codex", "openai"]);
+const SUPPORTED = new Set(["anthropic", "openai-codex", "openai", "antigravity"]);
 
 /** What one provider's usage endpoint returned, normalized. */
 export interface UsageRead {
@@ -136,6 +137,7 @@ export class UsageBoard {
 export async function fetchUsage(provider: string, token: string): Promise<UsageRead | null> {
   if (provider === "anthropic") return fetchAnthropicUsage(token);
   if (provider === "openai-codex") return fetchCodexUsage(token);
+  if (provider === "antigravity") return fetchAntigravityUsage(token);
   return null;
 }
 
