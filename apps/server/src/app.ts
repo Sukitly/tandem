@@ -108,6 +108,7 @@ export async function startApp(options: StartAppOptions = {}): Promise<TandemSer
     const server = await startServer({
       ...pick(options, ["hostname", "port", "allowedOrigins", "webEntry", "webRoot", "tunnelState"]),
       publicUrl,
+      tunnel: options.tunnel,
       devices,
       ...stateDir.identity,
       createConnectionServices: () =>

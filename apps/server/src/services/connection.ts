@@ -258,7 +258,8 @@ export function createConnectionServices({
     state: devices.state,
     addDevice: async () => {
       try {
-        return devices.issue(publicUrl);
+        const activeUrl = tunnel.view.publicUrl ?? publicUrl;
+        return devices.issue(activeUrl);
       } catch (error) {
         if (error instanceof PairingError) throw invalidInput(error.message);
         throw error;
