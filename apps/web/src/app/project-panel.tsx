@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { FileTree } from "@/files/file-tree.tsx";
 import { FileView } from "@/files/file-view.tsx";
 import { useProjectFiles } from "@/files/project-files.ts";
+import { PreviewView } from "@/preview/preview-view.tsx";
 import { useProjectChanges, useProjectChangesFailure } from "@/rpc/use-project-changes.ts";
 import { TerminalsView } from "@/terminals/terminals-view.tsx";
 
@@ -52,6 +53,7 @@ export function ProjectPanel({
           <TabsTrigger value="files">Files</TabsTrigger>
           <TabsTrigger value="changes">Changes</TabsTrigger>
           <TabsTrigger value="terminal">Terminal</TabsTrigger>
+          <TabsTrigger value="preview">Preview</TabsTrigger>
         </TabsList>
         {/* A terminal draws itself as the shell writes: there is nothing to read again. */}
         <div className="ml-auto flex items-center gap-1">
@@ -74,7 +76,7 @@ export function ProjectPanel({
               <TooltipContent>{showHiddenFiles ? "Hide hidden files" : "Show hidden files"}</TooltipContent>
             </Tooltip>
           )}
-          {panelTab !== "terminal" && (
+          {panelTab !== "terminal" && panelTab !== "preview" && (
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -124,6 +126,10 @@ export function ProjectPanel({
       {/* Kept mounted, so the terminals keep their screens and connections while another tab shows. */}
       <TabsContent value="terminal" keepMounted className="flex min-h-0 flex-col">
         <TerminalsView workspaceId={workspaceId} active={active && panelTab === "terminal"} />
+      </TabsContent>
+      {/* Kept mounted, so the preview iframe keeps its page state while another tab shows. */}
+      <TabsContent value="preview" keepMounted className="flex min-h-0 flex-1 flex-col">
+        <PreviewView active={active && panelTab === "preview"} />
       </TabsContent>
     </Tabs>
   );

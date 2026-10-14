@@ -14,7 +14,7 @@ const PANEL_TAB_KEY = "tandem.panelTab";
 const SHOW_HIDDEN_FILES_KEY = "tandem.showHiddenFiles";
 
 /** The view of the panel beside the conversation. */
-export type PanelTab = "files" | "changes" | "terminal";
+export type PanelTab = "files" | "changes" | "terminal" | "preview";
 
 /** Something the user asked for that did not happen. */
 export interface Failure {
@@ -215,7 +215,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
 /** A stored tab, or the files for anything else. */
 export function panelTabOf(value: unknown): PanelTab {
-  return value === "changes" || value === "terminal" ? value : "files";
+  return value === "changes" || value === "terminal" || value === "preview" ? value : "files";
 }
 
 function selectedInHash(): number | null {

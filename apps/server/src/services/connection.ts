@@ -9,6 +9,7 @@ import {
   Devices,
   Files,
   Models,
+  Preview,
   ProjectChanges,
   Prompts,
   PublicAccess,
@@ -38,6 +39,7 @@ import type { ConversationCatalog } from "./conversations.ts";
 import { invalidInput } from "./errors.ts";
 import type { FileBrowser } from "./files.ts";
 import type { ModelCatalog } from "./models.ts";
+import type { PreviewBoard } from "./preview.ts";
 import type { ProjectDirectoryBrowser } from "./project-directories.ts";
 import type { PromptLibrary } from "./prompts.ts";
 import { createPublicAccessService } from "./public-access.ts";
@@ -67,6 +69,8 @@ export interface AppServices {
   readonly repository: RepositoryBoard;
   /** Fits images to a model: those a page sends with a message. */
   readonly images: ImageProcessor;
+  /** Application preview ports. */
+  readonly preview: PreviewBoard;
   /** Publishing this machine on the public internet. */
   readonly tunnel: TunnelControl;
 }
@@ -98,6 +102,7 @@ export function createConnectionServices({
   comments,
   prompts,
   terminals,
+  preview,
   usage,
   repository,
   images,
@@ -117,6 +122,7 @@ export function createConnectionServices({
     Devices,
     Prompts,
     PublicAccess,
+    Preview,
     Conversations,
     { service: Conversation, mode: "keyed" },
     { service: ProjectChanges, mode: "keyed" },
@@ -277,6 +283,12 @@ export function createConnectionServices({
   });
 
   provider.provide(PublicAccess, createPublicAccessService(tunnel));
+
+  provider.provide(Preview, {
+    state: preview.state,
+    register: (input, context) => preview.register(input, context),
+    unregister: (input, context) => preview.unregister(input, context),
+  });
 
   provider.provide(Terminals, {
     state: terminals.state,

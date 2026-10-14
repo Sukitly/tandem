@@ -14,6 +14,7 @@ import {
   Devices,
   Files,
   Models,
+  Preview,
   ProjectChanges,
   Prompts,
   PublicAccess,
@@ -42,6 +43,8 @@ export interface Connected {
   files: Files;
   /** The comment threads of every project. */
   comments: Comments;
+  /** Application preview ports. */
+  preview: Preview;
   /** The prompt templates of the projects: the slash commands their messages may name. */
   prompts: Prompts;
   /** The terminals of every project. */
@@ -96,6 +99,7 @@ export function ConnectionProvider({
         Comments,
         Terminals,
         Prompts,
+        Preview,
         Conversations,
         Conversation,
         Usage,
@@ -128,6 +132,7 @@ export function ConnectionProvider({
               models: connection.services.use(Models),
               files: connection.services.use(Files),
               comments: connection.services.use(Comments),
+              preview: connection.services.use(Preview),
               prompts: connection.services.use(Prompts),
               terminals: connection.services.use(Terminals),
               usage: connection.services.use(Usage),
@@ -173,6 +178,7 @@ function Connected({
         models: value.models,
         files: value.files,
         comments: value.comments,
+        preview: value.preview,
         prompts: value.prompts,
         terminals: value.terminals,
         usage: value.usage,
@@ -193,4 +199,8 @@ export function useConnected(): Connected {
   const connected = useContext(ConnectedContext);
   if (connected === null) throw new Error("useConnected() must be used inside ConnectionProvider");
   return connected;
+}
+
+export function useOptionalConnected(): Connected | null {
+  return useContext(ConnectedContext);
 }
