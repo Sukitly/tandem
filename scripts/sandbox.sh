@@ -75,10 +75,10 @@ function start_sandbox() {
     sbx run --pull never -d --name "${SANDBOX_NAME}"
   fi
 
-  log "Starting Tandem inside microVM sandbox with auto-restart supervisor..."
+  log "Starting Tandem inside microVM sandbox..."
   sbx exec "${SANDBOX_NAME}" /bin/bash -c "
-    if ! pgrep -f 'run-supervised.sh' >/dev/null 2>&1; then
-      nohup bash scripts/run-supervised.sh '${PORT}' >/dev/null 2>&1 &
+    if ! pgrep -f 'apps/server/src/main.ts' >/dev/null 2>&1; then
+      nohup node apps/server/src/main.ts --host 0.0.0.0 --port ${PORT} --no-open > /tmp/tandem.log 2>&1 &
     fi
   "
 
