@@ -115,6 +115,38 @@ describe("the usage board", () => {
     expect(errors).toHaveLength(1);
   });
 
+  test("reads antigravity quota windows through the usage board", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({
+            groups: [
+              {
+                displayName: "Gemini",
+                buckets: [
+                  {
+                    displayName: "5 hours",
+                    window: "18000s",
+                    remainingFraction: 0.75,
+                    resetTime: "2026-04-01T12:00:00Z",
+                  },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    const usage = board({ apiKey: JSON.stringify({ token: "tok", projectId: "proj" }) }, "oauth");
+    await usage.refresh("antigravity", true);
+    const antigravity = usage.state.value.providers.antigravity;
+    expect(antigravity?.windows).toEqual([
+      { label: "5h", utilization: 25, windowSeconds: 18000, resetsAt: "2026-04-01T12:00:00Z" },
+    ]);
+    expect(antigravity?.refreshedAt).toBeGreaterThan(0);
+  });
+
   test("a native OpenAI subscription shows a notice, and an API key shows nothing", async () => {
     const usage = board({ apiKey: "token" }, "oauth");
     await usage.refresh("openai", true);

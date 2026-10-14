@@ -15,12 +15,31 @@ const AHEAD_COLOR = "text-red-600 dark:text-red-400";
 const BEHIND_COLOR = "text-emerald-600 dark:text-emerald-400";
 
 /**
+ * Select the appropriate quota windows when a provider defines distinct model-pool groups (e.g. Antigravity).
+ * Aligns with pi's usage-widget extension behavior.
+ */
+export function resolveWindowsForModel(usage: ProviderUsage, modelId?: string): UsageWindow[] {
+  if (!usage.groups) return usage.windows;
+  const is3P = modelId ? /claude|gpt|3p/i.test(modelId) : false;
+  const groupKey = is3P ? "claude-gpt" : "gemini";
+  return usage.groups[groupKey] ?? usage.windows;
+}
+
+/**
  * The active provider's rate-limit usage, as pi's `usage-widget` extension shows it: one bar per window with the used
  * share, when it resets, and how the spend compares with the pace of the window. It sits under the message box, which
  * is always there; a provider with no usage endpoint shows nothing, and a native OpenAI subscription shows a notice
  * instead of bars. The server reads the usage, so no credential reaches the page.
  */
-export function UsageLine({ provider, active }: { provider: string | undefined; active?: boolean }) {
+export function UsageLine({
+  provider,
+  modelId,
+  active,
+}: {
+  provider: string | undefined;
+  modelId?: string;
+  active?: boolean;
+}) {
   const { usage } = useConnected();
   const state = useReplicatedState(usage.state);
 
@@ -40,16 +59,17 @@ export function UsageLine({ provider, active }: { provider: string | undefined; 
 
   const known = provider === undefined ? undefined : state?.providers[provider];
   if (known === undefined) return null;
-  return <UsageText usage={known} />;
+  return <UsageText usage={known} modelId={modelId} />;
 }
 
-export function UsageText({ usage }: { usage: ProviderUsage }) {
+export function UsageText({ usage, modelId }: { usage: ProviderUsage; modelId?: string }) {
+  const windows = resolveWindowsForModel(usage, modelId);
   return (
     <div className="grid gap-0.5">
-      {usage.windows.length > 0 ? (
+      {windows.length > 0 ? (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-          {usage.windows.map((window) => (
-            <WindowText key={window.label} window={window} />
+          {windows.map((window) => (
+            <WindowText key={`${window.label}-${window.windowSeconds}`} window={window} />
           ))}
         </div>
       ) : (
@@ -57,7 +77,7 @@ export function UsageText({ usage }: { usage: ProviderUsage }) {
       )}
       {usage.error !== undefined && (
         <p className="truncate text-xs text-destructive">
-          {usage.provider} usage: {usage.windows.length > 0 ? "refresh failed (stale data)" : "refresh failed"} —{" "}
+          {usage.provider} usage: {windows.length > 0 ? "refresh failed (stale data)" : "refresh failed"} —{" "}
           {usage.error}
         </p>
       )}

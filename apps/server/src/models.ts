@@ -10,10 +10,11 @@ import {
   fauxThinking,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import { antigravityProvider } from "./antigravity/provider.ts";
 
-/** Every provider pi-ai ships. */
+/** Every provider pi-ai ships, plus Antigravity. */
 export function defaultProviders(): Provider[] {
-  return builtinProviders();
+  return [...builtinProviders(), antigravityProvider()];
 }
 
 /** Models over `providers`, with credentials from `credentials` and the environment. */
