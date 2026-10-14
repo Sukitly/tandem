@@ -30,7 +30,7 @@ import packageJson from "../package.json" with { type: "json" };
 import { bearerToken, createToken, isAllowedOrigin, tokensMatch } from "./auth.ts";
 import { DeviceSessions, deviceName, PairingError } from "./device-sessions.ts";
 import type { HostedTerminal } from "./hosted-terminal.ts";
-import { handlePreviewHttpRequest, handlePreviewUpgrade } from "./preview-proxy.ts";
+import { DANGEROUS_PORTS, handlePreviewHttpRequest, handlePreviewUpgrade } from "./preview-proxy.ts";
 import { type ConnectionServices, createServiceHost } from "./rpc-host.ts";
 import type { PreviewBoard } from "./services/preview.ts";
 import { StaticFiles } from "./static-files.ts";
@@ -94,6 +94,12 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     }),
   );
   const hosts = new Set<string>();
+  let ownPort: number | undefined;
+  const isBlockedPort = (targetPort: number): boolean => {
+    if (ownPort !== undefined && targetPort === ownPort) return true;
+    if (DANGEROUS_PORTS.has(targetPort)) return true;
+    return options.preview?.isIgnored(targetPort) ?? false;
+  };
   // Explicit local/development origins are stable; the tunnel contributes exactly one replaceable public origin.
   const fixedOrigins = new Set(allowedOrigins);
   let activePublicUrl = options.tunnel?.view.publicUrl ?? publicUrl;
@@ -133,6 +139,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
 
   const acceptable = (request: IncomingMessage): boolean =>
     hosts.has(request.headers.host ?? "") && isAllowedOrigin(request.headers.origin, allowedOrigins);
+  const acceptablePreview = (request: IncomingMessage): boolean =>
+    hosts.has(request.headers.host ?? "") &&
+    (request.headers.origin === "null" || isAllowedOrigin(request.headers.origin, allowedOrigins));
   const authorize = async (request: IncomingMessage): Promise<{ master: boolean; deviceId?: string } | undefined> => {
     if (tokensMatch(token, bearerToken(request.headers.authorization))) return { master: true };
     const device = await devices.authenticate(cookie(request, cookieName));
@@ -152,8 +161,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     const { pathname } = new URL(request.url ?? "/", "http://localhost");
     const previewTarget = parsePreviewTarget(request.headers.host, request.url ?? "/", hosts);
     if (previewTarget !== undefined) {
+      if (!acceptablePreview(request)) return sendJson(response, 403, { error: "forbidden" });
       const auth = await authorize(request);
       if (auth === undefined) return sendJson(response, 401, { error: "unauthorized" });
+      if (isBlockedPort(previewTarget.port)) return sendJson(response, 403, { error: "forbidden" });
       const isSubpath = pathname.startsWith(PREVIEW_PATH);
       handlePreviewHttpRequest({
         request,
@@ -262,8 +273,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
       const url = new URL(request.url ?? "/", "http://localhost");
       const previewTarget = parsePreviewTarget(request.headers.host, request.url ?? "/", hosts);
       if (previewTarget !== undefined) {
+        if (!acceptablePreview(request)) return rejectUpgrade(socket, 403, "Forbidden");
         const auth = await authorize(request);
         if (auth === undefined) return rejectUpgrade(socket, 401, "Unauthorized");
+        if (!auth.master && request.headers.origin === undefined) return rejectUpgrade(socket, 403, "Forbidden");
+        if (isBlockedPort(previewTarget.port)) return rejectUpgrade(socket, 403, "Forbidden");
         handlePreviewUpgrade({
           request,
           socket,
@@ -326,6 +340,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
     throw error;
   }
   const { port } = http.address() as AddressInfo;
+  ownPort = port;
   options.preview?.ignorePort(port);
   ownOrigin = `http://${hostname}:${port}`;
   for (const host of [hostname, "localhost"]) fixedOrigins.add(`http://${host}:${port}`);

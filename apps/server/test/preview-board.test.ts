@@ -46,10 +46,12 @@ describe("PreviewBoard", () => {
     }
   });
 
-  test("ignores specified ports", async () => {
+  test("rejects ignored and dangerous ports", async () => {
     const board = new PreviewBoard({ ignoredPorts: [4820], checkIntervalMs: 0 });
     try {
-      await board.register({ port: 4820 });
+      await expect(board.register({ port: 4820 })).rejects.toThrow(/restricted/);
+      await expect(board.register({ port: 22 })).rejects.toThrow(/restricted/);
+      await expect(board.register({ port: 6379 })).rejects.toThrow(/restricted/);
       expect(board.state.value.ports).toHaveLength(0);
     } finally {
       board.dispose();

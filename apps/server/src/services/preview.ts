@@ -2,6 +2,7 @@ import { createConnection } from "node:net";
 import { type Context, type MutableReplicatedState, replicatedState } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { PreviewState, RegisterPortInput, UnregisterPortInput } from "@tandem/contracts";
+import { DANGEROUS_PORTS } from "../preview-proxy.ts";
 import { invalidInput } from "./errors.ts";
 
 export interface PreviewBoardOptions {
@@ -43,14 +44,18 @@ export class PreviewBoard {
     });
   }
 
+  isIgnored(port: number): boolean {
+    return this.#ignoredPorts.has(port) || DANGEROUS_PORTS.has(port);
+  }
+
   async register(input: RegisterPortInput, _context?: Context): Promise<void> {
     if (this.#disposed) return;
     const port = input?.port;
     if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
       throw invalidInput(`Invalid port number: ${String(port)}`);
     }
-    if (this.#ignoredPorts.has(port)) {
-      return;
+    if (this.isIgnored(port)) {
+      throw invalidInput(`Port ${port} is restricted and cannot be previewed`);
     }
     const label = typeof input.label === "string" ? input.label.trim().slice(0, 50) : undefined;
     const detectedAt = Date.now();

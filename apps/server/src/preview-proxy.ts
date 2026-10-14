@@ -2,6 +2,22 @@ import { request as httpRequest, type IncomingMessage, type ServerResponse } fro
 import { connect as netConnect } from "node:net";
 import type { Duplex } from "node:stream";
 
+export const DANGEROUS_PORTS = new Set([
+  22, // SSH
+  25, // SMTP
+  53, // DNS
+  631, // CUPS
+  2375, // Docker plain
+  2376, // Docker TLS
+  3306, // MySQL
+  5432, // Postgres
+  6379, // Redis
+  9229, // Node inspector
+  10250, // Kubelet
+  11211, // Memcached
+  27017, // MongoDB
+]);
+
 export interface PreviewHttpOptions {
   request: IncomingMessage;
   response: ServerResponse;
@@ -56,6 +72,7 @@ export function handlePreviewHttpRequest(options: PreviewHttpOptions): void {
       delete responseHeaders["x-frame-options"];
       // Strip upstream cookies to prevent dev servers from polluting Tandem origin cookies
       delete responseHeaders["set-cookie"];
+      responseHeaders["x-content-type-options"] = "nosniff";
 
       if (responseHeaders["content-security-policy"]) {
         const csp = Array.isArray(responseHeaders["content-security-policy"])
