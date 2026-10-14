@@ -48,35 +48,87 @@ After `install`, open the printed pairing link to authorize your first browser. 
 
 ### Remote access
 
-The server still binds only to `127.0.0.1`, so reaching it from outside this machine means a Cloudflare Tunnel in front of it. Tandem runs the tunnel itself, as a child of the server, so it starts and stops with the server and one service covers both.
+Use your phone or another computer over the internet, without sharing a Wi-Fi network or forwarding router ports. This publishes **Tandem itself**, not your project's preview server. The Tandem host must stay awake and running; the server still binds only to `127.0.0.1`.
 
-Creating a tunnel needs authority over the Cloudflare account. Running a tunnel needs only the connector token of that one tunnel. Those are two different things, so they are two commands, and they are meant for two different machines:
+#### Before you start
+
+- Have a Cloudflare account and a domain whose DNS is managed by Cloudflare. Choose an unused hostname, such as `tandem.example.com`; replace it in every example below with yours.
+- Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on the **Tandem host** (`brew install cloudflared` on macOS). For CLI creation, install it on the creating machine too.
+- Run Tandem on its default port, `4820`. The origin service is `http://127.0.0.1:4820`, not HTTPS. The public address is `https://tandem.example.com`.
+- Configure a Cloudflare Access self-hosted application for that hostname, allowing only your identity. Access is an extra gate, not a replacement for Tandem device pairing.
+
+Choose one route:
+
+| Situation | Route |
+|---|---|
+| Create in a browser, on any machine | Dashboard + token below |
+| Create and run on your own private machine | Same-machine CLI |
+| Create on machine A, run Tandem on machine B | Two-machine instructions below; B receives only a connector token |
+
+#### Create through the Cloudflare website (same machine or two machines)
+
+1. On your trusted machine, open the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/). Go to **Networks → Connectors → Cloudflare Tunnels** (some dashboard versions call this **Networks → Tunnels**).
+2. Choose **Create a tunnel → Cloudflared**, name it (for example `tandem`), and save it.
+3. The connector installation page shows a command ending in a long token. Copy **only the token**, not the whole command. Do not run that service-install command: Tandem will run the connector itself. It is normal for the tunnel to be offline for now.
+4. Add a **Published application route** (also called **Public hostname**): subdomain `tandem`, domain `example.com`, no path, service type **HTTP**, URL **127.0.0.1:4820**. Save it. This creates the DNS route too.
+5. In the Tandem app served by the **Tandem host**, open **Public access** in the sidebar. The **Cloudflare website** tab lists the setup steps together on one page. Under **Publish from Tandem**, enter `https://tandem.example.com` and the tunnel token, then click **Publish**. Wait for **Published at**.
+
+For two machines, steps 1–4 happen on A; step 5 configures Tandem on B. Transfer the token privately. `127.0.0.1` means **B**, where Tandem runs the connector, not A or your phone. A can be switched off afterward. B never needs `cloudflared tunnel login` or your account certificate.
+
+Instead of the dialog, configure B from its Tandem checkout:
 
 ```bash
-# Where authority is acceptable: your own machine.
-bun run tunnel create --public-url https://tandem.example.com
-# → authorizes cloudflared once in a browser, creates the tunnel, points the
-#   hostname at it, and prints the token.
-
-# On the machine that runs Tandem, which never needs that authority:
-pbpaste | bun run tunnel configure --public-url https://tandem.example.com --token-file -
-bun run service restart
-bun run tunnel status --verify
+bun run tunnel configure --public-url https://tandem.example.com --token-file -
+# Paste only the token, press Enter, then Ctrl-D to end input.
 ```
 
-A connector token runs that one tunnel: it cannot create tunnels or change DNS records, the dashboard revokes it, and it is the only credential the machine running Tandem holds. `create` writes nothing locally; `configure` reads the token from standard input or `--token-file <path>`, never from an argument, and keeps it in `~/.tandem/tunnel.json` at 0600.
+`configure` reloads an installed Tandem service (interrupting active work). Without a service, stop any foreground Tandem process and run `bun run start` again. The dialog's **Publish** starts the connector without restarting Tandem. Do not run a separate `cloudflared` service alongside it.
 
-**If the machine running Tandem is yours alone**, the two roles collapse into one command, and no token is copied:
+#### Same machine: create with the cloudflared CLI
+
+On a machine that is **yours alone**, run this from the Tandem checkout:
 
 ```bash
+brew install cloudflared   # macOS; see the installation link above for other systems
 bun run tunnel setup --public-url https://tandem.example.com
 ```
 
-`setup` does the same work as `create` and then writes `~/.tandem/cloudflared.yml`, whose one ingress rule sends that hostname to `http://127.0.0.1:4820` and whose second rule refuses everything else. It leaves `~/.cloudflared/cert.pem` behind, which can create and delete this account's tunnels and edit that domain's DNS, so do not run it on a shared machine, in a sync folder, or anywhere its home directory is readable by others. `--force` replaces a DNS record that is already there; without it, `create` and `setup` stop and say so. Taking either route replaces the file the other one uses.
+Tandem calls `cloudflared tunnel login`, opens the approval page, then calls `cloudflared tunnel create` and `cloudflared tunnel route dns`. Approve the domain in your browser. It writes the local ingress configuration pointing to `http://127.0.0.1:4820`; no token needs copying. An installed Tandem service is reloaded automatically; otherwise restart with `bun run start`.
 
-Install `cloudflared` first (`brew install cloudflared`); Tandem does not download it. Both commands name the address, so a second run reuses the same tunnel.
+For instructions in the app, open **Public access → CLI**, then choose **Same machine** or **Two machines**. All steps for your chosen setup are shown together, with a copy button beside each command. Run the commands in your terminal; the dialog does not run CLI commands for you.
 
-The same two roles are in the app: **Public access** in the sidebar footer takes the address and the tunnel token, and reports what the tunnel is doing, so the machine that runs Tandem needs no terminal either.
+This leaves `~/.cloudflared/cert.pem` on the host, with authority to manage tunnels and domain DNS, plus the tunnel's credentials. Do not use this route on a shared machine or sync its credentials. Use the dashboard/token route instead. `setup` writes `~/.tandem/cloudflared.yml`; choosing the token route later replaces that local configuration.
+
+#### Two machines: create with CLI on A, run Tandem on B
+
+On **A, your trusted personal machine**, from a Tandem checkout:
+
+```bash
+bun run tunnel create --public-url https://tandem.example.com
+```
+
+This wraps `cloudflared tunnel login`, `create`, `route dns`, and `token`. Approve the domain when prompted. Keep the account certificate and tunnel credentials on A; do not copy `~/.cloudflared` to B. Only the connector token printed at the end is intended for B.
+
+**Cloudflare configuration matters:** `cloudflared tunnel create` creates a locally managed tunnel. Before using its token alone on B, migrate that tunnel to remote management in the Cloudflare dashboard and configure its published application route as in step 4 above. A DNS record by itself does not configure the origin service. Alternatively, create a remotely managed tunnel in the dashboard from the start.
+
+On **B, the Tandem host**, install `cloudflared`, then paste the token into **Public access**, or run:
+
+```bash
+bun run tunnel configure --public-url https://tandem.example.com --token-file -
+# Paste the token, press Enter, then Ctrl-D.
+```
+
+Restart foreground Tandem if needed, as above. Do not run `tunnel setup` or `cloudflared tunnel login` on B. A is only needed to manage the tunnel, not to keep it running. `create` does not configure Tandem on A, but Cloudflare's login and creation commands do leave credentials there. Existing DNS records are not overwritten unless you explicitly pass `--force` to `create` or `setup`.
+
+The connector token can run this one tunnel, not manage account DNS. Treat it as a secret: transfer it privately, never put it in a command argument or commit it, and rotate it in Cloudflare if exposed. `configure` accepts standard input or `--token-file <path>` and stores it in `~/.tandem/tunnel.json` with mode `0600`.
+
+#### Connect your phone and check the result
+
+1. Wait for **Public access** to show **Published at**, then open the HTTPS address on your phone (mobile data works).
+2. Pass Cloudflare Access if configured. In an already paired Tandem browser, open **Devices** and create a pairing link. Open that public-hostname link on your phone within five minutes; it works once. Never send a `127.0.0.1` or `localhost` link to the phone.
+3. After pairing, bookmark the HTTPS address. Keep the Tandem host awake; use `bun run service install` if it should survive closing your terminal.
+
+Check locally with `bun run tunnel status --verify` and `bun run service status`. If the connector is connected but the public page fails, check the published application route, DNS, and that Tandem answers at `http://127.0.0.1:4820` on the host. A connected tunnel alone does not prove the hostname routes to Tandem.
 
 The server reports the tunnel as `starting`, `connected`, `failed`, or `unavailable` in `/health`, which `bun run service status` prints. A failed tunnel is started again, backing off to a minute. The hop to `127.0.0.1` is kept off any proxy, while an installer's `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` are carried into the service file. Previewing an app that a terminal started over the tunnel is not implemented yet: the tunnel publishes the one port the server listens on.
 

@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
+import { PublicAccessSetupGuide } from "./setup-guide.tsx";
 
 const PublicAccessDialogContext = createContext<{ open(): void }>({ open: () => {} });
 export function usePublicAccessDialog(): { open(): void } {
@@ -39,7 +40,6 @@ function PublicAccessDialog({ onOpenChange }: { onOpenChange: (open: boolean) =>
   const state = useReplicatedState(publicAccess.state);
   const [origin, setOrigin] = useState("https://");
   const [token, setToken] = useState("");
-  const [authorizing, setAuthorizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
 
@@ -53,48 +53,31 @@ function PublicAccessDialog({ onOpenChange }: { onOpenChange: (open: boolean) =>
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90dvh] min-w-0 grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-2xl [overflow-wrap:anywhere]">
         <DialogHeader>
           <DialogTitle>Public access</DialogTitle>
-          <DialogDescription>
-            Reach this Tandem from another machine, through a Cloudflare tunnel this one runs. Anyone who pairs with
-            this Tandem can run agents and terminals here, so put Cloudflare Access in front of it too.
-          </DialogDescription>
+          <DialogDescription>Set up access from your phone, even on mobile data.</DialogDescription>
         </DialogHeader>
 
-        {!installed && (
-          <Alert>
-            <AlertTitle>cloudflared is not installed here</AlertTitle>
-            <AlertDescription>
-              Install it with <code>brew install cloudflared</code> on the machine running Tandem, then open this again.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {installed && status === "none" && (
-          <form
-            className="flex flex-col gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              run(() =>
-                publicAccess.publish(
-                  { publicUrl: origin.trim(), ...(authorizing ? {} : { token: token.trim() }) },
-                  BACKGROUND_CONTEXT,
-                ),
-              );
-            }}
-          >
-            <Field>
-              <FieldLabel htmlFor="public-access-origin">The address it will answer at</FieldLabel>
-              <Input
-                id="public-access-origin"
-                value={origin}
-                onChange={(event) => setOrigin(event.target.value)}
-                placeholder="https://tandem.example.com"
-                autoComplete="off"
-              />
-            </Field>
-            {!authorizing && (
+        {status === "none" && (
+          <PublicAccessSetupGuide installed={installed}>
+            <form
+              className="flex min-w-0 flex-col gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                run(() => publicAccess.publish({ publicUrl: origin.trim(), token: token.trim() }, BACKGROUND_CONTEXT));
+              }}
+            >
+              <Field>
+                <FieldLabel htmlFor="public-access-origin">The address it will answer at</FieldLabel>
+                <Input
+                  id="public-access-origin"
+                  value={origin}
+                  onChange={(event) => setOrigin(event.target.value)}
+                  placeholder="https://tandem.example.com"
+                  autoComplete="off"
+                />
+              </Field>
               <Field>
                 <FieldLabel htmlFor="public-access-token">Tunnel token</FieldLabel>
                 <Input
@@ -105,31 +88,11 @@ function PublicAccessDialog({ onOpenChange }: { onOpenChange: (open: boolean) =>
                   autoComplete="off"
                 />
               </Field>
-            )}
-            <p className="text-sm text-muted-foreground">
-              {authorizing ? (
-                <>
-                  A browser window opens to approve this machine. That authorizes cloudflared to manage tunnels and DNS
-                  for the domain you pick, which is more than this machine should hold unless it is yours alone.
-                </>
-              ) : (
-                <>
-                  Create the tunnel and its public hostname in the Cloudflare dashboard, pointing at{" "}
-                  <code>http://127.0.0.1:4820</code>, then paste its token here. The token runs that one tunnel and
-                  grants nothing else, and the dashboard revokes it.
-                </>
-              )}
-            </p>
-            <Button
-              type="submit"
-              disabled={!origin.trim().startsWith("https://") || (!authorizing && token.trim() === "")}
-            >
-              Publish
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setAuthorizing(!authorizing)}>
-              {authorizing ? "Use a tunnel token instead" : "This machine is mine alone: authorize it instead"}
-            </Button>
-          </form>
+              <Button type="submit" disabled={!installed || !validOrigin(origin) || token.trim() === ""}>
+                Publish
+              </Button>
+            </form>
+          </PublicAccessSetupGuide>
         )}
 
         {installed && status === "authorizing" && (
@@ -156,9 +119,15 @@ function PublicAccessDialog({ onOpenChange }: { onOpenChange: (open: boolean) =>
             <p className="text-sm">
               Published at <span className="font-medium">{state?.publicUrl}</span>.
             </p>
-            <p className="text-sm text-muted-foreground">
-              Pair another device from there with a pairing link, and keep Access in front of this address.
-            </p>
+            <p className="text-sm text-muted-foreground">Keep the Tandem host awake and running.</p>
+            <h3 className="font-medium">Pair your phone</h3>
+            <ol className="list-decimal space-y-2 pl-5 text-sm">
+              <li>Open Devices in this paired browser and create a pairing link.</li>
+              <li>
+                Open that public-hostname link on your phone within five minutes. Pass Cloudflare Access if prompted.
+              </li>
+              <li>Bookmark the HTTPS address. Mobile data works; localhost links do not.</li>
+            </ol>
             <Button variant="destructive" onClick={() => setConfirmStop(true)}>
               Stop publishing
             </Button>
@@ -196,4 +165,13 @@ function PublicAccessDialog({ onOpenChange }: { onOpenChange: (open: boolean) =>
       )}
     </Dialog>
   );
+}
+
+function validOrigin(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" && url.hostname !== "" && url.origin === value.trim();
+  } catch {
+    return false;
+  }
 }
