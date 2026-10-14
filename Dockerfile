@@ -5,7 +5,11 @@ RUN (sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/deb
   && apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
+    wget \
     ca-certificates \
+    openssh-client \
+    procps \
+    jq \
     unzip \
     ripgrep \
     fd-find \
@@ -22,6 +26,10 @@ RUN ARCH=$(dpkg --print-architecture) \
 ENV BUN_INSTALL="/root/.bun"
 ENV PATH="${BUN_INSTALL}/bin:${PATH}"
 RUN curl -fsSL https://bun.sh/install | bash
+
+# Install uv modern Python package manager & enable corepack for pnpm/yarn
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh \
+  && corepack enable
 
 WORKDIR /app
 
@@ -40,6 +48,11 @@ COPY . .
 
 # Build frontend and package bundles
 RUN bun run build
+
+# Configure SSH client defaults (auto-accept new host keys for non-interactive agent execution)
+RUN mkdir -p /etc/ssh/ssh_config.d /data /workspace /root/.ssh \
+  && chmod 700 /root/.ssh \
+  && echo "Host *\n  StrictHostKeyChecking accept-new\n  ServerAliveInterval 60\n" > /etc/ssh/ssh_config.d/tandem.conf
 
 # Create mount points for persistent state and project workspaces
 RUN mkdir -p /data /workspace

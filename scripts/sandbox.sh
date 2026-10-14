@@ -76,11 +76,9 @@ function start_sandbox() {
   fi
 
   log "Starting Tandem inside microVM sandbox..."
-  sbx exec "${SANDBOX_NAME}" /bin/bash -c "
-    if ! pgrep -f 'apps/server/src/main.ts' >/dev/null 2>&1; then
-      nohup node apps/server/src/main.ts --host 0.0.0.0 --port ${PORT} --no-open > /tmp/tandem.log 2>&1 &
-    fi
-  "
+  if ! curl -s "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+    sbx exec "${SANDBOX_NAME}" /bin/bash -c "cd /app && nohup node apps/server/src/main.ts --host 0.0.0.0 --port ${PORT} --no-open </dev/null >/tmp/tandem.log 2>&1 & disown"
+  fi
 
   log "Waiting for Tandem server to become ready..."
   local ready=0
@@ -100,7 +98,7 @@ function start_sandbox() {
 
   log "Tandem is running securely inside Docker Sandboxes microVM!"
   local pair_url
-  pair_url=$(sbx exec "${SANDBOX_NAME}" grep -E "http://localhost:[0-9]+/pair#[a-f0-9]+" /tmp/tandem.log | tail -n 1 | awk '{print $NF}' || true)
+  pair_url=$(sbx exec "${SANDBOX_NAME}" grep -E "http://[0-9.]*:[0-9]+/pair#[a-f0-9]+" /tmp/tandem.log | tail -n 1 | awk '{print $NF}' | sed 's/0.0.0.0/localhost/' || true)
 
   if [ -n "$pair_url" ]; then
     echo ""
