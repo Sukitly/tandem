@@ -1,8 +1,9 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { AlertCircleIcon, EyeIcon, EyeOffIcon, RotateCwIcon, XIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, RotateCwIcon, XIcon } from "lucide-react";
+import { useEffect } from "react";
+import { toast } from "sonner";
 import { panelTabOf, useWorkbench } from "@/app/workbench.tsx";
 import { ChangesView } from "@/changes/changes-view.tsx";
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,6 +36,14 @@ export function ProjectPanel({
   const changesFailure = useProjectChangesFailure(workspaceId);
   const failure = useProjectFiles(files, (current) => current.failure);
   const opened = useProjectFiles(files, (current) => current.opened !== null);
+
+  useEffect(() => {
+    if (failure !== null) {
+      toast.error("Cannot list a directory", { description: failure });
+      files.dismissFailure();
+    }
+  }, [failure, files]);
+
   return (
     <Tabs value={panelTab} onValueChange={(value) => showTab(panelTabOf(value))} className="h-full min-h-0 gap-0">
       {/* As tall as the conversation's header beside it, so that their borders line up. */}
@@ -90,20 +99,6 @@ export function ProjectPanel({
         </div>
       </header>
       <TabsContent value="files" className="flex min-h-0 flex-col">
-        {failure !== null && (
-          <div className="p-2">
-            <Alert variant="destructive">
-              <AlertCircleIcon />
-              <AlertTitle>Cannot list a directory</AlertTitle>
-              <AlertDescription>{failure}</AlertDescription>
-              <AlertAction>
-                <Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={() => files.dismissFailure()}>
-                  <XIcon />
-                </Button>
-              </AlertAction>
-            </Alert>
-          </div>
-        )}
         <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
           <ResizablePanel id="tree" minSize={80} className="overflow-auto p-2">
             <FileTree files={files} showHidden={showHiddenFiles} />
