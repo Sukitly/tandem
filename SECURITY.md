@@ -21,7 +21,7 @@ Run `bun audit`, `bun why <package>`, `bun run check`, `bun run test`, and `bun 
 
 The root `package.json` overrides KaTeX to `0.19.0`, including the copies used by Streamdown, rehype-katex, micromark-extension-math, and Mermaid. The fixed version starts at `0.18.2`; upgrading only the web app's direct dependency leaves vulnerable transitive copies installed. The override also keeps the renderer aligned with the web app's KaTeX stylesheet.
 
-The advisory requires an existing prototype-pollution source; KaTeX does not create that initial pollution. Markdown math rendering and disabled trusted links/images have regression tests. The override crosses upstream dependency ranges, so retain build and rendering checks, and remove the override when upstream ranges require a fixed version.
+The advisory requires an existing prototype-pollution source; KaTeX does not create that initial pollution. Markdown math rendering, disabled trusted links/images, inherited trust settings, and real Mermaid mathematical labels have regression tests. Mermaid tests exercise native MathML and legacy output through the actual plugin and renderer; jsdom substitutes only SVG geometry and browser capability detection, not a full browser layout engine. The override crosses upstream dependency ranges, so retain build and rendering checks, and remove the override when upstream ranges require a fixed version.
 
 Advisory: https://github.com/advisories/GHSA-238p-pmpm-9mq7
 

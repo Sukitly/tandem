@@ -15,6 +15,7 @@ import {
 import { afterEach, describe, expect, test } from "vitest";
 import { WebSocket } from "ws";
 import { DeviceSessions } from "../src/device-sessions.ts";
+import { HostedTerminal } from "../src/hosted-terminal.ts";
 import { publicOrigin, startServer, type TandemServer } from "../src/server.ts";
 import type { PublicAccessView, TunnelControl } from "../src/tunnel-control.ts";
 
@@ -37,9 +38,11 @@ function rawHttp(url: URL, headers: Record<string, string>, body?: string): Prom
 }
 const servers: TandemServer[] = [];
 const sockets: WebSocket[] = [];
+const terminals: HostedTerminal[] = [];
 afterEach(async () => {
   for (const socket of sockets.splice(0)) socket.terminate();
   for (const server of servers.splice(0)) await server.stop();
+  for (const terminal of terminals.splice(0)) terminal.dispose();
 });
 async function start(options: Parameters<typeof startServer>[0] = {}) {
   const devices = options.devices ?? (await DeviceSessions.load());
@@ -53,8 +56,13 @@ async function start(options: Parameters<typeof startServer>[0] = {}) {
     });
   return { server, devices, pair };
 }
-function socket(server: TandemServer, headers: Record<string, string>, query = ""): Promise<WebSocket | number> {
-  const url = new URL(RPC_PATH + query, server.url);
+function socket(
+  server: TandemServer,
+  headers: Record<string, string>,
+  query = "",
+  path: string = RPC_PATH,
+): Promise<WebSocket | number> {
+  const url = new URL(path + query, server.url);
   url.protocol = "ws:";
   const ws = new WebSocket(url, { headers });
   sockets.push(ws);
@@ -204,7 +212,7 @@ describe("device authentication at the HTTP boundary", () => {
     expect((await pair(code)).status).toBe(429);
     expect((await pair(recovery)).status).toBe(429);
   });
-  test("replacing or removing a public origin revokes old HTTP and WebSocket access", async () => {
+  test.each([RPC_PATH, "/pty/security-test"])("public origin revocation closes and rejects %s", async (path) => {
     const oldOrigin = "https://old.example.com";
     const nextOrigin = "https://next.example.com";
     let changed: ((view: PublicAccessView) => void) | undefined;
@@ -218,29 +226,52 @@ describe("device authentication at the HTTP boundary", () => {
       },
     } as TunnelControl;
     // The initial CLI origin must not reappear after unpublish either.
-    const { server, pair } = await start({ tunnel, publicUrl: oldOrigin });
+    const terminal = new HostedTerminal({
+      id: "security-test",
+      cwd: await mkdtemp(join(tmpdir(), "tandem-access-pty-")),
+      size: { cols: 80, rows: 24 },
+      command: ["/bin/sh"],
+      onExit: () => {},
+    });
+    terminals.push(terminal);
+    const { server, pair } = await start({
+      tunnel,
+      publicUrl: oldOrigin,
+      terminal: (id) => (id === terminal.id ? terminal : undefined),
+    });
+    const connect = (headers: Record<string, string>) => socket(server, headers, "", path);
     const paired = await pair(server.pair().code, { origin: oldOrigin });
     const cookie = paired.headers.get("set-cookie")?.split(";")[0] as string;
-    const ws = (await socket(server, { cookie, origin: oldOrigin })) as WebSocket;
-    const closed = new Promise((resolve) => ws.once("close", resolve));
+    const ws = (await connect({ cookie, origin: oldOrigin })) as WebSocket;
+    const hostOnly = (await connect({
+      host: "old.example.com",
+      authorization: `Bearer ${server.token}`,
+    })) as WebSocket;
+    const closed = Promise.all(
+      [ws, hostOnly].map((connection) => new Promise((resolve) => connection.once("close", resolve))),
+    );
     changed?.({ status: "connected", publicUrl: nextOrigin });
     await closed;
-    expect(await socket(server, { cookie, origin: oldOrigin })).toBe(403);
+    expect(await connect({ cookie, origin: oldOrigin })).toBe(403);
+    expect(await connect({ host: "old.example.com", authorization: `Bearer ${server.token}` })).toBe(403);
     expect((await rawHttp(server.url, { host: "old.example.com" })).status).toBe(403);
     expect((await pair(server.pair().code, { origin: oldOrigin })).status).toBe(403);
-    expect(await socket(server, { cookie, origin: nextOrigin })).toBeInstanceOf(WebSocket);
+    const current = (await connect({ cookie, origin: nextOrigin })) as WebSocket;
+    expect(current).toBeInstanceOf(WebSocket);
+    const currentClosed = new Promise((resolve) => current.once("close", resolve));
     const code = await fetch(new URL(PAIR_CODE_PATH, server.url), {
       method: "POST",
       headers: { authorization: `Bearer ${server.token}` },
     });
     expect((await code.json()).publicUrl).toBe(nextOrigin);
     changed?.({ status: "none" });
+    await currentClosed;
     expect(server.pair().publicUrl).toBeUndefined();
-    expect(await socket(server, { cookie, origin: nextOrigin })).toBe(403);
+    expect(await connect({ cookie, origin: nextOrigin })).toBe(403);
     expect((await rawHttp(server.url, { host: "next.example.com" })).status).toBe(403);
     expect((await rawHttp(server.url, { host: "old.example.com" })).status).toBe(403);
     // Local access remains available after removing the public origin.
-    expect(await socket(server, { cookie, origin: server.url.origin })).toBeInstanceOf(WebSocket);
+    expect(await connect({ cookie, origin: server.url.origin })).toBeInstanceOf(WebSocket);
   });
 });
 

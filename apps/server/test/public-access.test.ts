@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { createPublicAccessService } from "../src/services/public-access.ts";
+import * as tunnelConfig from "../src/tunnel-config.ts";
 import { loadTunnelConfig, tunnelConfigPath } from "../src/tunnel-config.ts";
 import { type PublicAccessView, TunnelControl } from "../src/tunnel-control.ts";
 import { tunnelFileYamlPath } from "../src/tunnel-file.ts";
@@ -161,14 +162,42 @@ test("unpublish cancels pending authorization before reporting that public acces
 
 test("unpublish drains an in-flight token write and removes its configuration", async () => {
   const b = await bench();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const events: string[] = [];
+  const save = tunnelConfig.saveTunnelConfig;
+  const writing = vi.spyOn(tunnelConfig, "saveTunnelConfig").mockImplementation(async (config, stateDir) => {
+    expect(stateDir).toBe(b.stateDir);
+    events.push("write started");
+    started.resolve();
+    await release.promise;
+    const path = await save(config, stateDir);
+    expect(await loadTunnelConfig(stateDir)).toEqual(config);
+    events.push("write finished");
+    return path;
+  });
   try {
     await b.control.publish({ publicUrl: PUBLIC_URL, token: "dashboard-token" });
-    await Promise.all([b.control.unpublish(), b.control.stop(), b.control.unpublish()]);
+    await started.promise;
+    let closed = false;
+    const closing = Promise.all([b.control.unpublish(), b.control.stop(), b.control.unpublish()]).then(() => {
+      closed = true;
+      events.push("closed");
+    });
+    // Let shutdown run while the write is deliberately held, rather than racing filesystem timing.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(closed).toBe(false);
+    expect(b.control.view.status).not.toBe("none");
+    release.resolve();
+    await closing;
+    expect(events).toEqual(["write started", "write finished", "closed"]);
     expect(b.control.view.status).toBe("none");
     expect(await loadTunnelConfig(b.stateDir)).toBeUndefined();
     expect(await readFile(b.calls, "utf8").catch(() => "")).not.toContain(" run");
   } finally {
+    release.resolve();
     await b.control.stop();
+    writing.mockRestore();
   }
 });
 
