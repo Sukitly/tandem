@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { ChangeTarget } from "@/changes/change-target.ts";
 import { ProjectComments } from "@/comments/project-comments.ts";
 import { type OpenedFile, ProjectFiles } from "@/files/project-files.ts";
@@ -77,7 +78,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [selected, setSelected] = useState(selectedInHash);
   const [draft, setDraft] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
-  const [failure, setFailure] = useState<Failure | null>(null);
   const isMobile = useIsMobile();
   const [filesShown, setFilesShown] = useState(() => {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
@@ -193,12 +193,16 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         () => {
           if (workspaceId === id) select(null);
         },
-        (error: unknown) => setFailure({ title: "Could not remove the project", message: messageOf(error) }),
+        (error: unknown) => {
+          toast.error("Could not remove the project", { description: messageOf(error) });
+        },
       );
     },
-    failure,
-    reportFailure: (title, error) => setFailure({ title, message: messageOf(error) }),
-    dismissFailure: () => setFailure(null),
+    failure: null,
+    reportFailure(title, error) {
+      toast.error(title, { description: messageOf(error) });
+    },
+    dismissFailure() {},
   };
 
   return (

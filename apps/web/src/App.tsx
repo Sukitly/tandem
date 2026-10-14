@@ -1,12 +1,13 @@
-import { AlertCircleIcon, FolderPlusIcon, MessageSquareIcon, WifiOffIcon, XIcon } from "lucide-react";
+import { AlertCircleIcon, FolderPlusIcon, MessageSquareIcon, WifiOffIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { SidebarInset } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/sonner.tsx";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
@@ -20,13 +21,19 @@ import { ChatView, NewChat } from "./chat/chat-view.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
 import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
 import { useReplicatedState } from "./rpc/use-replicated-state.ts";
-import { ThemeProvider } from "./theme.tsx";
+import { ThemeProvider, useTheme } from "./theme.tsx";
 import { PublicAccessPageProvider } from "./tunnel/public-access.tsx";
+
+function AppToaster() {
+  const { choice } = useTheme();
+  return <Toaster theme={choice} closeButton />;
+}
 
 export function App({ initialPairCode }: { initialPairCode?: string } = {}) {
   return (
     <ThemeProvider>
       <TooltipProvider>
+        <AppToaster />
         {initialPairCode !== undefined ? (
           <PairScreen initialCode={initialPairCode} />
         ) : (
@@ -52,7 +59,6 @@ function Workbench() {
         <AppSidebar />
         <SidebarInset className="h-dvh min-w-0">
           <ConnectionAlert />
-          <FailureAlert />
           <Main />
         </SidebarInset>
       </AppSidebarProvider>
@@ -162,26 +168,6 @@ export function WithFiles({ workspaceId, children }: { workspaceId: number | nul
         </>
       )}
     </ResizablePanelGroup>
-  );
-}
-
-/** Something the user asked for in the sidebar that did not happen. */
-function FailureAlert() {
-  const { failure, dismissFailure } = useWorkbench();
-  if (failure === null) return null;
-  return (
-    <div className="p-2">
-      <Alert variant="destructive">
-        <AlertCircleIcon />
-        <AlertTitle>{failure.title}</AlertTitle>
-        <AlertDescription>{failure.message}</AlertDescription>
-        <AlertAction>
-          <Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={dismissFailure}>
-            <XIcon />
-          </Button>
-        </AlertAction>
-      </Alert>
-    </div>
   );
 }
 
