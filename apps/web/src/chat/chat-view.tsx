@@ -135,12 +135,8 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
             select(id);
           }}
           onStop={() => {}}
-          status={
-            <div className="grid gap-1.5">
-              <StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />
-              <UsageLine provider={agent.model?.provider} modelId={agent.model?.modelId} />
-            </div>
-          }
+          statusBar={<StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />}
+          status={<UsageLine provider={agent.model?.provider} modelId={agent.model?.modelId} />}
         />
       </ChatFooter>
     </ChatFrame>
@@ -173,7 +169,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           <MessageScrollerViewport
             role="log"
             aria-label="Transcript"
-            className="size-full min-h-0 min-w-0 overflow-y-auto"
+            className="size-full min-h-0 min-w-0 overflow-y-auto scroll-fade-none"
           >
             <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
               {transcript.items.map((item) => (
@@ -213,13 +209,15 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           onStop={() => {
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}
+          statusBar={
+            <StatusBar
+              agent={agent}
+              usage={transcript.usage}
+              onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
+            />
+          }
           status={
             <div className="grid gap-1.5">
-              <StatusBar
-                agent={agent}
-                usage={transcript.usage}
-                onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
-              />
               <UsageLine provider={agent?.model?.provider} modelId={agent?.model?.modelId} active={transcript.busy} />
               {tps !== undefined && <TpsLine tps={tps} />}
             </div>

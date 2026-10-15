@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ModelRef, ModelSummary } from "@tandem/contracts";
+import { cn } from "cn";
 import { CheckIcon, ChevronDownIcon, KeyRoundIcon } from "lucide-react";
 import { useState } from "react";
 import { Context } from "@/components/ai-elements/context.tsx";
@@ -41,10 +42,12 @@ export function StatusBar({
   agent,
   usage,
   onConfigure,
+  className,
 }: {
   agent: AgentChoice | undefined;
   usage: ContextUsage;
   onConfigure: (change: AgentChoice) => Promise<void>;
+  className?: string;
 }) {
   const { models } = useConnected();
   const state = useReplicatedState(models.state);
@@ -61,7 +64,7 @@ export function StatusBar({
   };
 
   return (
-    <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+    <div className={cn("flex min-w-0 flex-1 items-center gap-1 text-xs text-muted-foreground", className)}>
       <ModelPicker agent={agent} current={current} onConfigure={onConfigure} />
       {current !== undefined && current.thinkingLevels.length > 1 && (
         <DropdownMenu>
@@ -84,12 +87,14 @@ export function StatusBar({
         </DropdownMenu>
       )}
       {contextWindow > 0 && (
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <span className="font-mono tabular-nums">
-            {formatCost(usage.cost)}
-            {` · ${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
-          </span>
-          <Context usedTokens={usage.tokens} maxTokens={contextWindow} cost={usage.cost} />
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <span className="font-mono tabular-nums">{formatCost(usage.cost)}</span>
+          <Context
+            usedTokens={usage.tokens}
+            maxTokens={contextWindow}
+            cost={usage.cost}
+            label={`${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
+          />
         </div>
       )}
     </div>

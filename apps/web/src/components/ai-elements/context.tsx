@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card.tsx";
 import { Progress } from "@/components/ui/progress.tsx";
@@ -6,6 +7,7 @@ export interface ContextProps {
   usedTokens: number;
   maxTokens: number;
   cost?: number;
+  label?: React.ReactNode;
   rows?: Array<{ label: string; value: string | number }>;
   className?: string;
 }
@@ -28,7 +30,7 @@ function formatCost(dollars: number): string {
  * Context shows how much of the model's context window the conversation has used.
  * Follows the shadcn/ui AI Elements Context pattern.
  */
-export function Context({ usedTokens, maxTokens, cost, rows, className }: ContextProps) {
+export function Context({ usedTokens, maxTokens, cost, label, rows, className }: ContextProps) {
   const percent = maxTokens > 0 ? Math.min(100, Math.round((usedTokens / maxTokens) * 100)) : 0;
 
   const defaultRows: Array<{ label: string; value: string | number }> = [
@@ -44,7 +46,7 @@ export function Context({ usedTokens, maxTokens, cost, rows, className }: Contex
   return (
     <HoverCard>
       <HoverCardTrigger delay={10} closeDelay={100} render={<Button variant="ghost" size="xs" className={className} />}>
-        {percent}% context
+        {label ?? `${percent}% context`}
       </HoverCardTrigger>
       <HoverCardContent className="flex w-64 flex-col gap-3 p-3">
         <div className="flex items-center justify-between gap-3 text-xs">
