@@ -147,3 +147,22 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# OS metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Tandem local state and docker workspace
+.tandem/
+workspace/
+
+# IDE and editor directories
+.idea/
+*.swp
+*.swo
+

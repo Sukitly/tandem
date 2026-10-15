@@ -1,5 +1,16 @@
 {
   "name": "tandem",
+  "description": "A local-first agent product you work with, not hand tasks to",
+  "license": "MIT",
+  "author": "Shuqian",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sukitly/tandem.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sukitly/tandem/issues"
+  },
+  "homepage": "https://github.com/Sukitly/tandem#readme",
   "private": true,
   "type": "module",
   "workspaces": [
