@@ -135,9 +135,13 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
             select(id);
           }}
           onStop={() => {}}
-          status={<StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />}
+          status={
+            <div className="grid gap-1.5">
+              <StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />
+              <UsageLine provider={agent.model?.provider} modelId={agent.model?.modelId} />
+            </div>
+          }
         />
-        <UsageLine provider={agent.model?.provider} modelId={agent.model?.modelId} />
       </ChatFooter>
     </ChatFrame>
   );
@@ -210,17 +214,17 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}
           status={
-            <StatusBar
-              agent={agent}
-              usage={transcript.usage}
-              onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
-            />
+            <div className="grid gap-1.5">
+              <StatusBar
+                agent={agent}
+                usage={transcript.usage}
+                onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
+              />
+              <UsageLine provider={agent?.model?.provider} modelId={agent?.model?.modelId} active={transcript.busy} />
+              {tps !== undefined && <TpsLine tps={tps} />}
+            </div>
           }
         />
-        <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
-          <UsageLine provider={agent?.model?.provider} modelId={agent?.model?.modelId} active={transcript.busy} />
-          {tps !== undefined && <TpsLine tps={tps} />}
-        </div>
       </ChatFooter>
     </ChatFrame>
   );
