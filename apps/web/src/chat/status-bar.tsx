@@ -52,6 +52,7 @@ export function StatusBar({
     (model) => model.provider === agent?.model?.provider && model.modelId === agent?.model?.modelId,
   );
   const contextWindow = current?.contextWindow ?? 0;
+  const percent = contextWindow > 0 ? Math.min(100, (usage.tokens / contextWindow) * 100) : 0;
   const report = (error: unknown): void => console.error(error);
   const chooseThinking = (thinkingLevel: string): void => {
     onConfigure({ thinkingLevel }).catch(report);
@@ -82,7 +83,15 @@ export function StatusBar({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
-      {contextWindow > 0 && <Context usedTokens={usage.tokens} maxTokens={contextWindow} cost={usage.cost} />}
+      {contextWindow > 0 && (
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <span className="font-mono tabular-nums">
+            {formatCost(usage.cost)}
+            {` · ${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
+          </span>
+          <Context usedTokens={usage.tokens} maxTokens={contextWindow} cost={usage.cost} />
+        </div>
+      )}
     </div>
   );
 }
@@ -180,4 +189,13 @@ function groupByProvider(
 
 function thinkingLabel(level: string): string {
   return level === "off" ? "No thinking" : `Thinking: ${level}`;
+}
+
+export function formatCost(dollars: number): string {
+  return `$${dollars < 1 ? dollars.toFixed(3) : dollars.toFixed(2)}`;
+}
+
+export function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
+  return `${Math.round(tokens / 1000)}K`;
 }

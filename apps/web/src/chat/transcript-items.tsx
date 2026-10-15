@@ -1,8 +1,19 @@
-import { AlertCircleIcon, CheckIcon, CopyIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  CheckIcon,
+  CopyIcon,
+  FilePenLineIcon,
+  FilePlusIcon,
+  FileTextIcon,
+  MessageSquareReplyIcon,
+  WrenchIcon,
+} from "lucide-react";
+import type * as React from "react";
 import { useState } from "react";
 import { MessageAction, Reasoning, Terminal, Tool } from "@/components/ai-elements/index.ts";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Bubble, BubbleContent } from "@/components/ui/bubble.tsx";
+import { CodeBlock, CodeBlockContent, CodeBlockLine } from "@/components/ui/code-block.tsx";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker.tsx";
 import { Message, MessageContent, MessageFooter } from "@/components/ui/message.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
@@ -136,21 +147,43 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
                       />
                     );
                   }
+                  const { icon, title } = describeTool(step);
+                  const writeContent =
+                    step.name === "write" && typeof step.args.content === "string" ? step.args.content : undefined;
+                  const hasDetail =
+                    step.images.length > 0 ||
+                    step.diff !== undefined ||
+                    writeContent !== undefined ||
+                    (step.name === "reply_to_comment" && typeof step.args.text === "string") ||
+                    step.output !== "";
+
                   return (
-                    <Tool
-                      key={step.callId}
-                      name={step.name}
-                      args={step.args}
-                      output={step.output}
-                      diff={step.diff}
-                      status={step.status}
-                    >
-                      {step.images.length > 0 && <TranscriptImages images={step.images} className="mb-2" />}
-                      {step.name === "reply_to_comment" && typeof step.args.text === "string" && (
-                        <div className="text-sm">
-                          <Markdown text={step.args.text} streaming={step.status === "running"} />
-                        </div>
-                      )}
+                    <Tool key={step.callId} title={title} icon={icon} status={step.status}>
+                      {hasDetail ? (
+                        <>
+                          {step.images.length > 0 && <TranscriptImages images={step.images} className="mb-2" />}
+                          {step.name === "reply_to_comment" && typeof step.args.text === "string" && (
+                            <div className="text-sm">
+                              <Markdown text={step.args.text} streaming={step.status === "running"} />
+                            </div>
+                          )}
+                          {step.diff !== undefined ? (
+                            <ToolDiff diff={step.diff} />
+                          ) : writeContent !== undefined ? (
+                            <CodeBlock size="sm">
+                              <CodeBlockContent wrap className="max-h-64">
+                                {writeContent}
+                              </CodeBlockContent>
+                            </CodeBlock>
+                          ) : step.output !== "" ? (
+                            <CodeBlock size="sm">
+                              <CodeBlockContent wrap className="max-h-64">
+                                {step.output}
+                              </CodeBlockContent>
+                            </CodeBlock>
+                          ) : null}
+                        </>
+                      ) : undefined}
                     </Tool>
                   );
                 })}
@@ -232,5 +265,105 @@ function CopyAction({ text, className }: { text: string; className?: string }) {
         <CopyIcon className="size-3.5" />
       )}
     </MessageAction>
+  );
+}
+
+export function describeTool(part: {
+  name: string;
+  args: Record<string, unknown>;
+  status: "pending" | "running" | "done" | "error" | "failed" | "cancelled";
+}): { icon: React.ReactNode; title: string } {
+  const path = typeof part.args.path === "string" ? part.args.path : "";
+  const running = part.status === "running";
+  const failed = part.status === "error" || part.status === "failed";
+  const cancelled = part.status === "cancelled";
+
+  switch (part.name) {
+    case "read": {
+      const offset = typeof part.args.offset === "number" ? part.args.offset : undefined;
+      const limit = typeof part.args.limit === "number" ? part.args.limit : undefined;
+      const range =
+        offset === undefined && limit === undefined
+          ? ""
+          : `:${offset ?? 1}${limit === undefined ? "" : `-${(offset ?? 1) + limit - 1}`}`;
+      const verb = cancelled ? "Cancelled reading" : failed ? "Failed to read" : running ? "Reading" : "Read";
+      return { icon: <FileTextIcon className="size-4" />, title: `${verb} ${path}${range}` };
+    }
+    case "edit": {
+      const verb = cancelled ? "Cancelled editing" : failed ? "Failed to edit" : running ? "Editing" : "Edited";
+      return { icon: <FilePenLineIcon className="size-4" />, title: `${verb} ${path}` };
+    }
+    case "write": {
+      const verb = cancelled ? "Cancelled writing" : failed ? "Failed to write" : running ? "Writing" : "Wrote";
+      return { icon: <FilePlusIcon className="size-4" />, title: `${verb} ${path}` };
+    }
+    case "reply_to_comment": {
+      const id = String(part.args.threadId ?? "");
+      const verb = cancelled
+        ? "Cancelled reply to comment"
+        : failed
+          ? "Failed to reply to comment"
+          : running
+            ? "Replying to comment"
+            : "Replied to comment";
+      return { icon: <MessageSquareReplyIcon className="size-4" />, title: `${verb} #${id}` };
+    }
+    default: {
+      const verb = cancelled ? "Cancelled calling" : failed ? "Failed to call" : running ? "Calling" : "Called";
+      return { icon: <WrenchIcon className="size-4" />, title: `${verb} ${part.name}` };
+    }
+  }
+}
+
+export interface ParsedDiffLine {
+  type: "add" | "delete" | "context";
+  lineNumber?: string;
+  text: string;
+}
+
+export function parseDiffLine(raw: string): ParsedDiffLine {
+  if (raw.startsWith("+")) {
+    const rest = raw.slice(1);
+    const match = /^\s*(\d+)?\s*(.*)$/.exec(rest);
+    return {
+      type: "add",
+      lineNumber: match?.[1],
+      text: match?.[2] ?? rest,
+    };
+  }
+  if (raw.startsWith("-")) {
+    const rest = raw.slice(1);
+    const match = /^\s*(\d+)?\s*(.*)$/.exec(rest);
+    return {
+      type: "delete",
+      lineNumber: match?.[1],
+      text: match?.[2] ?? rest,
+    };
+  }
+  const match = /^\s*(\d+)?\s*(.*)$/.exec(raw);
+  return {
+    type: "context",
+    lineNumber: match?.[1],
+    text: match?.[2] ?? raw,
+  };
+}
+
+export function ToolDiff({ diff }: { diff: string }) {
+  const lines = diff.split("\n").map(parseDiffLine);
+  return (
+    <CodeBlock size="sm">
+      <CodeBlockContent className="max-h-80">
+        {lines.map((line, index) => {
+          const variant = line.type === "add" ? "added" : line.type === "delete" ? "removed" : "default";
+          const display = line.lineNumber ? `${line.lineNumber}  ${line.text}` : line.text;
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are positional
+            <CodeBlockLine key={index} variant={variant}>
+              {display}
+            </CodeBlockLine>
+          );
+        })}
+      </CodeBlockContent>
+    </CodeBlock>
   );
 }

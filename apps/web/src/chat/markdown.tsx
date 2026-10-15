@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/code-block.tsx";
 import { parseFileLink } from "@/files/file-link.ts";
 import { FileLink } from "@/files/file-link-button.tsx";
-import { useHighlightedCode } from "@/hooks/use-highlighted-code.ts";
+import { HighlightedLine, useHighlighted } from "./highlight.tsx";
 import { texDelimiters } from "./tex-delimiters.ts";
 import { untrustedMarkdown } from "./untrusted-markdown.ts";
 
@@ -111,7 +111,7 @@ const LANGUAGE_LABELS: Record<string, string> = {
   graphql: "GraphQL",
 };
 
-function formatCodeBlockTitle(filename?: string, language?: string): string {
+export function formatCodeBlockTitle(filename?: string, language?: string): string {
   if (filename && filename.trim() !== "") {
     return filename;
   }
@@ -122,7 +122,7 @@ function formatCodeBlockTitle(filename?: string, language?: string): string {
   return LANGUAGE_LABELS[lower] ?? lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-function parseFencedInfo(languageRaw?: string, codeText?: string): { language?: string; filename?: string } {
+export function parseFencedInfo(languageRaw?: string): { language?: string; filename?: string } {
   let lang = languageRaw;
   let filename: string | undefined;
 
@@ -132,26 +132,20 @@ function parseFencedInfo(languageRaw?: string, codeText?: string): { language?: 
     filename = f;
   }
 
-  if (!filename && codeText) {
-    const firstLine = codeText.split("\n", 1)[0]?.trim();
-    const match = /^(\/\/|#|\/\*)\s+([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)\s*(\*\/)?$/.exec(firstLine ?? "");
-    if (match?.[2]) {
-      filename = match[2];
-    }
-  }
-
   return { language: lang, filename };
 }
 
 function FencedCode({ code: text, language: rawLanguage }: { code: string; language: string | undefined }) {
   const [wrap, setWrap] = useState(false);
   const incomplete = useIsCodeFenceIncomplete();
-  const { language, filename } = parseFencedInfo(rawLanguage, text);
+  const { language, filename } = parseFencedInfo(rawLanguage);
   const cleanCode = text.endsWith("\n") ? text.slice(0, -1) : text;
   const lang = language ?? "text";
-  const lines = useHighlightedCode(cleanCode, lang);
+  const highlightedTokens = useHighlighted(cleanCode, lang, incomplete);
   const isMultiLine = cleanCode.includes("\n");
   const title = formatCodeBlockTitle(filename, language);
+
+  const lines = highlightedTokens ?? cleanCode.split("\n").map((line) => [{ content: line }]);
 
   return (
     <CodeBlock className="my-4">
@@ -175,9 +169,11 @@ function FencedCode({ code: text, language: rawLanguage }: { code: string; langu
         </CodeBlockActions>
       </CodeBlockHeader>
       <CodeBlockContent lineNumbers={isMultiLine} wrap={wrap} className="overflow-x-auto">
-        {lines.map((line, index) => (
+        {lines.map((lineTokens, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: lines in code block are positional
-          <CodeBlockLine key={index}>{line}</CodeBlockLine>
+          <CodeBlockLine key={index}>
+            <HighlightedLine tokens={lineTokens} />
+          </CodeBlockLine>
         ))}
       </CodeBlockContent>
     </CodeBlock>

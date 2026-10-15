@@ -164,7 +164,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
 
   return (
     <ChatFrame cwd={summary?.cwd} title={summary?.title}>
-      <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+      <MessageScrollerProvider autoScroll defaultScrollPosition="end">
         <MessageScroller className="relative min-h-0 flex-1">
           <MessageScrollerViewport
             role="log"
@@ -173,7 +173,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           >
             <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
               {transcript.items.map((item) => (
-                <MessageScrollerItem key={item.key} messageId={item.key} scrollAnchor={item.kind === "user"}>
+                <MessageScrollerItem key={item.key} messageId={item.key}>
                   <TranscriptEntry item={item} />
                 </MessageScrollerItem>
               ))}

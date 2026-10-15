@@ -498,7 +498,6 @@ export function ChatComposer({
                 </>
               )}
               <div className="ml-auto flex min-w-0 items-center gap-1.5">
-                {status}
                 {busy && empty ? (
                   <PromptInputSubmitButton type="button" aria-label="Stop" onClick={onStop}>
                     <SquareIcon />
@@ -513,6 +512,7 @@ export function ChatComposer({
           </PromptInput>
         </form>
       </div>
+      {status}
       {error !== null && <FieldError>{error}</FieldError>}
     </div>
   );
