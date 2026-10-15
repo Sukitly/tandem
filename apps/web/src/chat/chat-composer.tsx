@@ -75,7 +75,9 @@ export interface ChatComposerProps {
   imageSupport: ImageSupport;
   onStop: () => void;
   autoFocus?: boolean;
-  /** Shown under the box: the model, the thinking level, and how full the context is. */
+  /** Shown inside the box's action row: model, thinking level, and context usage. */
+  statusBar?: ReactNode;
+  /** Shown under the box: provider quota usage and throughput metrics. */
   status?: ReactNode;
 }
 
@@ -99,6 +101,7 @@ export function ChatComposer({
   onSend,
   onStop,
   autoFocus,
+  statusBar,
   status,
   imageSupport,
 }: ChatComposerProps) {
@@ -497,7 +500,8 @@ export function ChatComposer({
                   </Tooltip>
                 </>
               )}
-              <div className="ml-auto flex min-w-0 items-center gap-1.5">
+              {statusBar}
+              <div className={cn("flex shrink-0 items-center gap-1.5", statusBar === undefined && "ml-auto")}>
                 {busy && empty ? (
                   <PromptInputSubmitButton type="button" aria-label="Stop" onClick={onStop}>
                     <SquareIcon />
