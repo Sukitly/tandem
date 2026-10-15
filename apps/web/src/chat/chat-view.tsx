@@ -169,7 +169,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           <MessageScrollerViewport
             role="log"
             aria-label="Transcript"
-            className="size-full min-h-0 min-w-0 overflow-y-auto"
+            className="size-full min-h-0 min-w-0 overflow-y-auto scroll-fade-b-3 [--scroll-fade-reveal:32px]"
           >
             <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
               {transcript.items.map((item) => (
