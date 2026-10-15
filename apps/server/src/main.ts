@@ -14,16 +14,23 @@ import { TunnelControl } from "./tunnel-control.ts";
 
 const { values } = parseArgs({
   options: {
+    host: { type: "string" },
     port: { type: "string" },
     "public-url": { type: "string" },
     "no-open": { type: "boolean", default: false },
   },
 });
+const host = values.host ?? process.env.TANDEM_HOST ?? DEFAULT_HOST;
 const port = values.port === undefined ? DEFAULT_PORT : Number(values.port);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("port must be between 1 and 65535");
 const stateDir = defaultStateDirPath();
 const webOrigin = process.env.TANDEM_WEB_ORIGIN;
-const local = new URL(`http://${DEFAULT_HOST}:${port}`);
+const envOrigins = (process.env.TANDEM_ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const allowedOrigins = [...(webOrigin === undefined ? [] : [webOrigin]), ...envOrigins];
+const local = new URL(`http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}`);
 // The tunnel publishes an origin, which is this server's public origin: one answer, however it was supplied.
 const control = new TunnelControl({ stateDir, onLog: (line) => console.log(line) });
 const configured = await loadTunnelConfig(stateDir);
@@ -43,11 +50,13 @@ if (existing !== undefined) {
   const hasDist = existsSync(join(distDir, "index.html"));
   const faux = process.env.TANDEM_FAUX === "1";
   const server = await startApp({
+    hostname: host,
     port,
     publicUrl,
     tunnel: control,
     tunnelState: () => control.tunnelState(),
-    ...(webOrigin === undefined ? {} : { webEntry: webOrigin, allowedOrigins: [webOrigin] }),
+    ...(webOrigin !== undefined ? { webEntry: webOrigin } : {}),
+    ...(allowedOrigins.length > 0 ? { allowedOrigins } : {}),
     ...(hasDist ? { webRoot: distDir } : {}),
     providers: [
       ...defaultProviders(),

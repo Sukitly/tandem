@@ -273,6 +273,40 @@ describe("device authentication at the HTTP boundary", () => {
     // Local access remains available after removing the public origin.
     expect(await connect({ cookie, origin: server.url.origin })).toBeInstanceOf(WebSocket);
   });
+
+  test("binding to 0.0.0.0 resolves server.url to 127.0.0.1 and excludes 0.0.0.0 from allowed origins", async () => {
+    const { server, pair } = await start({ hostname: "0.0.0.0" });
+    expect(server.url.hostname).toBe("127.0.0.1");
+
+    // 0.0.0.0 origin must be refused
+    const disallowedRes = await pair(server.pair().code, { origin: `http://0.0.0.0:${server.url.port}` });
+    expect(disallowedRes.status).toBe(403);
+
+    // 127.0.0.1 and localhost origins must be accepted
+    const allowedRes = await pair(server.pair().code, { origin: server.url.origin });
+    expect(allowedRes.status).toBe(200);
+
+    const localhostRes = await pair(server.pair().code, { origin: `http://localhost:${server.url.port}` });
+    expect(localhostRes.status).toBe(200);
+  });
+
+  test("honors custom allowedOrigins and rejects non-allowed origins", async () => {
+    const customOrigin = "http://custom-dev.example.com";
+    const { server, pair } = await start({ allowedOrigins: [customOrigin] });
+
+    // Request from configured custom origin is accepted
+    const customRes = await pair(server.pair().code, {
+      origin: customOrigin,
+      host: new URL(customOrigin).host,
+    });
+    expect(customRes.status).toBe(200);
+
+    // Request from unknown origin is rejected
+    const evilRes = await pair(server.pair().code, {
+      origin: "http://unauthorized.example.com",
+    });
+    expect(evilRes.status).toBe(403);
+  });
 });
 
 describe("built web assets", () => {
