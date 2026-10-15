@@ -4,4 +4,6 @@ node_modules
 *.log
 dist
 .env*
+compose.override.*
+docker-compose.override.*
 .DS_Store
