@@ -1,64 +1,67 @@
 import {
   AlertCircleIcon,
-  BanIcon,
   CheckIcon,
-  ChevronRightIcon,
-  CircleIcon,
   CopyIcon,
   FilePenLineIcon,
   FilePlusIcon,
   FileTextIcon,
   MessageSquareReplyIcon,
-  SparklesIcon,
-  SquareChevronRightIcon,
   WrenchIcon,
-  XIcon,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Separator } from "@/components/ui/separator";
-import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils";
-import { CodeBlock } from "./code-block.tsx";
+import type * as React from "react";
+import { useState } from "react";
+import { MessageAction, Reasoning, Terminal, Tool } from "@/components/ai-elements/index.ts";
+import { Badge } from "@/components/ui/badge.tsx";
+import { Bubble, BubbleContent } from "@/components/ui/bubble.tsx";
+import { CodeBlock, CodeBlockContent, CodeBlockLine } from "@/components/ui/code-block.tsx";
+import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker.tsx";
+import { Message, MessageContent, MessageFooter } from "@/components/ui/message.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
+import { Trace } from "@/components/ui/trace.tsx";
+import { cn } from "@/lib/utils.ts";
 import { Markdown } from "./markdown.tsx";
-import type { AssistantPart, ToolStatus, TranscriptItem } from "./transcript.ts";
+import type { AssistantPart, TranscriptItem } from "./transcript.ts";
 import { TranscriptImages } from "./transcript-images.tsx";
-
-type ToolPart = Extract<AssistantPart, { kind: "tool" }>;
 
 export function TranscriptEntry({ item }: { item: TranscriptItem }) {
   switch (item.kind) {
     case "user":
       // Markdown, like an answer: a message that carries review comments names the places it is about as links.
       return (
-        <div className="group/message flex flex-col items-end gap-1">
-          <TranscriptImages images={item.images} className="max-w-[85%] justify-end" />
-          {item.text !== "" && (
-            <div className="max-w-[85%] rounded-2xl border border-border/40 bg-muted/70 px-4 py-2.5 break-words">
-              <Markdown text={item.text} />
-            </div>
-          )}
-          {item.text !== "" && <CopyButton text={item.text} />}
-        </div>
+        <Message align="end">
+          <MessageContent>
+            <TranscriptImages images={item.images} className="max-w-[85%] justify-end" />
+            {item.text !== "" && (
+              <Bubble align="end" variant="muted">
+                <BubbleContent>
+                  <Markdown text={item.text} />
+                </BubbleContent>
+              </Bubble>
+            )}
+            {item.text !== "" && (
+              <MessageFooter className="px-0">
+                <CopyAction text={item.text} />
+              </MessageFooter>
+            )}
+          </MessageContent>
+        </Message>
       );
     case "assistant":
       return <AssistantMessage item={item} />;
     case "compaction":
       return (
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <Separator className="flex-1" />
-          Older messages were summarized
-          <Separator className="flex-1" />
-        </div>
+        <Marker variant="separator">
+          <MarkerContent>Older messages were summarized</MarkerContent>
+        </Marker>
       );
     case "compacting":
       return (
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <WaitingDots label="Compacting the conversation" />
-          Compacting the conversation
-        </div>
+        <Marker role="status">
+          <MarkerIcon>
+            <Spinner />
+          </MarkerIcon>
+          <MarkerContent>Compacting the conversation</MarkerContent>
+        </Marker>
       );
   }
 }
@@ -74,35 +77,134 @@ export function WaitingDots({ label = "Working" }: { label?: string }) {
   );
 }
 
+type StepPart = Extract<AssistantPart, { kind: "thinking" | "tool" }>;
+
+type AssistantSegment = { kind: "steps"; key: string; steps: StepPart[] } | { kind: "text"; key: string; text: string };
+
+function segmentAssistantParts(parts: readonly AssistantPart[]): AssistantSegment[] {
+  const segments: AssistantSegment[] = [];
+  let currentSteps: StepPart[] = [];
+  let stepIndex = 0;
+  let textIndex = 0;
+
+  for (const part of parts) {
+    if (part.kind === "text") {
+      if (currentSteps.length > 0) {
+        segments.push({ kind: "steps", key: `steps-${stepIndex++}`, steps: currentSteps });
+        currentSteps = [];
+      }
+      segments.push({ kind: "text", key: `text-${textIndex++}`, text: part.text });
+    } else {
+      currentSteps.push(part);
+    }
+  }
+
+  if (currentSteps.length > 0) {
+    segments.push({ kind: "steps", key: `steps-${stepIndex++}`, steps: currentSteps });
+  }
+
+  return segments;
+}
+
 function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "assistant" }> }) {
   const streaming = item.ending === "streaming";
   const text = item.parts.flatMap((part) => (part.kind === "text" ? [part.text] : [])).join("\n\n");
   // A message that calls tools is a step on the way; copying is for answers.
   const answer = !item.parts.some((part) => part.kind === "tool");
+  const segments = segmentAssistantParts(item.parts);
+
   return (
-    <div className="group/message flex flex-col gap-3">
-      {item.parts.map((part, index) => {
-        const last = index === item.parts.length - 1;
-        if (part.kind === "tool") return <ToolCall key={part.callId} part={part} />;
-        if (part.kind === "thinking") {
-          // biome-ignore lint/suspicious/noArrayIndexKey: parts only grow at the end, so positions are stable.
-          return <Thought key={index} text={part.text} active={streaming && last} />;
-        }
-        // biome-ignore lint/suspicious/noArrayIndexKey: see above.
-        return <Markdown key={index} text={part.text} streaming={streaming && last} />;
-      })}
-      {item.ending === "interrupted" && (
-        <Badge variant="outline" className="self-start">
-          Interrupted
-        </Badge>
-      )}
-      {item.ending === "failed" && <ChatError error={item.error} attempts={item.attempts} />}
-      {item.ending === "complete" && answer && text !== "" && (
-        <div className="flex items-center gap-1.5 pt-1 text-muted-foreground">
-          <CopyButton text={text} className="self-start" />
-        </div>
-      )}
-    </div>
+    <Message align="start">
+      <MessageContent className="gap-3">
+        {segments.map((segment, segIdx) => {
+          const isLastSegment = segIdx === segments.length - 1;
+          if (segment.kind === "steps") {
+            return (
+              <Trace key={segment.key}>
+                {segment.steps.map((step, stepIdx) => {
+                  const isLastStep = isLastSegment && stepIdx === segment.steps.length - 1;
+                  if (step.kind === "thinking") {
+                    return (
+                      <Reasoning
+                        // biome-ignore lint/suspicious/noArrayIndexKey: thinking step sequence is stable
+                        key={stepIdx}
+                        text={step.text}
+                        running={streaming && isLastStep}
+                      >
+                        <div className="text-sm text-muted-foreground">
+                          <Markdown text={step.text} streaming={streaming && isLastStep} />
+                        </div>
+                      </Reasoning>
+                    );
+                  }
+                  if (step.name === "bash") {
+                    return (
+                      <Terminal
+                        key={step.callId}
+                        command={String(step.args.command ?? "")}
+                        output={step.output}
+                        status={step.status}
+                      />
+                    );
+                  }
+                  const { icon, title } = describeTool(step);
+                  const writeContent =
+                    step.name === "write" && typeof step.args.content === "string" ? step.args.content : undefined;
+                  const hasDetail =
+                    step.images.length > 0 ||
+                    step.diff !== undefined ||
+                    writeContent !== undefined ||
+                    (step.name === "reply_to_comment" && typeof step.args.text === "string") ||
+                    step.output !== "";
+
+                  return (
+                    <Tool key={step.callId} title={title} icon={icon} status={step.status}>
+                      {hasDetail ? (
+                        <>
+                          {step.images.length > 0 && <TranscriptImages images={step.images} className="mb-2" />}
+                          {step.name === "reply_to_comment" && typeof step.args.text === "string" && (
+                            <div className="text-sm">
+                              <Markdown text={step.args.text} streaming={step.status === "running"} />
+                            </div>
+                          )}
+                          {step.diff !== undefined ? (
+                            <ToolDiff diff={step.diff} />
+                          ) : writeContent !== undefined ? (
+                            <CodeBlock size="sm">
+                              <CodeBlockContent wrap className="max-h-64">
+                                {writeContent}
+                              </CodeBlockContent>
+                            </CodeBlock>
+                          ) : step.output !== "" ? (
+                            <CodeBlock size="sm">
+                              <CodeBlockContent wrap className="max-h-64">
+                                {step.output}
+                              </CodeBlockContent>
+                            </CodeBlock>
+                          ) : null}
+                        </>
+                      ) : undefined}
+                    </Tool>
+                  );
+                })}
+              </Trace>
+            );
+          }
+          return <Markdown key={segment.key} text={segment.text} streaming={streaming && isLastSegment} />;
+        })}
+        {item.ending === "interrupted" && (
+          <Badge variant="outline" className="self-start">
+            Interrupted
+          </Badge>
+        )}
+        {item.ending === "failed" && <ChatError error={item.error} attempts={item.attempts} />}
+        {item.ending === "complete" && answer && text !== "" && (
+          <MessageFooter className="px-0">
+            <CopyAction text={text} />
+          </MessageFooter>
+        )}
+      </MessageContent>
+    </Message>
   );
 }
 
@@ -135,12 +237,7 @@ export function ChatError({
             </Badge>
           )}
         </div>
-        {error !== undefined && error !== "" && (
-          <CopyButton
-            text={error}
-            className="opacity-0 group-hover/error:opacity-100 group-hover/message:opacity-100 focus-visible:opacity-100"
-          />
-        )}
+        {error !== undefined && error !== "" && <CopyAction text={error} />}
       </div>
       {error !== undefined && error !== "" && (
         <p className="text-xs text-muted-foreground leading-relaxed break-words">{error}</p>
@@ -149,127 +246,39 @@ export function ChatError({
   );
 }
 
-/** A collapsed row that opens to show details: the shape shared by thoughts and tool calls. */
-function Disclosure({
-  icon,
-  summary,
-  status,
-  children,
-}: {
-  icon: ReactNode;
-  summary: ReactNode;
-  status?: ReactNode;
-  children: ReactNode;
-}) {
+function CopyAction({ text, className }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <Collapsible className="group/disclosure min-w-0">
-      <CollapsibleTrigger
-        render={
-          <button
-            type="button"
-            className="flex w-full min-w-0 cursor-pointer items-center gap-2 text-left text-sm text-muted-foreground hover:text-foreground [&_svg]:size-4 [&_svg]:shrink-0"
-          />
-        }
-      >
-        {status}
-        {icon}
-        <span className="min-w-0 truncate">{summary}</span>
-        <ChevronRightIcon className="transition-transform group-data-[open]/disclosure:rotate-90" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="mt-2 ml-2 border-l pl-4">{children}</CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function Thought({ text, active }: { text: string; active: boolean }) {
-  return (
-    <Disclosure icon={<SparklesIcon />} summary={active ? "Thinking…" : "Thought"}>
-      <div className="text-sm text-muted-foreground">
-        <Markdown text={text} streaming={active} />
-      </div>
-    </Disclosure>
-  );
-}
-
-function ToolCall({ part }: { part: ToolPart }) {
-  const { icon, summary } = describeTool(part);
-  const body = part.name === "write" && typeof part.args.content === "string" ? part.args.content : part.output;
-  return (
-    <Disclosure
-      icon={icon}
-      summary={<span className="font-mono">{summary}</span>}
-      status={<StatusIcon status={part.status} />}
+    <MessageAction
+      label={copied ? "Copied" : "Copy"}
+      className={className}
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
     >
-      {part.images.length > 0 && <TranscriptImages images={part.images} className="mb-2" />}
-      {part.diff !== undefined ? (
-        <Diff diff={part.diff} />
-      ) : part.name === "reply_to_comment" &&
-        (part.status === "running" || part.status === "done") &&
-        typeof part.args.text === "string" ? (
-        // What the agent wrote on the thread, as the thread shows it. A refused reply shows why instead, and a call
-        // that never ran shows nothing it did not write.
-        <div className="text-sm">
-          <Markdown text={part.args.text} streaming={part.status === "running"} />
-        </div>
-      ) : body !== "" ? (
-        <CodeBlock code={body} language={languageOf(part)} streaming={part.status === "running"} tall />
-      ) : part.images.length > 0 ? null : (
-        <p className="text-sm text-muted-foreground">{part.status === "running" ? "Running…" : "No output"}</p>
+      {copied ? (
+        <CheckIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+      ) : (
+        <CopyIcon className="size-3.5" />
       )}
-    </Disclosure>
+    </MessageAction>
   );
 }
 
-function StatusIcon({ status }: { status: ToolStatus }) {
-  switch (status) {
-    case "pending":
-      return <CircleIcon aria-label="Waiting" />;
-    case "running":
-      return <Spinner aria-label="Running" />;
-    case "done":
-      return <CheckIcon aria-label="Done" />;
-    case "failed":
-      return <XIcon aria-label="Failed" className="text-destructive" />;
-    case "cancelled":
-      return <BanIcon aria-label="Cancelled" />;
-  }
-}
-
-/** The edit tool's diff: one line per change, `+`/`-`/space, the line number, and the text. */
-function Diff({ diff }: { diff: string }) {
-  return (
-    <pre className="max-h-80 overflow-auto rounded-xl border border-border/50 bg-muted/40 py-3 font-mono text-xs">
-      {diff.split("\n").map((line, index) => (
-        <div
-          // biome-ignore lint/suspicious/noArrayIndexKey: a finished diff never changes.
-          key={index}
-          className={cn(
-            "px-3 whitespace-pre-wrap",
-            line.startsWith("+") && "bg-green-500/15 text-green-700 dark:text-green-400",
-            line.startsWith("-") && "bg-red-500/15 text-red-700 dark:text-red-400",
-          )}
-        >
-          {line}
-        </div>
-      ))}
-    </pre>
-  );
-}
-
-/** The language of what a file tool shows, from the file's extension; Shiki knows most extensions by name. */
-function languageOf(part: ToolPart): string | undefined {
-  if (part.name !== "read" && part.name !== "write") return undefined;
+export function describeTool(part: {
+  name: string;
+  args: Record<string, unknown>;
+  status: "pending" | "running" | "done" | "error" | "failed" | "cancelled";
+}): { icon: React.ReactNode; title: string } {
   const path = typeof part.args.path === "string" ? part.args.path : "";
-  const extension = /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase();
-  return extension;
-}
+  const running = part.status === "running";
+  const failed = part.status === "error" || part.status === "failed";
+  const cancelled = part.status === "cancelled";
 
-/** The icon and one-line summary of a tool call, as pi's terminal shows them. */
-function describeTool(part: ToolPart): { icon: ReactNode; summary: string } {
-  const path = typeof part.args.path === "string" ? part.args.path : "";
   switch (part.name) {
-    case "bash":
-      return { icon: <SquareChevronRightIcon />, summary: String(part.args.command ?? "") };
     case "read": {
       const offset = typeof part.args.offset === "number" ? part.args.offset : undefined;
       const limit = typeof part.args.limit === "number" ? part.args.limit : undefined;
@@ -277,43 +286,84 @@ function describeTool(part: ToolPart): { icon: ReactNode; summary: string } {
         offset === undefined && limit === undefined
           ? ""
           : `:${offset ?? 1}${limit === undefined ? "" : `-${(offset ?? 1) + limit - 1}`}`;
-      return { icon: <FileTextIcon />, summary: `${path}${range}` };
+      const verb = cancelled ? "Cancelled reading" : failed ? "Failed to read" : running ? "Reading" : "Read";
+      return { icon: <FileTextIcon className="size-4" />, title: `${verb} ${path}${range}` };
     }
-    case "edit":
-      return { icon: <FilePenLineIcon />, summary: path };
-    case "write":
-      return { icon: <FilePlusIcon />, summary: path };
-    case "reply_to_comment":
-      return { icon: <MessageSquareReplyIcon />, summary: `Comment #${String(part.args.threadId ?? "")}` };
-    default:
-      return { icon: <WrenchIcon />, summary: `${part.name} ${JSON.stringify(part.args)}` };
+    case "edit": {
+      const verb = cancelled ? "Cancelled editing" : failed ? "Failed to edit" : running ? "Editing" : "Edited";
+      return { icon: <FilePenLineIcon className="size-4" />, title: `${verb} ${path}` };
+    }
+    case "write": {
+      const verb = cancelled ? "Cancelled writing" : failed ? "Failed to write" : running ? "Writing" : "Wrote";
+      return { icon: <FilePlusIcon className="size-4" />, title: `${verb} ${path}` };
+    }
+    case "reply_to_comment": {
+      const id = String(part.args.threadId ?? "");
+      const verb = cancelled
+        ? "Cancelled reply to comment"
+        : failed
+          ? "Failed to reply to comment"
+          : running
+            ? "Replying to comment"
+            : "Replied to comment";
+      return { icon: <MessageSquareReplyIcon className="size-4" />, title: `${verb} #${id}` };
+    }
+    default: {
+      const verb = cancelled ? "Cancelled calling" : failed ? "Failed to call" : running ? "Calling" : "Called";
+      return { icon: <WrenchIcon className="size-4" />, title: `${verb} ${part.name}` };
+    }
   }
 }
 
-/** Copies a message. Shows while the pointer is over the message, or when it has keyboard focus. */
-function CopyButton({ text, className }: { text: string; className?: string }) {
-  const [copied, setCopied] = useState(false);
+export interface ParsedDiffLine {
+  type: "add" | "delete" | "context";
+  lineNumber?: string;
+  text: string;
+}
+
+export function parseDiffLine(raw: string): ParsedDiffLine {
+  if (raw.startsWith("+")) {
+    const rest = raw.slice(1);
+    const match = /^\s*(\d+)?\s*(.*)$/.exec(rest);
+    return {
+      type: "add",
+      lineNumber: match?.[1],
+      text: match?.[2] ?? rest,
+    };
+  }
+  if (raw.startsWith("-")) {
+    const rest = raw.slice(1);
+    const match = /^\s*(\d+)?\s*(.*)$/.exec(rest);
+    return {
+      type: "delete",
+      lineNumber: match?.[1],
+      text: match?.[2] ?? rest,
+    };
+  }
+  const match = /^\s*(\d+)?\s*(.*)$/.exec(raw);
+  return {
+    type: "context",
+    lineNumber: match?.[1],
+    text: match?.[2] ?? raw,
+  };
+}
+
+export function ToolDiff({ diff }: { diff: string }) {
+  const lines = diff.split("\n").map(parseDiffLine);
   return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      className={cn(
-        "text-muted-foreground hover:text-foreground opacity-0 group-hover/message:opacity-100 focus-visible:opacity-100 transition-opacity",
-        className,
-      )}
-      aria-label={copied ? "Copied" : "Copy"}
-      onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-    >
-      {copied ? (
-        <CheckIcon className="size-3.5 text-green-600 dark:text-green-400" />
-      ) : (
-        <CopyIcon className="size-3.5" />
-      )}
-    </Button>
+    <CodeBlock size="sm">
+      <CodeBlockContent className="max-h-80">
+        {lines.map((line, index) => {
+          const variant = line.type === "add" ? "added" : line.type === "delete" ? "removed" : "default";
+          const display = line.lineNumber ? `${line.lineNumber}  ${line.text}` : line.text;
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are positional
+            <CodeBlockLine key={index} variant={variant}>
+              {display}
+            </CodeBlockLine>
+          );
+        })}
+      </CodeBlockContent>
+    </CodeBlock>
   );
 }

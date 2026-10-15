@@ -30,6 +30,34 @@
       opacity: 1;
     }
   }
+
+  --animate-shimmer: tw-shimmer var(--shimmer-duration, 2s) linear infinite;
+  @keyframes tw-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+}
+
+@utility shimmer {
+  background-image: linear-gradient(
+    calc(var(--shimmer-angle, 20deg)),
+    transparent 0%,
+    var(--shimmer-color, color-mix(in oklch, currentColor 40%, transparent)) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: tw-shimmer var(--shimmer-duration, 2s) linear infinite;
+}
+
+@utility shimmer-none {
+  background-image: none;
+  animation: none;
 }
 
 @theme inline {
@@ -205,4 +233,37 @@ html {
   width: var(--sidebar-width) !important;
   /* biome-ignore lint/complexity/noImportantStyles: safe boundary on compact mobile screens */
   max-width: calc(100vw - 3rem) !important;
+}
+
+/*
+ * Align CodeBlock diff line additions and deletions with the Changes panel styling.
+ */
+[data-slot="code-block-line"][data-variant="added"] {
+  background-color: color-mix(in oklab, var(--color-emerald-500, #10b981) 15%, transparent);
+  color: var(--color-emerald-950, #022c22);
+}
+.dark [data-slot="code-block-line"][data-variant="added"] {
+  background-color: color-mix(in oklab, var(--color-emerald-500, #10b981) 20%, transparent);
+  color: var(--color-emerald-300, #6ee7b7);
+}
+[data-slot="code-block-line"][data-variant="added"]::after {
+  color: var(--color-emerald-600, #059669);
+}
+.dark [data-slot="code-block-line"][data-variant="added"]::after {
+  color: var(--color-emerald-400, #34d399);
+}
+
+[data-slot="code-block-line"][data-variant="removed"] {
+  background-color: color-mix(in oklab, var(--color-red-500, #ef4444) 15%, transparent);
+  color: var(--color-red-950, #450a0a);
+}
+.dark [data-slot="code-block-line"][data-variant="removed"] {
+  background-color: color-mix(in oklab, var(--color-red-500, #ef4444) 20%, transparent);
+  color: var(--color-red-300, #fca5a5);
+}
+[data-slot="code-block-line"][data-variant="removed"]::after {
+  color: var(--color-red-600, #dc2626);
+}
+.dark [data-slot="code-block-line"][data-variant="removed"]::after {
+  color: var(--color-red-400, #f87171);
 }

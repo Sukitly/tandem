@@ -2,6 +2,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ModelRef, ModelSummary } from "@tandem/contracts";
 import { CheckIcon, ChevronDownIcon, KeyRoundIcon } from "lucide-react";
 import { useState } from "react";
+import { Context } from "@/components/ai-elements/context.tsx";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -25,7 +26,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { ContextRing } from "./context-ring.tsx";
 import type { ContextUsage } from "./transcript.ts";
 
 export interface AgentChoice {
@@ -61,35 +61,37 @@ export function StatusBar({
   };
 
   return (
-    <div className="grid gap-1.5">
-      <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-        <ModelPicker agent={agent} current={current} onConfigure={onConfigure} />
-        {current !== undefined && current.thinkingLevels.length > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
-              {thinkingLabel(agent?.thinkingLevel ?? "off")}
-              <ChevronDownIcon />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-40">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Thinking</DropdownMenuLabel>
-                <DropdownMenuRadioGroup value={agent?.thinkingLevel ?? "off"} onValueChange={chooseThinking}>
-                  {current.thinkingLevels.map((level) => (
-                    <DropdownMenuRadioItem key={level} value={level} closeOnClick>
-                      {level === "off" ? "Off" : level[0]?.toUpperCase() + level.slice(1)}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        <span className="ml-auto shrink-0 font-mono tabular-nums">
-          {formatCost(usage.cost)}
-          {contextWindow > 0 && ` · ${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
-        </span>
-        {contextWindow > 0 && <ContextRing percent={percent} tokens={usage.tokens} capacity={contextWindow} />}
-      </div>
+    <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+      <ModelPicker agent={agent} current={current} onConfigure={onConfigure} />
+      {current !== undefined && current.thinkingLevels.length > 1 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
+            {thinkingLabel(agent?.thinkingLevel ?? "off")}
+            <ChevronDownIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-40">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Thinking</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={agent?.thinkingLevel ?? "off"} onValueChange={chooseThinking}>
+                {current.thinkingLevels.map((level) => (
+                  <DropdownMenuRadioItem key={level} value={level} closeOnClick>
+                    {level === "off" ? "Off" : level[0]?.toUpperCase() + level.slice(1)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+      {contextWindow > 0 && (
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <span className="font-mono tabular-nums">
+            {formatCost(usage.cost)}
+            {` · ${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
+          </span>
+          <Context usedTokens={usage.tokens} maxTokens={contextWindow} cost={usage.cost} />
+        </div>
+      )}
     </div>
   );
 }
@@ -189,11 +191,11 @@ function thinkingLabel(level: string): string {
   return level === "off" ? "No thinking" : `Thinking: ${level}`;
 }
 
-function formatCost(dollars: number): string {
+export function formatCost(dollars: number): string {
   return `$${dollars < 1 ? dollars.toFixed(3) : dollars.toFixed(2)}`;
 }
 
-function formatTokens(tokens: number): string {
+export function formatTokens(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
   return `${Math.round(tokens / 1000)}K`;
 }
