@@ -87,12 +87,14 @@ export function StatusBar({
         </DropdownMenu>
       )}
       {contextWindow > 0 && (
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <span className="font-mono tabular-nums">
-            {formatCost(usage.cost)}
-            {` · ${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
-          </span>
-          <Context usedTokens={usage.tokens} maxTokens={contextWindow} cost={usage.cost} />
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <span className="font-mono tabular-nums">{formatCost(usage.cost)}</span>
+          <Context
+            usedTokens={usage.tokens}
+            maxTokens={contextWindow}
+            cost={usage.cost}
+            label={`${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
+          />
         </div>
       )}
     </div>

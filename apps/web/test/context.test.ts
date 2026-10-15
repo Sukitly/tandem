@@ -18,6 +18,11 @@ test("the context AI element clamps its display to 100 percent", () => {
   expect(screen.getByRole("button", { name: "100% context" })).toBeDefined();
 });
 
+test("the context AI element exposes custom label when provided", () => {
+  render(createElement(Context, { usedTokens: 108800, maxTokens: 272000, label: "40% of 272K" }));
+  expect(screen.getByRole("button", { name: "40% of 272K" })).toBeDefined();
+});
+
 test("status bar formats costs with appropriate precision", () => {
   expect(formatCost(0)).toBe("$0.000");
   expect(formatCost(0.042)).toBe("$0.042");
