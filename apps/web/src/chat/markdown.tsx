@@ -13,6 +13,7 @@ import {
   Streamdown,
   useIsCodeFenceIncomplete,
 } from "streamdown";
+import { CodeBlockWrapButton } from "@/components/ai-elements/index.ts";
 import {
   CodeBlock,
   CodeBlockActions,
@@ -21,7 +22,6 @@ import {
   CodeBlockHeader,
   CodeBlockLine,
   CodeBlockTitle,
-  CodeBlockWrapButton,
 } from "@/components/ui/code-block.tsx";
 import { parseFileLink } from "@/files/file-link.ts";
 import { FileLink } from "@/files/file-link-button.tsx";
@@ -155,7 +155,7 @@ function FencedCode({ code: text, language: rawLanguage }: { code: string; langu
 
   return (
     <CodeBlock className="my-4">
-      <CodeBlockHeader>
+      <CodeBlockHeader className="border-b border-border/50 py-1.5">
         <CodeBlockTitle>
           <FileCodeIcon className="size-3.5 text-muted-foreground" />
           {title}

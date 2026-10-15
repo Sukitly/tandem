@@ -1,8 +1,8 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
-import { CheckIcon, CopyIcon, WrapTextIcon } from "lucide-react";
+import { CheckIcon, CopyIcon } from "lucide-react";
 import * as React from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/button.tsx";
 
 const codeBlockVariants = cva(
   "group/code-block relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg text-sm has-[>[data-slot=code-block-content]:focus-visible]:ring-3 has-[>[data-slot=code-block-content]:focus-visible]:ring-ring/50 data-[size=sm]:text-xs",
@@ -42,7 +42,7 @@ function CodeBlockHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="code-block-header"
       className={cn(
-        "flex min-w-0 shrink-0 items-center gap-2 border-b border-border/50 px-3 py-1.5 text-muted-foreground group-data-[size=sm]/code-block:px-2.5 group-data-[size=sm]/code-block:py-1 group-data-[variant=destructive]/code-block:text-destructive *:has-[>[data-slot=code-block-title]]:min-w-0",
+        "flex min-w-0 shrink-0 items-center gap-2 px-3 pt-3 text-muted-foreground group-data-[size=sm]/code-block:px-2.5 group-data-[size=sm]/code-block:pt-2.5 group-data-[variant=destructive]/code-block:text-destructive *:has-[>[data-slot=code-block-title]]:min-w-0",
         className,
       )}
       {...props}
@@ -122,34 +122,6 @@ function CodeBlockCopyButton({
   );
 }
 
-function CodeBlockWrapButton({
-  wrap,
-  onWrapChange,
-  variant = "ghost",
-  size = "icon-xs",
-  className,
-  ...props
-}: Omit<React.ComponentProps<typeof Button>, "children"> & {
-  wrap: boolean;
-  onWrapChange: (wrap: boolean) => void;
-}) {
-  return (
-    <Button
-      data-slot="code-block-wrap-button"
-      data-wrapped={wrap || undefined}
-      variant={variant}
-      size={size}
-      className={cn("text-muted-foreground hover:text-foreground", wrap && "text-foreground bg-accent", className)}
-      onClick={() => onWrapChange(!wrap)}
-      aria-label={wrap ? "Disable line wrapping" : "Enable line wrapping"}
-      aria-pressed={wrap}
-      {...props}
-    >
-      <WrapTextIcon className="size-3.5" />
-    </Button>
-  );
-}
-
 function CodeBlockContent({
   className,
   children,
@@ -198,10 +170,8 @@ const codeBlockLineVariants = cva(
     variants: {
       variant: {
         default: "",
-        added:
-          "bg-emerald-500/15 text-emerald-950 dark:text-emerald-300 dark:bg-emerald-500/20 after:content-['+'] after:text-emerald-600 dark:after:text-emerald-400",
-        removed:
-          "bg-red-500/15 text-red-950 dark:text-red-300 dark:bg-red-500/20 after:content-['−'] after:text-red-600 dark:after:text-red-400",
+        added: "bg-muted after:content-['+']",
+        removed: "bg-destructive/10 after:text-destructive after:content-['−']",
         highlighted: "bg-muted",
       },
     },
@@ -260,5 +230,4 @@ export {
   CodeBlockHeader,
   CodeBlockLine,
   CodeBlockTitle,
-  CodeBlockWrapButton,
 };
