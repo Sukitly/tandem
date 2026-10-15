@@ -30,6 +30,34 @@
       opacity: 1;
     }
   }
+
+  --animate-shimmer: tw-shimmer var(--shimmer-duration, 2s) linear infinite;
+  @keyframes tw-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+}
+
+@utility shimmer {
+  background-image: linear-gradient(
+    calc(var(--shimmer-angle, 20deg)),
+    transparent 0%,
+    var(--shimmer-color, color-mix(in oklch, currentColor 40%, transparent)) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: tw-shimmer var(--shimmer-duration, 2s) linear infinite;
+}
+
+@utility shimmer-none {
+  background-image: none;
+  animation: none;
 }
 
 @theme inline {

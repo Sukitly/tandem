@@ -1,13 +1,26 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
-import { ArrowDownIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  MessageCircleDashedIcon,
+} from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { SidebarToggle } from "@/app/sidebar.tsx";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { useConnected } from "@/rpc/connection.tsx";
@@ -89,9 +102,15 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 
   return (
     <ChatFrame cwd={project?.path} title="New conversation">
-      <Empty>
+      <Empty className="h-full">
         <EmptyHeader>
-          <EmptyTitle>What are we working on?</EmptyTitle>
+          <EmptyMedia variant="icon">
+            <MessageCircleDashedIcon />
+          </EmptyMedia>
+          <EmptyTitle>What should we build?</EmptyTitle>
+          <EmptyDescription>
+            The agent can read your code, run commands and make changes. Press send to start.
+          </EmptyDescription>
         </EmptyHeader>
       </Empty>
       <ChatFooter>
@@ -116,13 +135,9 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
             select(id);
           }}
           onStop={() => {}}
-          status={
-            <div className="grid gap-1.5">
-              <StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />
-              <UsageLine provider={agent.model?.provider} modelId={agent.model?.modelId} />
-            </div>
-          }
+          status={<StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />}
         />
+        <UsageLine provider={agent.model?.provider} modelId={agent.model?.modelId} />
       </ChatFooter>
     </ChatFrame>
   );
@@ -149,21 +164,25 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
 
   return (
     <ChatFrame cwd={summary?.cwd} title={summary?.title}>
-      <StickToBottom
-        className="relative min-h-0 flex-1 overflow-y-hidden"
-        initial="instant"
-        resize="smooth"
-        role="log"
-        aria-label="Transcript"
-      >
-        <StickToBottom.Content className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-          {transcript.items.map((item) => (
-            <TranscriptEntry key={item.key} item={item} />
-          ))}
-          <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
-        </StickToBottom.Content>
-        <ScrollToBottom />
-      </StickToBottom>
+      <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+        <MessageScroller className="relative min-h-0 flex-1">
+          <MessageScrollerViewport
+            role="log"
+            aria-label="Transcript"
+            className="size-full min-h-0 min-w-0 overflow-y-auto"
+          >
+            <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+              {transcript.items.map((item) => (
+                <MessageScrollerItem key={item.key} messageId={item.key} scrollAnchor={item.kind === "user"}>
+                  <TranscriptEntry item={item} />
+                </MessageScrollerItem>
+              ))}
+              <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton />
+        </MessageScroller>
+      </MessageScrollerProvider>
       <ChatFooter>
         {notices.map((notice) => (
           <Notice key={notice.id} notice={notice} />
@@ -191,17 +210,17 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}
           status={
-            <div className="grid gap-1.5">
-              <StatusBar
-                agent={agent}
-                usage={transcript.usage}
-                onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
-              />
-              <UsageLine provider={agent?.model?.provider} modelId={agent?.model?.modelId} active={transcript.busy} />
-              {tps !== undefined && <TpsLine tps={tps} />}
-            </div>
+            <StatusBar
+              agent={agent}
+              usage={transcript.usage}
+              onConfigure={(change) => conversation.configure(change, BACKGROUND_CONTEXT)}
+            />
           }
         />
+        <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+          <UsageLine provider={agent?.model?.provider} modelId={agent?.model?.modelId} active={transcript.busy} />
+          {tps !== undefined && <TpsLine tps={tps} />}
+        </div>
       </ChatFooter>
     </ChatFrame>
   );
@@ -294,20 +313,4 @@ function SilentGap({ silent, turnHasContent }: { silent: boolean; turnHasContent
   }, [silent]);
   if (!silent || (turnHasContent && !sustained)) return null;
   return <WaitingDots />;
-}
-
-function ScrollToBottom() {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
-  if (isAtBottom) return null;
-  return (
-    <Button
-      variant="outline"
-      size="icon-sm"
-      className="absolute bottom-3 left-1/2 -translate-x-1/2"
-      aria-label="Scroll to the latest message"
-      onClick={() => void scrollToBottom()}
-    >
-      <ArrowDownIcon />
-    </Button>
-  );
 }

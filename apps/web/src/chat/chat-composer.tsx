@@ -1,6 +1,6 @@
 import type { ImageInput, ModelRef, ModelSummary, PromptTemplateSummary } from "@tandem/contracts";
 import { cn } from "cn";
-import { ArrowUpIcon, ImagePlusIcon, SquareIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, PlusIcon, SquareIcon, XIcon } from "lucide-react";
 import {
   type ClipboardEvent,
   type DragEvent,
@@ -14,10 +14,25 @@ import {
 } from "react";
 import { CommentList } from "@/comments/comment-list.tsx";
 import type { WaitingComment } from "@/comments/project-comments.ts";
+import {
+  PromptInput,
+  PromptInputActionButton,
+  PromptInputActions,
+  PromptInputAttachments,
+  PromptInputSubmitButton,
+  PromptInputTextarea,
+} from "@/components/ai-elements/index.ts";
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "@/components/ui/attachment";
 import { Badge } from "@/components/ui/badge";
 import { FieldError } from "@/components/ui/field";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
-import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
+import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type AttachedImage, attachImages, IMAGE_ACCEPT, imageFiles } from "./attached-images.ts";
 import { emacsColumn, emacsEdit } from "./emacs-edit.ts";
@@ -402,27 +417,27 @@ export function ChatComposer({
               className="pointer-events-none absolute inset-0 z-10 rounded-lg border-2 border-dashed border-ring bg-background/60"
             />
           )}
-          <InputGroup>
+          <PromptInput>
             {attached.length > 0 && (
-              <InputGroupAddon align="block-start" className="flex-wrap gap-2">
+              <PromptInputAttachments>
                 {attached.map((image) => (
-                  <div key={image.id} className="relative">
-                    <img src={image.url} alt={image.name} className="size-14 rounded-md border object-cover" />
-                    <InputGroupButton
-                      type="button"
-                      variant="secondary"
-                      size="icon-xs"
-                      className="absolute -top-1.5 -right-1.5"
-                      aria-label={`Remove ${image.name}`}
-                      onClick={() => detach(image.id)}
-                    >
-                      <XIcon />
-                    </InputGroupButton>
-                  </div>
+                  <Attachment key={image.id} size="sm">
+                    <AttachmentMedia variant="image">
+                      <img src={image.url} alt={image.name} className="size-full object-cover" />
+                    </AttachmentMedia>
+                    <AttachmentContent>
+                      <AttachmentTitle>{image.name}</AttachmentTitle>
+                    </AttachmentContent>
+                    <AttachmentActions>
+                      <AttachmentAction aria-label={`Remove ${image.name}`} onClick={() => detach(image.id)}>
+                        <XIcon />
+                      </AttachmentAction>
+                    </AttachmentActions>
+                  </Attachment>
                 ))}
-              </InputGroupAddon>
+              </PromptInputAttachments>
             )}
-            <InputGroupTextarea
+            <PromptInputTextarea
               ref={textareaRef}
               value={value}
               onChange={(event) => editor.change(event.target)}
@@ -442,7 +457,6 @@ export function ChatComposer({
                 composingUntil.current = Date.now() + IME_SETTLE_MS;
               }}
               rows={1}
-              className="max-h-60 min-h-0 py-2.5"
               aria-label="Message"
               role="combobox"
               aria-haspopup="listbox"
@@ -453,7 +467,7 @@ export function ChatComposer({
               placeholder={busy ? "Steer the agent, or Alt+Enter to queue a follow-up" : "Ask the agent"}
               autoFocus={autoFocus}
             />
-            <InputGroupAddon align="inline-end" className="self-end pb-1.5">
+            <PromptInputActions>
               {imageSupport.kind === "accepted" && (
                 <>
                   <input
@@ -470,41 +484,35 @@ export function ChatComposer({
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <InputGroupButton
+                        <PromptInputActionButton
                           type="button"
-                          variant="ghost"
-                          size="icon-sm"
                           aria-label="Attach images"
                           onClick={() => picker.current?.click()}
                         />
                       }
                     >
-                      <ImagePlusIcon />
+                      <PlusIcon />
                     </TooltipTrigger>
                     <TooltipContent>Attach images, or paste or drop them</TooltipContent>
                   </Tooltip>
                 </>
               )}
-              {busy && empty ? (
-                <InputGroupButton type="button" variant="default" size="icon-sm" aria-label="Stop" onClick={onStop}>
-                  <SquareIcon />
-                </InputGroupButton>
-              ) : (
-                <InputGroupButton
-                  type="submit"
-                  variant="default"
-                  size="icon-sm"
-                  aria-label="Send"
-                  disabled={empty || sending}
-                >
-                  <ArrowUpIcon />
-                </InputGroupButton>
-              )}
-            </InputGroupAddon>
-          </InputGroup>
+              <div className="ml-auto flex min-w-0 items-center gap-1.5">
+                {status}
+                {busy && empty ? (
+                  <PromptInputSubmitButton type="button" aria-label="Stop" onClick={onStop}>
+                    <SquareIcon />
+                  </PromptInputSubmitButton>
+                ) : (
+                  <PromptInputSubmitButton type="submit" aria-label="Send" disabled={empty || sending}>
+                    <ArrowUpIcon />
+                  </PromptInputSubmitButton>
+                )}
+              </div>
+            </PromptInputActions>
+          </PromptInput>
         </form>
       </div>
-      {status}
       {error !== null && <FieldError>{error}</FieldError>}
     </div>
   );
