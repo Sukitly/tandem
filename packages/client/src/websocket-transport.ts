@@ -4,6 +4,8 @@ import { authenticatedSocket } from "./authenticated-socket.ts";
 
 export interface WebSocketTransportOptions {
   token?: string;
+  /** Cancels socket creation and the protocol handshake, including a socket that never opens. */
+  signal?: AbortSignal;
   /**
    * Pause `send()` while more than this many bytes wait in the socket's send buffer. Browsers expose no drain event,
    * so the buffer is polled.
@@ -29,6 +31,7 @@ export function createWebSocketTransportFactory(
 
   return (handlers) =>
     new Promise<ByteTransport>((resolve, reject) => {
+      options.signal?.throwIfAborted();
       const socket = authenticatedSocket(url, options.token);
       socket.binaryType = "arraybuffer";
       let opened = false;
@@ -37,11 +40,22 @@ export function createWebSocketTransportFactory(
       const terminate = (report: () => void): void => {
         if (terminated) return;
         terminated = true;
+        options.signal?.removeEventListener("abort", abort);
         report();
       };
 
+      const abort = (): void => {
+        const error = new Error("WebSocket connection cancelled");
+        terminate(() => {
+          if (!opened) reject(error);
+          else handlers.onError(error);
+        });
+        socket.close();
+      };
+      options.signal?.addEventListener("abort", abort, { once: true });
+
       const waitForDrain = async (): Promise<void> => {
-        while (socket.readyState === WebSocket.OPEN && socket.bufferedAmount > highWaterMark) {
+        while (!terminated && socket.readyState === WebSocket.OPEN && socket.bufferedAmount > highWaterMark) {
           await new Promise((resume) => setTimeout(resume, drainPollMs));
         }
       };
@@ -50,7 +64,7 @@ export function createWebSocketTransportFactory(
       const transport: ByteTransport = {
         send(chunk) {
           const sent = sendTail.then(async () => {
-            if (socket.readyState !== WebSocket.OPEN) throw new Error("WebSocket is not open");
+            if (terminated || socket.readyState !== WebSocket.OPEN) throw new Error("WebSocket is not open");
             // Copy into a plain ArrayBuffer view: WebSocket.send() does not accept views of shared buffers.
             socket.send(new Uint8Array(chunk));
             await waitForDrain();
@@ -59,15 +73,18 @@ export function createWebSocketTransportFactory(
           return sent;
         },
         close() {
+          terminate(() => {});
           if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) socket.close(1000);
         },
       };
 
       socket.addEventListener("open", () => {
+        if (terminated) return;
         opened = true;
         resolve(transport);
       });
       socket.addEventListener("message", (event) => {
+        if (terminated) return;
         if (event.data instanceof ArrayBuffer) {
           handlers.onData(new Uint8Array(event.data));
           return;
@@ -81,7 +98,7 @@ export function createWebSocketTransportFactory(
       });
       socket.addEventListener("close", (event) => {
         if (!opened) {
-          reject(new Error(`WebSocket closed before opening (code ${event.code})`));
+          terminate(() => reject(new Error(`WebSocket closed before opening (code ${event.code})`)));
           return;
         }
         terminate(() => handlers.onClose());

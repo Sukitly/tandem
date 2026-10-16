@@ -64,10 +64,10 @@ export interface Connected {
   status: ConnectionStatus | undefined;
 }
 
-type ConnectionState =
+export type ConnectionState =
   | { kind: "connecting" }
   | { kind: "unauthorized" }
-  | { kind: "failed"; message: string }
+  | { kind: "failed"; message: string; retry: () => void }
   | { kind: "connected"; value: Omit<Connected, "status"> & { connection: Awaited<ReturnType<typeof connect>> } };
 
 const ConnectedContext = createContext<Connected | null>(null);
@@ -86,70 +86,103 @@ export function ConnectionProvider({
     clearLegacyToken();
     let cancelled = false;
     let close = (): void => {};
-    connect({
-      baseUrl: window.location.origin,
-      services: [
-        Models,
-        Devices,
-        PublicAccess,
-        Workspaces,
-        Files,
-        Changes,
-        ProjectChanges,
-        Comments,
-        Terminals,
-        Prompts,
-        Preview,
-        Conversations,
-        Conversation,
-        Usage,
-        Repository,
-      ],
-      onError: (error) => console.error(error),
-    }).then(
-      (connection) => {
-        const open = new OpenConversations(connection, (error) => console.error(error));
-        const openChanges = new OpenChanges(connection, (error) => console.error(error));
-        close = () => {
-          open.dispose();
-          openChanges.dispose();
-          void connection.close();
-        };
-        if (cancelled) close();
-        // Wrapped: a service handle accepts any member name, `then` included, and must not resolve a promise.
-        else
-          setState({
-            kind: "connected",
-            value: {
-              connection,
-              devices: connection.services.use(Devices),
-              publicAccess: connection.services.use(PublicAccess),
-              deviceId: connection.deviceId,
-              open,
-              openChanges,
-              workspaces: connection.services.use(Workspaces),
-              conversations: connection.services.use(Conversations),
-              models: connection.services.use(Models),
-              files: connection.services.use(Files),
-              comments: connection.services.use(Comments),
-              preview: connection.services.use(Preview),
-              prompts: connection.services.use(Prompts),
-              terminals: connection.services.use(Terminals),
-              usage: connection.services.use(Usage),
-              repository: connection.services.use(Repository),
-              openTerminal: (id, screen, options) => connection.terminal(id, screen, options),
-              imageUrl: (ref) => connection.imageUrl(ref),
-            },
-          });
-      },
-      (error: unknown) => {
-        if (cancelled) return;
-        if (error instanceof BootstrapError && error.status === 401) setState({ kind: "unauthorized" });
-        else setState({ kind: "failed", message: error instanceof Error ? error.message : String(error) });
-      },
-    );
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
+    let phase: "connecting" | "failed" | "connected" | "unauthorized" = "failed";
+
+    const retry = (): void => {
+      if (cancelled || phase !== "failed") return;
+      phase = "connecting";
+      clearTimeout(retryTimer);
+      setState({ kind: "connecting" });
+      connect({
+        baseUrl: window.location.origin,
+        signal: controller.signal,
+        services: [
+          Models,
+          Devices,
+          PublicAccess,
+          Workspaces,
+          Files,
+          Changes,
+          ProjectChanges,
+          Comments,
+          Terminals,
+          Prompts,
+          Preview,
+          Conversations,
+          Conversation,
+          Usage,
+          Repository,
+        ],
+        onError: (error) => console.error(error),
+      }).then(
+        (connection) => {
+          const open = new OpenConversations(connection, (error) => console.error(error));
+          const openChanges = new OpenChanges(connection, (error) => console.error(error));
+          close = () => {
+            open.dispose();
+            openChanges.dispose();
+            void connection.close();
+          };
+          if (cancelled) {
+            close();
+          } else {
+            phase = "connected";
+            setState({
+              kind: "connected",
+              value: {
+                connection,
+                devices: connection.services.use(Devices),
+                publicAccess: connection.services.use(PublicAccess),
+                deviceId: connection.deviceId,
+                open,
+                openChanges,
+                workspaces: connection.services.use(Workspaces),
+                conversations: connection.services.use(Conversations),
+                models: connection.services.use(Models),
+                files: connection.services.use(Files),
+                comments: connection.services.use(Comments),
+                preview: connection.services.use(Preview),
+                prompts: connection.services.use(Prompts),
+                terminals: connection.services.use(Terminals),
+                usage: connection.services.use(Usage),
+                repository: connection.services.use(Repository),
+                openTerminal: (id, screen, options) => connection.terminal(id, screen, options),
+                imageUrl: (ref) => connection.imageUrl(ref),
+              },
+            });
+          }
+        },
+        (error: unknown) => {
+          if (cancelled) return;
+          if (error instanceof BootstrapError && error.status === 401) {
+            phase = "unauthorized";
+            setState({ kind: "unauthorized" });
+          } else {
+            phase = "failed";
+            setState({
+              kind: "failed",
+              message: error instanceof Error ? error.message : String(error),
+              retry,
+            });
+            retryTimer = setTimeout(retry, 5_000);
+          }
+        },
+      );
+    };
+    const onWake = (): void => {
+      if (document.visibilityState !== "hidden" && navigator.onLine !== false) retry();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    for (const event of ["online", "pageshow", "focus"]) window.addEventListener(event, onWake);
+    retry();
     return () => {
       cancelled = true;
+      controller.abort();
+      clearTimeout(retryTimer);
+      document.removeEventListener("visibilitychange", onWake);
+      for (const event of ["online", "pageshow", "focus"]) window.removeEventListener(event, onWake);
       close();
     };
   }, []);

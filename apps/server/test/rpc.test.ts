@@ -8,7 +8,7 @@ import {
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { BootstrapError, connect, type TandemConnection } from "@tandem/client";
 import { RPC_PATH } from "@tandem/contracts";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { WebSocket as NodeWebSocket } from "ws";
 import { type StartServerOptions, startServer, type TandemServer } from "../src/server.ts";
 
@@ -25,6 +25,7 @@ const connections: TandemConnection[] = [];
 afterEach(async () => {
   await Promise.all(connections.splice(0).map((connection) => connection.close()));
   await Promise.all(servers.splice(0).map((server) => server.stop()));
+  vi.unstubAllGlobals();
 });
 
 /** A server whose connections all share one counter. */
@@ -160,5 +161,44 @@ describe("rpc over WebSocket", () => {
     servers.push(restarted);
 
     await waitFor(() => connection.status.value?.status === "connected" && counter.state.value?.count === 41, 5_000);
+  });
+
+  test.each([false, true])("wake recovers a dropped or half-open socket (half-open: %s)", async (halfOpen) => {
+    const page = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    vi.stubGlobal("document", page);
+    const sockets: TrackedSocket[] = [];
+    class TrackedSocket extends WebSocket {
+      silent = false;
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        sockets.push(this);
+      }
+      override send(data: Parameters<WebSocket["send"]>[0]): void {
+        if (!this.silent) super.send(data);
+      }
+    }
+    vi.stubGlobal("WebSocket", TrackedSocket);
+    const { server, state } = await startCounterServer();
+    const connection = await connect({
+      baseUrl: server.url,
+      token: server.token,
+      services: [Counter],
+      reconnect: { initialDelayMs: 60_000, maxDelayMs: 60_000 },
+    });
+    connections.push(connection);
+    const counter = connection.services.use(Counter);
+    await connection.services.ready(context);
+    const socket = sockets[0];
+    if (socket === undefined) throw new Error("Missing socket");
+    if (halfOpen) socket.silent = true;
+    else {
+      socket.close();
+      await waitFor(() => connection.status.value?.status === "disconnected");
+    }
+    state.replace(context, { count: 41 });
+    page.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => sockets.length === 2 && connection.status.value?.status === "connected", 7_000);
+    await waitFor(() => counter.state.value?.count === 41);
+    expect(await counter.add(1, context)).toBe(42);
   });
 });

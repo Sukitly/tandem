@@ -53,6 +53,7 @@ describe("a terminal's connection", () => {
   let sockets: FakeSocket[];
   let links: string[];
   let errors: Error[];
+  const connections: TerminalConnection[] = [];
   const make = () => {
     const screen = recorder();
     const connection = new TerminalConnection({
@@ -68,6 +69,7 @@ describe("a terminal's connection", () => {
         return socket as unknown as WebSocket;
       },
     });
+    connections.push(connection);
     return { screen, connection };
   };
   const socket = (index: number): FakeSocket => sockets[index] as FakeSocket;
@@ -80,6 +82,8 @@ describe("a terminal's connection", () => {
     vi.stubGlobal("WebSocket", FakeSocket);
   });
   afterEach(() => {
+    for (const connection of connections.splice(0)) connection.close();
+    expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -166,6 +170,74 @@ describe("a terminal's connection", () => {
     socket(0).drop(1006);
     vi.advanceTimersByTime(10_000);
     connection.reconnect();
+    expect(sockets).toHaveLength(1);
+  });
+
+  test.each(["visibilitychange", "online", "pageshow", "focus"])("reconnects immediately on %s", (event) => {
+    const fakeDoc = new EventTarget() as unknown as Document;
+    Object.defineProperty(fakeDoc, "visibilityState", { value: "visible", writable: true });
+    vi.stubGlobal("document", fakeDoc);
+    const browser = new EventTarget();
+    vi.stubGlobal("window", browser);
+
+    make();
+    socket(0).open();
+    socket(0).drop(1006);
+    expect(sockets).toHaveLength(1);
+    expect(links.at(-1)).toBe("connecting");
+
+    (event === "visibilitychange" ? fakeDoc : browser).dispatchEvent(new Event(event));
+    expect(sockets).toHaveLength(2);
+  });
+
+  test("probes an open socket once, accepts only its pong, and replaces a silent socket", () => {
+    const browser = new EventTarget();
+    vi.stubGlobal("window", browser);
+    const { screen } = make();
+    socket(0).open();
+    browser.dispatchEvent(new Event("online"));
+    browser.dispatchEvent(new Event("focus"));
+    expect(socket(0).sent).toEqual([JSON.stringify({ type: "ping", id: 1 })]);
+    socket(0).receive(JSON.stringify({ type: "pong", id: 99 }));
+    vi.advanceTimersByTime(5_250);
+    expect(sockets).toHaveLength(2);
+    socket(1).open();
+    socket(0).receive('{"type":"screen","data":"stale","cols":80,"rows":24}');
+    socket(0).drop(1000);
+    expect(screen.calls).toEqual([]);
+    expect(links.at(-1)).toBe("open");
+    browser.dispatchEvent(new Event("focus"));
+    socket(1).receive(JSON.stringify({ type: "pong", id: 2 }));
+    vi.advanceTimersByTime(5_250);
+    expect(sockets).toHaveLength(2);
+  });
+
+  test("times out sockets that never open and ignores late opens", () => {
+    make();
+    vi.advanceTimersByTime(10_250);
+    expect(sockets).toHaveLength(2);
+    socket(0).open();
+    expect(links.at(-1)).toBe("connecting");
+  });
+
+  test("periodic probes recover silent sockets without lifecycle events", () => {
+    make();
+    socket(0).open();
+    vi.advanceTimersByTime(35_250);
+    expect(sockets).toHaveLength(2);
+  });
+
+  test.each([1000, 1003])("wake does not resurrect a terminal closed with %s", (code) => {
+    const browser = new EventTarget();
+    vi.stubGlobal("window", browser);
+    const { connection } = make();
+    socket(0).open();
+    socket(0).drop(code);
+    browser.dispatchEvent(new Event("online"));
+    expect(sockets).toHaveLength(1);
+    connection.close();
+    browser.dispatchEvent(new Event("focus"));
+    vi.advanceTimersByTime(60_000);
     expect(sockets).toHaveLength(1);
   });
 });
