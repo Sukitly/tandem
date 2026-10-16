@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
+import type { Conversation, ConversationNotice, ConversationSummary, ModelRef } from "@tandem/contracts";
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -29,6 +29,7 @@ import { useConversation } from "@/rpc/use-conversation.ts";
 import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer, imageSupportOf } from "./chat-composer.tsx";
+import { ConversationMenu } from "./conversation-menu.tsx";
 import { PullRequestLine } from "./pull-request-line.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
 import { TpsLine } from "./tps-line.tsx";
@@ -169,7 +170,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   const agent = view.docs["pi.agent"] as AgentChoice | undefined;
 
   return (
-    <ChatFrame cwd={summary?.cwd} title={summary?.title}>
+    <ChatFrame cwd={summary?.cwd} title={summary?.title} summary={summary}>
       <MessageScroller className="relative min-h-0 flex-1">
         <MessageScrollerViewport
           role="log"
@@ -238,10 +239,12 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
 function ChatFrame({
   cwd,
   title,
+  summary,
   children,
 }: {
   cwd: string | undefined;
   title: string | undefined;
+  summary?: ConversationSummary;
   children: ReactNode;
 }) {
   return (
@@ -252,7 +255,10 @@ function ChatFrame({
         <SidebarToggle className="md:hidden" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-mono text-xs text-muted-foreground">{cwd}</p>
-          <h1 className="truncate text-sm font-medium">{title}</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="truncate text-sm font-medium">{title}</h1>
+            {summary !== undefined && <ConversationMenu summary={summary} />}
+          </div>
         </div>
         <FilesToggle />
       </header>

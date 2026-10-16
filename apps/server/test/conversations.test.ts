@@ -333,6 +333,64 @@ describe("conversations", () => {
     );
   });
 
+  test("a conversation can be renamed, and invalid titles or unknown IDs are rejected", async () => {
+    const { server } = await start();
+    const { conversations, startIn } = await client(server);
+
+    const id = await startIn("original title");
+    expect(conversations.state.value?.conversations[0]?.title).toBe("original title");
+
+    await conversations.rename(id, "updated title", context);
+    await waitFor(() => conversations.state.value?.conversations[0]?.title === "updated title");
+
+    // Rejects empty or whitespace-only title
+    await expect(conversations.rename(id, "", context)).rejects.toThrow("1 to 80 characters");
+    await expect(conversations.rename(id, "   ", context)).rejects.toThrow("1 to 80 characters");
+    // Rejects title longer than 80 characters
+    await expect(conversations.rename(id, "a".repeat(81), context)).rejects.toThrow("1 to 80 characters");
+    // Rejects non-existent conversation ID
+    await expect(conversations.rename(999, "valid title", context)).rejects.toThrow("does not exist");
+  });
+
+  test("a conversation can be removed, stays removed after server restart, and unknown IDs are rejected", async () => {
+    const { server, stateDir } = await start();
+    const user = await client(server);
+
+    const id = await user.startIn("to be deleted");
+    expect(user.conversations.state.value?.conversations.some((c) => c.id === id)).toBe(true);
+
+    await user.conversations.remove(id, context);
+    await waitFor(() => !(user.conversations.state.value?.conversations.some((c) => c.id === id) ?? false));
+
+    // Opening a removed conversation rejects
+    await expect(user.conversations.open(id, context)).rejects.toThrow("does not exist");
+    // Removing an already removed or non-existent conversation rejects
+    await expect(user.conversations.remove(id, context)).rejects.toThrow("does not exist");
+    await expect(user.conversations.remove(999, context)).rejects.toThrow("does not exist");
+
+    // Restart the server to verify removed conversation is not reloaded
+    await stopApp(server);
+    const restarted = await start({ stateDir });
+    const user2 = await client(restarted.server);
+    expect(user2.conversations.state.value?.conversations.some((c) => c.id === id)).toBe(false);
+  });
+
+  test("removing a running conversation aborts it and removes it from the list", async () => {
+    const reply = (text: string) => `${text}: ${"word ".repeat(200).trim()}`;
+    const slow = await start({ providers: [createFauxProvider({ tokensPerSecond: 10, reply })] });
+    const user = await client(slow.server);
+    const id = await user.startIn("slow run");
+
+    const held = new OpenConversations(user.connection);
+    held.hold(id);
+    await waitFor(() => held.get(id) !== undefined);
+    // Wait until it is running
+    await waitFor(() => isBusy(held.get(id)?.view.value));
+
+    await user.conversations.remove(id, context);
+    await waitFor(() => !(user.conversations.state.value?.conversations.some((c) => c.id === id) ?? false));
+  });
+
   test("one server per state directory", async () => {
     const { stateDir } = await start();
     await expect(openStateDir(stateDir, { lockRetries: 0 })).rejects.toThrow("Another Tandem server");
