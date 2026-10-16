@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     ports:
       # Bound strictly to host loopback interface (127.0.0.1) to prevent intranet exposure
-      - "127.0.0.1:4820:4820"
+      - "127.0.0.1:${PORT:-4820}:4820"
     environment:
       - TANDEM_HOST=0.0.0.0
       - TANDEM_HOME=/data
@@ -16,7 +16,7 @@ services:
       # Persistent storage for Tandem database, paired devices, and settings
       - tandem_data:/data
       # Mount project workspace directory
-      - ./workspace:/workspace
+      - ${TANDEM_WORKSPACE_DIR:-./workspace}:/workspace
     security_opt:
       - no-new-privileges:true
     cap_drop:
