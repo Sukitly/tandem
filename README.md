@@ -6,7 +6,7 @@ Tandem runs on your machine and lets you collaborate with an AI coding agent on 
 
 Conversations are durable—surviving page reloads, dropped connections, and backend restarts without losing state. Tandem is built on [pi-durable](https://github.com/earendil-works/pi/tree/main/packages/durable).
 
-> **Status:** Early development. There is currently no sandbox: agents and terminals run with your machine account's permissions.
+> **Status:** Early development. Native runs are not sandboxed: agents and terminals run with your machine account's permissions. Docker runs execute inside a container, but agents can still modify files in mounted host directories.
 
 ---
 
@@ -25,13 +25,17 @@ Conversations are durable—surviving page reloads, dropped connections, and bac
 
 ## Prerequisites
 
-- **[Bun](https://bun.com):** Package manager and script runner.
-- **[Node.js](https://nodejs.org) >= 22.19:** Required to run the backend (uses `node:sqlite`).
-- **Platform Support:** Prebuilt binaries for [node-pty](https://github.com/microsoft/node-pty) are included for macOS, Linux (x64, arm64), and Windows. Other platforms require a C++ compiler, Python, and `make`.
+- **[Bun](https://bun.com):** Package manager and script runner for both native and Docker commands.
+- **Native runs:** [Node.js](https://nodejs.org) >= 22.19 is required for the backend (`node:sqlite`). Prebuilt binaries for [node-pty](https://github.com/microsoft/node-pty) are included for macOS, Linux (x64, arm64), and Windows. Other platforms require a C++ compiler, Python, and `make`.
+- **Docker runs:** A running Docker Desktop or Docker Engine with the Compose plugin (v2 or later), plus Bash and `curl` on the host. Node.js and application dependencies are installed inside the image; host Node.js and `bun install` are not required to start the container.
 
 ---
 
-## Quick Start
+## Quick Start (Native)
+
+Use `bun run start` to run directly on your machine. To run in Docker instead, use `bun run sandbox` and follow [Running in Docker](#running-in-docker).
+
+Run all commands below from the repository root.
 
 ### 1. Install & Start
 
@@ -59,6 +63,78 @@ bun run dev                   # Development mode: backend watch + Vite dev serve
 
 ---
 
+## Running in Docker
+
+Use Tandem's `bun run sandbox` commands to build, start, and manage the container. You do not need to run Docker Compose commands directly or install Tandem as a host background service.
+
+Run the following commands from the repository root, with Docker Desktop or Docker Engine running.
+
+### 1. Configure Project Mounts
+
+By default, the repository's `workspace/` directory is mounted at `/workspace` inside the container. To use a different host directory without changing the shared `compose.yaml`, create **`compose.override.yaml`** alongside it. For example, to mount **`~/Codes`**:
+
+```yaml
+services:
+  tandem:
+    volumes:
+      - "${HOME}/Codes:/workspace"
+```
+
+Docker Compose automatically merges this local override with `compose.yaml`. Volume entries are merged by container target path, so this replaces the default `/workspace` mount while preserving the separate `/data` volume. `${HOME}` expands to your host home directory; you do not need to export `TANDEM_WORKSPACE_DIR` on every launch. Override files are already ignored by Git.
+
+In Tandem's **Add project** workflow, use container paths, not host paths:
+
+| Host repository | Path to use in Tandem |
+|---|---|
+| `~/Codes/my-project` | `/workspace/my-project` |
+| `~/Codes/open-source/tandem` | `/workspace/open-source/tandem` |
+
+**Mounted files are writable:** agent and terminal changes under `/workspace` affect the corresponding files on your host. Mount only directories you want Tandem to access.
+
+### 2. Start Tandem
+
+```bash
+export TANDEM_RUNTIME=docker
+bun run sandbox
+```
+
+The runner builds the image if needed, starts the container in the background, waits for the health check, and prints a pairing link. On macOS, it also opens the link in your browser. The web interface is available at `http://127.0.0.1:4820`.
+
+Set `TANDEM_RUNTIME=docker` in each new terminal where you use these commands, or add the export to your shell profile. Without an explicit runtime, the runner reuses an existing runtime or prefers Docker Sandboxes (`sbx`) when available. Compose overrides apply only to Docker Compose mode, not `sbx` microVMs.
+
+Once paired, sign in under **Model providers** and add a project using its `/workspace/...` path. For subsequent starts, run `bun run sandbox` again with the same runtime setting.
+
+### 3. Apply Mount or Configuration Changes
+
+If you add or edit `compose.override.yaml` after the container has already been created, run:
+
+```bash
+export TANDEM_RUNTIME=docker
+bun run sandbox rebuild
+```
+
+This rebuilds the image without cache and recreates the container with the merged configuration. It may take longer than a normal start. A plain `bun run sandbox` reuses an already healthy container, and `bun run sandbox restart` only restarts it; neither applies new mounts to that running container.
+
+### Management & Persistent Data
+
+With `TANDEM_RUNTIME=docker` set:
+
+```bash
+bun run sandbox           # Start or reuse the container and display the pairing link
+bun run sandbox status    # Check container status and server health
+bun run sandbox logs      # View logs (follows in an interactive terminal)
+bun run sandbox shell     # Open a shell inside the container
+bun run sandbox restart   # Restart the existing container without applying config changes
+bun run sandbox stop      # Stop the container
+bun run sandbox rm        # Remove the container while retaining the data volume
+```
+
+Conversations, paired devices, model credentials, and settings are stored at `/data` in the persistent Docker volume **`tandem_data`**, separately from the native `~/.tandem` directory. They survive container stops, rebuilds, and `bun run sandbox rm`. Deleting the `tandem_data` volume deletes this state. Project files remain in the mounted host directory.
+
+The container runs in the background and continues running when you close the terminal; `bun run service install` is only for native deployments.
+
+---
+
 ## Development Commands
 
 | Task | Command |
@@ -75,6 +151,8 @@ bun run dev                   # Development mode: backend watch + Vite dev serve
 ---
 
 ## Running as a Background Service
+
+The following commands are for native deployments. Docker deployments use the [sandbox management commands](#management--persistent-data) instead.
 
 Running Tandem in the foreground terminates the process when the terminal closes. Use the built-in service manager to register Tandem as a launchd agent (macOS) or systemd user unit (Linux):
 
@@ -121,7 +199,7 @@ Tandem supports secure remote access over the internet without port forwarding u
 
 ## State & Devices (`$TANDEM_HOME`)
 
-Tandem stores all state in `$TANDEM_HOME` (default: `~/.tandem`):
+Tandem stores all state in `$TANDEM_HOME` (default: `~/.tandem` for native runs; `/data` in the `tandem_data` volume for Docker Compose runs):
 
 - **Data storage:** `app.sqlite` stores conversations, tasks, and project records.
 - **Master key:** `server.json` (mode `0600`) stores the local installation master key used for CLI operations.
