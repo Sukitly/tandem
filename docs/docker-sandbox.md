@@ -132,4 +132,4 @@ Inside Tandem's web UI, click **Add project** and choose `/workspace` (or subdir
 | `TANDEM_HOME` | `/data` | State and SQLite database directory. |
 | `PORT` | `4820` | Published loopback port on host (`127.0.0.1:<PORT>`). |
 | `TANDEM_ALLOWED_ORIGINS` | _(none)_ | Comma-separated list of additional allowed HTTP origins if mapping to a custom host port. |
-| `PI_PROMPTS_DIR` | `~/.pi/agent/prompts` | Host directory of prompt templates mounted read-only into `/root/.pi/agent/prompts`. |
+| `PI_PROMPTS_DIR` | `~/.pi/agent/prompts` (or `$PI_CODING_AGENT_DIR/prompts`) | Host directory of prompt templates mounted read-only into `/root/.pi/agent/prompts`. |

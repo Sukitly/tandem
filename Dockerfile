@@ -55,7 +55,7 @@ COPY . .
 RUN bun run build
 
 # Configure SSH client defaults (auto-accept new host keys for non-interactive agent execution)
-RUN mkdir -p /etc/ssh/ssh_config.d /data /workspace /root/.ssh /root/.pi/agent/prompts \
+RUN mkdir -p /etc/ssh/ssh_config.d /data /workspace /root/.ssh \
   && chmod 700 /root/.ssh \
   && echo "Host *\n  StrictHostKeyChecking accept-new\n  ServerAliveInterval 60\n" > /etc/ssh/ssh_config.d/tandem.conf
 

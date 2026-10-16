@@ -7,7 +7,8 @@ PORT="${PORT:-4820}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE_DIR="${TANDEM_WORKSPACE_DIR:-${ROOT_DIR}/workspace}"
 DATA_DIR="${TANDEM_DATA_DIR:-${HOME}/.tandem}"
-PROMPTS_DIR="${PI_PROMPTS_DIR:-${HOME}/.pi/agent/prompts}"
+PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-${HOME}/.pi/agent}"
+PROMPTS_DIR="${PI_PROMPTS_DIR:-${PI_AGENT_DIR}/prompts}"
 
 export PORT
 export TANDEM_WORKSPACE_DIR="${WORKSPACE_DIR}"
@@ -407,6 +408,7 @@ function rebuild_sandbox() {
     start_sandbox
   else
     log "Rebuilding Tandem Docker image..."
+    ensure_host_configs
     local build_args=(build)
     if [ "${REBUILD_NO_CACHE}" -eq 1 ]; then
       build_args+=(--no-cache)
