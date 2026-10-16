@@ -235,6 +235,44 @@ html {
   max-width: calc(100vw - 3rem) !important;
 }
 
+/* Show the transcript scrollbar only when reading history, not while following the latest messages. */
+.chat-transcript-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: transparent transparent;
+}
+
+/* scrollbar-color inherits; keep nested code blocks and tool output scrollbars independent. */
+.chat-transcript-scrollbar > * {
+  scrollbar-color: auto;
+}
+
+.chat-transcript-scrollbar[data-scrollable~="end"]:not([data-autoscrolling]) {
+  scrollbar-color: var(--muted-foreground) transparent;
+}
+
+/* Fallback for browsers that style native scrollbars through WebKit pseudo-elements. */
+.chat-transcript-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+
+.chat-transcript-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.chat-transcript-scrollbar[data-scrollable~="end"]:not([data-autoscrolling])::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+}
+
+/* Keep code, diffs, and tool output readable at the edges. Unlayered to override shadcn's scroll-fade utilities. */
+[data-slot="code-block-content"] {
+  -webkit-mask-image: none;
+  mask-image: none;
+  animation: none;
+}
+
 /*
  * Align CodeBlock diff line additions and deletions with the Changes panel styling.
  */

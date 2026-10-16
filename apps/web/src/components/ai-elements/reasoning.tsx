@@ -1,4 +1,4 @@
-import { CheckIcon, LoaderCircleIcon } from "lucide-react";
+import { BrainIcon, LoaderCircleIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import {
@@ -41,7 +41,7 @@ export function Reasoning({
 
   const line = (
     <TraceLine status={running ? "running" : undefined}>
-      <TraceIcon>{running ? <LoaderCircleIcon className="animate-spin" /> : <CheckIcon />}</TraceIcon>
+      <TraceIcon>{running ? <LoaderCircleIcon className="animate-spin" /> : <BrainIcon />}</TraceIcon>
       <TraceTitle>{running ? "Thinking" : "Thought"}</TraceTitle>
       {duration !== undefined && <TraceDescription>{duration}s</TraceDescription>}
     </TraceLine>

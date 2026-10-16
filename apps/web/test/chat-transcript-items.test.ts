@@ -1,24 +1,17 @@
 import { describe, expect, test } from "vitest";
-import { describeTool, parseDiffLine } from "../src/chat/transcript-items.tsx";
+import { parseDiffLine, toolDescription } from "../src/chat/transcript-items.tsx";
 
 describe("transcript items helpers", () => {
-  test("describes standard file and agent tools", () => {
-    expect(describeTool({ name: "read", args: { path: "src/app.ts" }, status: "done" }).title).toBe("Read src/app.ts");
-    expect(
-      describeTool({ name: "read", args: { path: "src/app.ts", offset: 10, limit: 20 }, status: "running" }).title,
-    ).toBe("Reading src/app.ts:10-29");
-    expect(describeTool({ name: "edit", args: { path: "src/index.ts" }, status: "done" }).title).toBe(
-      "Edited src/index.ts",
-    );
-    expect(describeTool({ name: "write", args: { path: "src/new.ts" }, status: "failed" }).title).toBe(
-      "Failed to write src/new.ts",
-    );
-    expect(describeTool({ name: "reply_to_comment", args: { threadId: "42" }, status: "done" }).title).toBe(
-      "Replied to comment #42",
-    );
-    expect(describeTool({ name: "custom_op", args: {}, status: "cancelled" }).title).toBe(
-      "Cancelled calling custom_op",
-    );
+  test("describes argument context without mapping tool names or statuses", () => {
+    expect(toolDescription({ path: "src/app.ts" })).toBe("src/app.ts");
+    expect(toolDescription({ path: "src/app.ts", offset: 10, limit: 20 })).toBe("src/app.ts:10-29");
+    expect(toolDescription({ path: "src/app.ts", limit: 5 })).toBe("src/app.ts:1-5");
+    expect(toolDescription({ path: "src/app.ts", offset: 10 })).toBe("src/app.ts:10");
+    expect(toolDescription({ command: "bun run test" })).toBe("bun run test");
+    expect(toolDescription({ threadId: 42 })).toBe("#42");
+    expect(toolDescription({ threadId: "42" })).toBe("#42");
+    expect(toolDescription({ query: "custom tool input" })).toBe('{"query":"custom tool input"}');
+    expect(toolDescription({})).toBe("");
   });
 
   test("structures and parses raw unified diff lines", () => {

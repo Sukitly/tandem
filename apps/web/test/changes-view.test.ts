@@ -117,6 +117,11 @@ describe("file type icons in the changed files list", () => {
     expect(markup).toContain('aria-label="Full screen"');
   });
 
+  test("shows a copy path button beside the selected file name", () => {
+    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
+    expect(changes()).toContain('aria-label="Copy file path"');
+  });
+
   test("shows close button for the selected diff", () => {
     state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
     const markup = changes();

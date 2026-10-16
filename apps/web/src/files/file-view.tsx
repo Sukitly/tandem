@@ -4,6 +4,7 @@ import { HighlightedLine, languageOfFile, useHighlighted } from "@/chat/highligh
 import { anchorAt, placeThreads, revealedLine } from "@/comments/comment-anchor.ts";
 import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
+import { CopyPathButton } from "@/components/copy-path-button.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -40,9 +41,12 @@ export function FileView({ files, comments }: { files: ProjectFiles; comments: P
       aria-label={`File ${opened.path}`}
     >
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
-        <p className="min-w-0 flex-1 truncate font-mono text-xs" title={opened.path}>
-          {opened.path}
-        </p>
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <p className="min-w-0 truncate font-mono text-xs" title={opened.path}>
+            {opened.path}
+          </p>
+          <CopyPathButton key={opened.path} path={opened.path} />
+        </div>
         {content?.status === "ready" && content.value.kind === "text" && (
           <span className="shrink-0 font-mono text-xs text-muted-foreground">
             {formatLines(countLines(content.value.text))}

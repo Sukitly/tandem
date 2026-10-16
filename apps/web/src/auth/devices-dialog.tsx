@@ -232,7 +232,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                 </p>
               )}
               <Button
-                variant="destructive"
+                variant={remaining === 0 ? "default" : "destructive"}
                 disabled={busy}
                 onClick={() => {
                   if (remaining === 0) void run(regenerate);

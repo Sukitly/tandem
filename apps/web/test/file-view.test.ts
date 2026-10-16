@@ -33,6 +33,7 @@ describe("FileView zoom toggle button", () => {
     );
     expect(markup).toContain('aria-label="Full screen"');
     expect(markup).toContain('aria-label="Close the file"');
+    expect(markup).toContain('aria-label="Copy file path"');
     expect(markup).toContain("src/main.ts");
     expect(markup).toContain("1 L");
     expect(markup).not.toContain("16 B");
