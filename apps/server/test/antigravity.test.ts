@@ -1,10 +1,22 @@
-import { type AssistantMessage, type Context, createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import {
+  type AssistantMessage,
+  type Context,
+  createAssistantMessageEventStream,
+  normalizeContext,
+} from "@earendil-works/pi-ai";
 import { describe, expect, test, vi } from "vitest";
 import { parseApiKey, resolveProjectId } from "../src/antigravity/client.ts";
 import { ANTIGRAVITY_MODELS, getAntigravityRequestModelId, getThinkingConfig } from "../src/antigravity/models.ts";
 import { getApiKey, refreshAntigravityToken } from "../src/antigravity/oauth.ts";
 import { antigravityProvider } from "../src/antigravity/provider.ts";
-import { buildRequest, convertMessages, convertTools, parseSseStream } from "../src/antigravity/stream.ts";
+import {
+  buildRequest,
+  convertMessages,
+  convertTools,
+  parseSseStream,
+  resolveCurrentSystemPrompt,
+  resolveCurrentTools,
+} from "../src/antigravity/stream.ts";
 import { normalizeAntigravityUsage } from "../src/antigravity/usage.ts";
 
 describe("antigravityProvider metadata", () => {
@@ -249,6 +261,146 @@ describe("request and messages transformation", () => {
     expect(request.request.contents.length).toBeGreaterThan(0);
     expect(request.request.systemInstruction.parts[0]?.text).toBe("You are a test assistant.");
     expect(request.request.generationConfig?.maxOutputTokens).toBe(65536);
+  });
+
+  test("resolves tools and system prompt from normalized TranscriptContext", () => {
+    const context: Context = {
+      systemPrompt: "System instruction from prompt",
+      messages: [{ role: "user", content: "Check status", timestamp: Date.now() }],
+      tools: [
+        {
+          name: "bash",
+          description: "Run bash command",
+          parameters: {
+            type: "object",
+            properties: { command: { type: "string" } },
+            required: ["command"],
+          },
+        },
+      ],
+    };
+
+    const normalized = normalizeContext(context);
+    expect((normalized as Partial<Context>).tools).toBeUndefined();
+    expect((normalized as Partial<Context>).systemPrompt).toBeUndefined();
+
+    const resolvedTools = resolveCurrentTools(normalized);
+    expect(resolvedTools?.length).toBe(1);
+    expect(resolvedTools?.[0]?.name).toBe("bash");
+
+    const resolvedPrompt = resolveCurrentSystemPrompt(normalized);
+    expect(resolvedPrompt).toBe("System instruction from prompt");
+
+    const request = buildRequest(model, normalized, "proj-123", {}, "gemini-3.8-flash-low");
+    expect(request.request.tools).toBeDefined();
+    expect(request.request.tools?.[0]?.functionDeclarations[0]?.name).toBe("bash");
+    expect(request.request.systemInstruction.parts[0]?.text).toBe("System instruction from prompt");
+  });
+
+  test("resolves tools and sections from durable harness messages", () => {
+    const durableContext = {
+      messages: [
+        {
+          role: "system",
+          content: "",
+          sections: {
+            preamble: "You are an expert coding assistant working inside Tandem.",
+            tools: "- bash: Run shell command\n- read: Read file",
+          },
+          toolsAdded: [
+            {
+              name: "bash",
+              description: "Run shell command",
+              parameters: {
+                type: "object",
+                properties: { command: { type: "string" } },
+                required: ["command"],
+              },
+            },
+            {
+              name: "read",
+              description: "Read file",
+              parameters: {
+                type: "object",
+                properties: { path: { type: "string" } },
+                required: ["path"],
+              },
+            },
+          ],
+        },
+        { role: "user", content: "List files" },
+      ],
+    } as Context;
+
+    const resolvedTools = resolveCurrentTools(durableContext);
+    expect(resolvedTools?.map((t) => t.name)).toEqual(["bash", "read"]);
+
+    const resolvedPrompt = resolveCurrentSystemPrompt(durableContext);
+    expect(resolvedPrompt).toContain("You are an expert coding assistant working inside Tandem.");
+    expect(resolvedPrompt).toContain("- bash: Run shell command");
+
+    const request = buildRequest(model, durableContext, "proj-123", {}, "gemini-3.8-flash-low");
+    expect(request.request.tools).toBeDefined();
+    expect(request.request.tools?.[0]?.functionDeclarations.map((f) => f.name)).toEqual(["bash", "read"]);
+    expect(request.request.systemInstruction.parts[0]?.text).toContain("You are an expert coding assistant");
+  });
+
+  test("dereferences schema with $ref and cleans meta-schema keywords", () => {
+    const tools = [
+      {
+        name: "edit",
+        description: "Edit file",
+        parameters: {
+          $schema: "https://json-schema.org/draft/2020-12/schema",
+          $defs: {
+            editItem: {
+              type: "object",
+              properties: {
+                oldText: { type: "string" },
+                newText: { type: "string" },
+              },
+              required: ["oldText", "newText"],
+            },
+          },
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            edits: {
+              type: "array",
+              items: { $ref: "#/$defs/editItem" },
+            },
+          },
+          required: ["path", "edits"],
+        },
+      },
+    ];
+
+    const geminiDeclarations = convertTools(tools, false);
+    const geminiEdit = geminiDeclarations?.[0]?.functionDeclarations[0];
+    expect(geminiEdit?.parametersJsonSchema).toEqual({
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        edits: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              oldText: { type: "string" },
+              newText: { type: "string" },
+            },
+            required: ["oldText", "newText"],
+          },
+        },
+      },
+      required: ["path", "edits"],
+    });
+
+    const claudeDeclarations = convertTools(tools, true);
+    const claudeEdit = claudeDeclarations?.[0]?.functionDeclarations[0];
+    expect(claudeEdit?.parameters).toBeDefined();
+    const claudeParams = claudeEdit?.parameters as Record<string, unknown> | undefined;
+    expect(claudeParams?.properties).toBeDefined();
   });
 });
 
