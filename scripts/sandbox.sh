@@ -23,6 +23,11 @@ function error() {
   echo -e "\033[1;31m[Error]\033[0m $*" >&2
 }
 
+function usage() {
+  echo "Usage: $0 {start|restart|reload|update|stop|rm|rebuild|logs|shell|status}"
+  echo "       $0 rebuild [--no-cache]"
+}
+
 function detect_runtime() {
   local preference="${TANDEM_RUNTIME:-auto}"
 
@@ -121,7 +126,11 @@ function ensure_template() {
 
   if [ -z "$has_template" ] || [ "$force" -eq 1 ]; then
     log "Building Docker image ${IMAGE_TAG}..."
-    docker build -t "${IMAGE_TAG}" "${ROOT_DIR}"
+    local build_args=(-t "${IMAGE_TAG}")
+    if [ "${REBUILD_NO_CACHE}" -eq 1 ]; then
+      build_args+=(--no-cache)
+    fi
+    docker build "${build_args[@]}" "${ROOT_DIR}"
     log "Loading ${IMAGE_TAG} into Docker Sandboxes microVM template store..."
     local tar_file="/tmp/tandem-build-$$.tar"
     docker save "${IMAGE_TAG}" -o "${tar_file}"
@@ -391,7 +400,11 @@ function rebuild_sandbox() {
     start_sandbox
   else
     log "Rebuilding Tandem Docker image..."
-    (cd "${ROOT_DIR}" && docker compose build --no-cache)
+    local build_args=(build)
+    if [ "${REBUILD_NO_CACHE}" -eq 1 ]; then
+      build_args+=(--no-cache)
+    fi
+    (cd "${ROOT_DIR}" && docker compose "${build_args[@]}")
     (cd "${ROOT_DIR}" && docker compose up -d --force-recreate)
     wait_for_ready
     display_and_open_pairing
@@ -436,10 +449,24 @@ function status_sandbox() {
   fi
 }
 
+COMMAND="${1:-start}"
+REBUILD_NO_CACHE=0
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+if [ "$#" -gt 0 ]; then
+  if [ "${COMMAND}" != "rebuild" ] || [ "$#" -ne 1 ] || [ "$1" != "--no-cache" ]; then
+    error "Unexpected arguments for ${COMMAND}: $*"
+    usage
+    exit 1
+  fi
+  REBUILD_NO_CACHE=1
+fi
+
 detect_runtime
 check_prerequisites
 
-case "${1:-start}" in
+case "${COMMAND}" in
   start|"")
     start_sandbox
     ;;
@@ -468,7 +495,7 @@ case "${1:-start}" in
     status_sandbox
     ;;
   *)
-    echo "Usage: $0 {start|restart|reload|update|stop|rm|rebuild|logs|shell|status}"
+    usage
     exit 1
     ;;
 esac

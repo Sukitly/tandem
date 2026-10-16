@@ -64,8 +64,11 @@ bun run sandbox logs      # View Tandem logs inside the sandbox (follows in inte
 bun run sandbox shell     # Open an interactive bash shell inside the container/microVM
 bun run sandbox stop      # Stop the sandbox
 bun run sandbox rm        # Remove the sandbox
-bun run sandbox rebuild   # Rebuild the image from scratch and recreate the container
+bun run sandbox rebuild   # Rebuild using cached layers and recreate the container
+bun run sandbox rebuild --no-cache  # Rebuild without cached layers and recreate the container
 ```
+
+Rebuilds use Docker's layer cache by default in both runtime modes. Unchanged system tools and dependencies can reuse cached layers. Use `--no-cache` only when you need installation and build steps to run again; it can take substantially longer. In `sbx` mode, either rebuild also reloads the image into the template store and recreates the microVM.
 
 ---
 
