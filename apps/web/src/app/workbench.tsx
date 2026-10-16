@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ChangeTarget } from "@/changes/change-target.ts";
 import { ProjectComments } from "@/comments/project-comments.ts";
@@ -58,6 +58,10 @@ interface Workbench {
   addProject(): void;
   /** Takes the project off the list, and closes its conversation if it is the open one. */
   removeProject(workspaceId: number): void;
+  /** Renames a conversation. */
+  renameConversation(id: number, title: string): Promise<void>;
+  /** Removes a conversation. Closes it if it is the open one. */
+  removeConversation(id: number): Promise<void>;
   failure: Failure | null;
   /** Show that something the user asked for did not happen. */
   reportFailure(title: string, error: unknown): void;
@@ -104,6 +108,13 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const summaries = useReplicatedState(conversations.state)?.conversations;
   const workspaceId = draft ?? summaries?.find((summary) => summary.id === selected)?.workspaceId ?? null;
 
+  // The state changes along with the hash, so a started conversation replaces the new one in a single render.
+  const select = useCallback((id: number | null): void => {
+    setSelected(id);
+    setDraft(null);
+    window.location.hash = id === null ? "" : String(id);
+  }, []);
+
   useEffect(() => {
     const onChange = (): void => {
       const id = selectedInHash();
@@ -115,12 +126,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
 
-  // The state changes along with the hash, so a started conversation replaces the new one in a single render.
-  const select = (id: number | null): void => {
-    setSelected(id);
-    setDraft(null);
-    window.location.hash = id === null ? "" : String(id);
-  };
+  useEffect(() => {
+    if (selected !== null && summaries !== undefined && !summaries.some((summary) => summary.id === selected)) {
+      select(null);
+    }
+  }, [selected, summaries, select]);
 
   const projectFiles = (id: number): ProjectFiles => {
     let project = projects.get(id);
@@ -197,6 +207,23 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
           toast.error("Could not remove the project", { description: messageOf(error) });
         },
       );
+    },
+    async renameConversation(id, title) {
+      try {
+        await conversations.rename(id, title, BACKGROUND_CONTEXT);
+      } catch (error) {
+        toast.error("Could not rename the conversation", { description: messageOf(error) });
+        throw error;
+      }
+    },
+    async removeConversation(id) {
+      try {
+        await conversations.remove(id, BACKGROUND_CONTEXT);
+        if (selected === id) select(null);
+      } catch (error) {
+        toast.error("Could not delete the conversation", { description: messageOf(error) });
+        throw error;
+      }
     },
     failure: null,
     reportFailure(title, error) {

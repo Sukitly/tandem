@@ -39,6 +39,7 @@ export {
   type ConversationsState,
   type ConversationTps,
   type ConversationView,
+  MAX_CONVERSATION_TITLE_LENGTH,
   type RunTps,
   type StartInput,
   type SubmitInput,

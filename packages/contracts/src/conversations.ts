@@ -4,6 +4,9 @@ import type { ModelRef } from "./models.ts";
 
 export type { ConversationView };
 
+/** Longest conversation title, in characters. */
+export const MAX_CONVERSATION_TITLE_LENGTH = 80;
+
 /** A conversation as listed in the sidebar. */
 export interface ConversationSummary {
   id: number;
@@ -42,6 +45,10 @@ export interface Conversations {
   open(id: number, context: Context): Promise<void>;
   /** Withdraw the conversation's `Conversation` instance from this connection. */
   close(id: number, context: Context): Promise<void>;
+  /** Rename a conversation. */
+  rename(id: number, title: string, context: Context): Promise<void>;
+  /** Take a conversation off the list and mark it removed. If the agent is working, it is stopped. */
+  remove(id: number, context: Context): Promise<void>;
 }
 
 export const Conversations = defineService<Conversations>("tandem.conversations");

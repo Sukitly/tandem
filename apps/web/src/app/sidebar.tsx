@@ -1,4 +1,5 @@
 import type { ConversationSummary, WorkspaceSummary } from "@tandem/contracts";
+import { cn } from "cn";
 import {
   BikeIcon,
   ChevronLeftIcon,
@@ -11,11 +12,14 @@ import {
   KeyRoundIcon,
   MonitorIcon,
   MoonIcon,
+  PencilIcon,
   PlusIcon,
   SunIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { useState } from "react";
 import { useDevicesDialog } from "@/auth/devices-dialog.tsx";
+import { DeleteConversationDialog, RenameConversationDialog } from "@/chat/conversation-dialogs.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -108,11 +112,11 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {list.map((summary) => (
-                  <SidebarMenuItem key={summary.id}>
+                  <SidebarMenuItem key={summary.id} className="group/conv-row relative">
                     <SidebarMenuButton
                       render={<a href={`#${summary.id}`} aria-current={summary.id === selected ? "page" : undefined} />}
                       isActive={summary.id === selected}
-                      className={summary.id === selected ? "bg-sidebar-accent" : undefined}
+                      className={cn(summary.id === selected && "bg-sidebar-accent", "pr-7")}
                       title={summary.cwd}
                     >
                       <span className="truncate">{summary.title}</span>
@@ -124,6 +128,7 @@ export function AppSidebar() {
                         </span>
                       )}
                     </SidebarMenuButton>
+                    <ConversationRowActions summary={summary} />
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -166,6 +171,44 @@ export function AppSidebar() {
 // Scope hover and keyboard focus to the project row, not its conversation list. Touch devices keep actions visible.
 const PROJECT_ACTION_CLASS =
   "opacity-0 group-hover/project-row:opacity-100 group-focus-within/project-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
+
+const CONVERSATION_ACTION_CLASS =
+  "opacity-0 group-hover/conv-row:opacity-100 group-focus-within/conv-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
+
+function ConversationRowActions({ summary, className }: { summary: ConversationSummary; className?: string }) {
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <SidebarMenuAction
+              className={cn(CONVERSATION_ACTION_CLASS, className)}
+              title="More"
+              aria-label={`More for ${summary.title}`}
+            />
+          }
+        >
+          <EllipsisIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="right" align="start" className="w-40">
+          <DropdownMenuItem onClick={() => setRenaming(true)}>
+            <PencilIcon />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+            <Trash2Icon />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <RenameConversationDialog summary={summary} open={renaming} onOpenChange={setRenaming} />
+      <DeleteConversationDialog summary={summary} open={deleting} onOpenChange={setDeleting} />
+    </>
+  );
+}
 
 /** A project that opens to show its conversations. Its row reveals actions on hover or keyboard focus. */
 function ProjectItem({
@@ -261,16 +304,17 @@ function ProjectItem({
         <CollapsibleContent>
           <SidebarMenuSub className="mr-0 pr-0">
             {conversations.map((summary) => (
-              <SidebarMenuSubItem key={summary.id}>
+              <SidebarMenuSubItem key={summary.id} className="group/conv-row relative">
                 <SidebarMenuSubButton
                   href={`#${summary.id}`}
                   isActive={summary.id === selected}
                   aria-current={summary.id === selected ? "page" : undefined}
-                  className={summary.id === selected ? "bg-sidebar-accent" : undefined}
+                  className={cn(summary.id === selected && "bg-sidebar-accent", "pr-7")}
                 >
                   <span className="truncate">{summary.title}</span>
                   {summary.running && <Spinner aria-label="Running" className="ml-auto" />}
                 </SidebarMenuSubButton>
+                <ConversationRowActions summary={summary} className="top-1 right-1" />
               </SidebarMenuSubItem>
             ))}
           </SidebarMenuSub>

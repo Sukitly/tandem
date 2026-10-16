@@ -1,17 +1,26 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { Conversation, ConversationNotice, ModelRef } from "@tandem/contracts";
+import type { Conversation, ConversationNotice, ConversationSummary, ModelRef } from "@tandem/contracts";
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpIcon,
+  EllipsisIcon,
   MessageCircleDashedIcon,
+  PencilIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { SidebarToggle } from "@/app/sidebar.tsx";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import {
   MessageScroller,
@@ -29,6 +38,7 @@ import { useConversation } from "@/rpc/use-conversation.ts";
 import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer, imageSupportOf } from "./chat-composer.tsx";
+import { DeleteConversationDialog, RenameConversationDialog } from "./conversation-dialogs.tsx";
 import { PullRequestLine } from "./pull-request-line.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
 import { TpsLine } from "./tps-line.tsx";
@@ -169,7 +179,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   const agent = view.docs["pi.agent"] as AgentChoice | undefined;
 
   return (
-    <ChatFrame cwd={summary?.cwd} title={summary?.title}>
+    <ChatFrame cwd={summary?.cwd} title={summary?.title} summary={summary}>
       <MessageScroller className="relative min-h-0 flex-1">
         <MessageScrollerViewport
           role="log"
@@ -238,10 +248,12 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
 function ChatFrame({
   cwd,
   title,
+  summary,
   children,
 }: {
   cwd: string | undefined;
   title: string | undefined;
+  summary?: ConversationSummary;
   children: ReactNode;
 }) {
   return (
@@ -252,12 +264,52 @@ function ChatFrame({
         <SidebarToggle className="md:hidden" />
         <div className="min-w-0 flex-1">
           <p className="truncate font-mono text-xs text-muted-foreground">{cwd}</p>
-          <h1 className="truncate text-sm font-medium">{title}</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="truncate text-sm font-medium">{title}</h1>
+            {summary !== undefined && <ConversationHeaderActions summary={summary} />}
+          </div>
         </div>
         <FilesToggle />
       </header>
       {children}
     </section>
+  );
+}
+
+function ConversationHeaderActions({ summary }: { summary: ConversationSummary }) {
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground hover:text-foreground"
+              aria-label={`Actions for ${summary.title}`}
+              title="Conversation actions"
+            />
+          }
+        >
+          <EllipsisIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="bottom" align="start" className="w-40">
+          <DropdownMenuItem onClick={() => setRenaming(true)}>
+            <PencilIcon />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+            <Trash2Icon />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <RenameConversationDialog summary={summary} open={renaming} onOpenChange={setRenaming} />
+      <DeleteConversationDialog summary={summary} open={deleting} onOpenChange={setDeleting} />
+    </>
   );
 }
 

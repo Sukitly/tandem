@@ -376,6 +376,24 @@ export function createConnectionServices({
       opened.delete(id);
       (await opening.catch(() => undefined))?.close();
     },
+    async rename(id, title, context) {
+      parseId(id);
+      if (typeof title !== "string") throw invalidInput("title must be a string");
+      await catalog.rename(id, title, context);
+    },
+    async remove(id, context) {
+      parseId(id);
+      if (!catalog.has(id)) throw invalidInput(`Conversation ${id} does not exist`);
+      const conversation = await harness.conversation(id as ConversationId, BACKGROUND_CONTEXT);
+      await conversation?.abort(BACKGROUND_CONTEXT);
+      notices.clear(id);
+      await catalog.remove(id, context);
+      const opening = opened.get(id);
+      if (opening !== undefined) {
+        opened.delete(id);
+        (await opening.catch(() => undefined))?.close();
+      }
+    },
   });
 
   return {

@@ -16,7 +16,7 @@ import {
   type Conversation as HarnessConversation,
   type TaskGraph,
 } from "@earendil-works/pi-durable";
-import type { ConversationSummary, ConversationsState } from "@tandem/contracts";
+import { type ConversationSummary, type ConversationsState, MAX_CONVERSATION_TITLE_LENGTH } from "@tandem/contracts";
 import { invalidInput } from "./errors.ts";
 import type { WorkspaceCatalog } from "./workspaces.ts";
 
@@ -28,6 +28,7 @@ type ConversationMeta = {
   updatedAt?: number;
   /** From the first message. Conversations created before they started with a message may have none, and stay out. */
   title?: string;
+  removed?: true;
 };
 
 /** Exported for tests, which write conversations as older versions did. */
@@ -40,7 +41,7 @@ export const ConversationMetaDoc = defineDoc<ConversationMeta>({
   initial: () => ({ createdAt: 0 }),
 });
 
-const TITLE_LENGTH = 80;
+const TITLE_LENGTH = MAX_CONVERSATION_TITLE_LENGTH;
 
 type Stored = Omit<ConversationSummary, "running">;
 
@@ -159,6 +160,31 @@ export class ConversationCatalog {
     this.#publish();
   }
 
+  /** Rename a conversation. */
+  async rename(id: number, title: string, context: Context): Promise<void> {
+    const summary = this.#stored.get(id);
+    if (summary === undefined) throw invalidInput(`Conversation ${id} does not exist`);
+    const trimmed = title.trim();
+    if (trimmed.length === 0 || trimmed.length > MAX_CONVERSATION_TITLE_LENGTH) {
+      throw invalidInput(`Conversation title must contain 1 to ${MAX_CONVERSATION_TITLE_LENGTH} characters`);
+    }
+    await this.#harness.commit(async (tx) => {
+      (await tx.doc(ConversationMetaDoc, id as ConversationId)).title = trimmed;
+    }, context);
+    this.#stored.set(id, { ...summary, title: trimmed });
+    this.#publish();
+  }
+
+  /** Mark a conversation removed and take it off the list. */
+  async remove(id: number, context: Context): Promise<void> {
+    if (!this.#stored.has(id)) throw invalidInput(`Conversation ${id} does not exist`);
+    await this.#harness.commit(async (tx) => {
+      (await tx.doc(ConversationMetaDoc, id as ConversationId)).removed = true;
+    }, context);
+    this.#stored.delete(id);
+    this.#publish();
+  }
+
   dispose(): void {
     for (const stop of this.#stop.splice(0)) stop();
   }
@@ -206,7 +232,7 @@ async function readSummary(
     harness.snapshot(ConversationMetaDoc, id, context),
   ]);
   // Without both, the conversation was not created by Tandem. Without a title, it never got a message.
-  if (agent?.cwd === undefined || meta?.title === undefined) return undefined;
+  if (agent?.cwd === undefined || meta?.title === undefined || meta?.removed === true) return undefined;
   let workspaceId = meta.workspaceId;
   if (workspaceId === undefined) {
     const assigned = await workspaces.forPath(agent.cwd, context);

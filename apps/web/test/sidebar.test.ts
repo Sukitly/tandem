@@ -30,6 +30,8 @@ vi.mock("../src/app/workbench.tsx", () => ({
     addProject: vi.fn(),
     newConversation: vi.fn(),
     removeProject: vi.fn(),
+    renameConversation: vi.fn(),
+    removeConversation: vi.fn(),
   }),
 }));
 
@@ -213,6 +215,35 @@ describe("the current conversation background", () => {
         expect(rowClasses(row)).not.toContain("bg-sidebar-accent");
         expect(row).not.toContain("aria-current");
       }
+    }
+  });
+});
+
+describe("conversation actions in the sidebar", () => {
+  beforeEach(() => {
+    state.workspaces.workspaces = [{ id: 1, name: "First", path: "/projects/first" }];
+    state.conversations.conversations = [
+      {
+        id: 10,
+        workspaceId: 1,
+        cwd: "/projects/first",
+        createdAt: 0,
+        updatedAt: 0,
+        title: "Test conversation",
+        running: false,
+      },
+    ];
+  });
+
+  test("renders action triggers with accessible labels for both project and recent conversation rows", () => {
+    const markup = sidebar();
+    const actions = (markup.match(/<button\b[^>]*>/g) ?? []).filter((button) =>
+      button.includes('aria-label="More for Test conversation"'),
+    );
+    expect(actions).toHaveLength(2);
+    for (const action of actions) {
+      expect(action).toContain("opacity-0");
+      expect(action).toContain("group-hover/conv-row:opacity-100");
     }
   });
 });
