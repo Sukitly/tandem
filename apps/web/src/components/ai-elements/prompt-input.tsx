@@ -28,7 +28,11 @@ export function PromptInputTextarea({ className, ...props }: ComponentProps<type
 
 export function PromptInputActions({ className, ...props }: ComponentProps<typeof InputGroupAddon>) {
   return (
-    <InputGroupAddon align="block-end" className={cn("flex items-center gap-1.5 p-2 pt-0", className)} {...props} />
+    <InputGroupAddon
+      align="block-end"
+      className={cn("flex items-center gap-1.5 p-2 pt-0 min-w-0", className)}
+      {...props}
+    />
   );
 }
 

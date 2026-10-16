@@ -57,7 +57,7 @@ function Workbench() {
     <WorkbenchProvider>
       <AppSidebarProvider>
         <AppSidebar />
-        <SidebarInset className="h-dvh min-w-0 md:peer-data-[variant=inset]:h-[calc(100dvh-1rem)] md:peer-data-[variant=inset]:overflow-hidden">
+        <SidebarInset className="h-dvh min-w-0 overflow-hidden md:peer-data-[variant=inset]:h-[calc(100dvh-1rem)]">
           <ConnectionAlert />
           <Main />
         </SidebarInset>
@@ -128,7 +128,7 @@ export function WithFiles({ workspaceId, children }: { workspaceId: number | nul
         {children}
         {workspaceId !== null && (
           <Drawer open={shown} onOpenChange={(open) => showFiles(open)} showSwipeHandle>
-            <DrawerContent keepMounted className="h-[85dvh] max-h-[85dvh] p-0">
+            <DrawerContent keepMounted className="h-[85dvh] max-h-[85dvh] p-0 pb-[env(safe-area-inset-bottom,0px)]">
               <DrawerHeader className="sr-only">
                 <DrawerTitle>Project panel</DrawerTitle>
                 <DrawerDescription>Project files, changes, and terminal</DrawerDescription>
