@@ -37,6 +37,8 @@ export type TranscriptItem =
       error?: string;
       /** How many consecutive failure attempts were aggregated into this item. */
       attempts?: number;
+      /** Later assistant content followed this failure in the same turn; this does not imply a successful retry. */
+      continued?: boolean;
     }
   /** Older messages were summarized from here on; the model sees the summary instead. */
   | { kind: "compaction"; key: string }
@@ -162,6 +164,17 @@ export function toTranscript(view: ConversationView): TranscriptState {
       ending: "streaming",
     });
   }
+  // De-emphasize a failed attempt only when later content confirms that the same turn progressed.
+  let continued = false;
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (item?.kind === "user") continued = false;
+    else if (item?.kind === "assistant") {
+      if (item.ending === "failed" && continued) item.continued = true;
+      if ((item.ending === "complete" || item.ending === "streaming") && item.parts.length > 0) continued = true;
+    }
+  }
+
   const compacting = (live?.compactions ?? []).length > 0;
   if (compacting) items.push({ kind: "compacting", key: "compacting" });
   const toolsRunning = (live?.tools ?? []).some((slot) => slot.status !== "done");

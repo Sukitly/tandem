@@ -126,14 +126,23 @@ test("a failed rename keeps the typed name and says why", async () => {
 
 test("says what replacing does when codes already exist", () => {
   setup();
-  expect(screen.getByRole("button", { name: "Replace recovery codes" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Replace recovery codes" }).classList.contains("text-destructive")).toBe(
+    true,
+  );
   expect(screen.getByText(/makes every code you have saved stop working/)).toBeDefined();
 });
-test("offers plain generation when no code exists", () => {
+test("offers primary generation without confirmation when no code exists", async () => {
   mock.value.recoveryCodesRemaining = 0;
+  mock.regenerateRecoveryCodes.mockResolvedValue(["new-code"]);
   render(createElement(DevicesDialogProvider, null, createElement(OpenDevices)));
   // With none saved, the dialog that asks for them opens first; its action opens this one.
   fireEvent.click(screen.getByRole("button", { name: "Manage devices and recovery codes" }));
-  expect(screen.getByRole("button", { name: "Generate recovery codes" })).toBeDefined();
+  const generate = screen.getByRole("button", { name: "Generate recovery codes" });
+  expect(generate.classList.contains("bg-primary")).toBe(true);
+  expect(generate.classList.contains("text-destructive")).toBe(false);
   expect(screen.queryByText(/makes every code you have saved stop working/)).toBeNull();
+  fireEvent.click(generate);
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  await waitFor(() => expect(screen.getByText("new-code")).toBeDefined());
+  expect(mock.regenerateRecoveryCodes).toHaveBeenCalledOnce();
 });

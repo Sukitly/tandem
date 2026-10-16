@@ -1,14 +1,4 @@
-import {
-  AlertCircleIcon,
-  CheckIcon,
-  CopyIcon,
-  FilePenLineIcon,
-  FilePlusIcon,
-  FileTextIcon,
-  MessageSquareReplyIcon,
-  WrenchIcon,
-} from "lucide-react";
-import type * as React from "react";
+import { AlertCircleIcon, CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
 import { MessageAction, Reasoning, Terminal, Tool } from "@/components/ai-elements/index.ts";
 import { Badge } from "@/components/ui/badge.tsx";
@@ -17,7 +7,15 @@ import { CodeBlock, CodeBlockContent, CodeBlockLine } from "@/components/ui/code
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker.tsx";
 import { Message, MessageContent, MessageFooter } from "@/components/ui/message.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
-import { Trace } from "@/components/ui/trace.tsx";
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from "@/components/ui/trace.tsx";
 import { cn } from "@/lib/utils.ts";
 import { Markdown } from "./markdown.tsx";
 import type { AssistantPart, TranscriptItem } from "./transcript.ts";
@@ -141,40 +139,29 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
                     return (
                       <Terminal
                         key={step.callId}
+                        name={step.name}
                         command={String(step.args.command ?? "")}
+                        input={step.args}
                         output={step.output}
                         status={step.status}
                       />
                     );
                   }
-                  const { icon, title } = describeTool(step);
-                  const writeContent =
-                    step.name === "write" && typeof step.args.content === "string" ? step.args.content : undefined;
-                  const hasDetail =
-                    step.images.length > 0 ||
-                    step.diff !== undefined ||
-                    writeContent !== undefined ||
-                    (step.name === "reply_to_comment" && typeof step.args.text === "string") ||
-                    step.output !== "";
+                  const hasDetail = step.images.length > 0 || step.diff !== undefined || step.output !== "";
 
                   return (
-                    <Tool key={step.callId} title={title} icon={icon} status={step.status}>
+                    <Tool
+                      key={step.callId}
+                      name={step.name}
+                      description={toolDescription(step.args)}
+                      input={step.args}
+                      status={step.status}
+                    >
                       {hasDetail ? (
                         <>
                           {step.images.length > 0 && <TranscriptImages images={step.images} className="mb-2" />}
-                          {step.name === "reply_to_comment" && typeof step.args.text === "string" && (
-                            <div className="text-sm">
-                              <Markdown text={step.args.text} streaming={step.status === "running"} />
-                            </div>
-                          )}
                           {step.diff !== undefined ? (
                             <ToolDiff diff={step.diff} />
-                          ) : writeContent !== undefined ? (
-                            <CodeBlock size="sm">
-                              <CodeBlockContent wrap className="max-h-64">
-                                {writeContent}
-                              </CodeBlockContent>
-                            </CodeBlock>
                           ) : step.output !== "" ? (
                             <CodeBlock size="sm">
                               <CodeBlockContent wrap className="max-h-64">
@@ -197,7 +184,9 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
             Interrupted
           </Badge>
         )}
-        {item.ending === "failed" && <ChatError error={item.error} attempts={item.attempts} />}
+        {item.ending === "failed" && (
+          <ChatError error={item.error} attempts={item.attempts} historical={item.continued} />
+        )}
         {item.ending === "complete" && answer && text !== "" && (
           <MessageFooter className="px-0">
             <CopyAction text={text} />
@@ -208,41 +197,59 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
   );
 }
 
-/** A compact, subtle error callout for failed model generations or chat notices. */
+/** A failure is an expandable trace event, not a separate alert card. */
 export function ChatError({
-  title = "Answer failed",
+  title = "Generation failed",
   error,
   attempts,
+  historical = false,
   className,
 }: {
   title?: string;
   error?: string;
   attempts?: number;
+  historical?: boolean;
   className?: string;
 }) {
+  const hasError = error !== undefined && error !== "";
+  const multipleAttempts = attempts !== undefined && attempts > 1;
+  const firstLine = error
+    ?.split("\n")
+    .find((line) => line.trim() !== "")
+    ?.trim();
+  const summary = firstLine === undefined ? "" : firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
+  const line = (
+    <TraceLine>
+      <TraceIcon className={historical ? "text-muted-foreground" : "text-destructive"}>
+        <AlertCircleIcon />
+      </TraceIcon>
+      <span className={cn("shrink-0", !historical && "text-foreground")}>{title}</span>
+      {summary !== "" && <TraceTitle>· {summary}</TraceTitle>}
+    </TraceLine>
+  );
   return (
-    <div
-      className={cn(
-        "group/error group/message flex w-full max-w-xl flex-col gap-1.5 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm dark:bg-destructive/10",
-        className,
+    <Trace className={cn("group/message", className)} data-historical={historical || undefined}>
+      {hasError || multipleAttempts ? (
+        <TraceCollapsible>
+          <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
+          <TraceCollapsibleContent>
+            <div className="grid min-w-0 gap-2">
+              {multipleAttempts && <p className="text-xs">{attempts} attempts</p>}
+              {hasError && (
+                <div className="flex min-w-0 items-start gap-2">
+                  <pre className="min-w-0 flex-1 font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">
+                    {error}
+                  </pre>
+                  <CopyAction text={error} className="opacity-100" />
+                </div>
+              )}
+            </div>
+          </TraceCollapsibleContent>
+        </TraceCollapsible>
+      ) : (
+        line
       )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <AlertCircleIcon className="size-4 shrink-0 text-destructive" />
-          <span className="font-medium text-foreground">{title}</span>
-          {attempts !== undefined && attempts > 1 && (
-            <Badge variant="outline" className="border-destructive/30 px-1.5 py-0 text-[10px] text-muted-foreground">
-              {attempts} attempts
-            </Badge>
-          )}
-        </div>
-        {error !== undefined && error !== "" && <CopyAction text={error} />}
-      </div>
-      {error !== undefined && error !== "" && (
-        <p className="text-xs text-muted-foreground leading-relaxed break-words">{error}</p>
-      )}
-    </div>
+    </Trace>
   );
 }
 
@@ -268,51 +275,20 @@ function CopyAction({ text, className }: { text: string; className?: string }) {
   );
 }
 
-export function describeTool(part: {
-  name: string;
-  args: Record<string, unknown>;
-  status: "pending" | "running" | "done" | "error" | "failed" | "cancelled";
-}): { icon: React.ReactNode; title: string } {
-  const path = typeof part.args.path === "string" ? part.args.path : "";
-  const running = part.status === "running";
-  const failed = part.status === "error" || part.status === "failed";
-  const cancelled = part.status === "cancelled";
-
-  switch (part.name) {
-    case "read": {
-      const offset = typeof part.args.offset === "number" ? part.args.offset : undefined;
-      const limit = typeof part.args.limit === "number" ? part.args.limit : undefined;
-      const range =
-        offset === undefined && limit === undefined
-          ? ""
-          : `:${offset ?? 1}${limit === undefined ? "" : `-${(offset ?? 1) + limit - 1}`}`;
-      const verb = cancelled ? "Cancelled reading" : failed ? "Failed to read" : running ? "Reading" : "Read";
-      return { icon: <FileTextIcon className="size-4" />, title: `${verb} ${path}${range}` };
-    }
-    case "edit": {
-      const verb = cancelled ? "Cancelled editing" : failed ? "Failed to edit" : running ? "Editing" : "Edited";
-      return { icon: <FilePenLineIcon className="size-4" />, title: `${verb} ${path}` };
-    }
-    case "write": {
-      const verb = cancelled ? "Cancelled writing" : failed ? "Failed to write" : running ? "Writing" : "Wrote";
-      return { icon: <FilePlusIcon className="size-4" />, title: `${verb} ${path}` };
-    }
-    case "reply_to_comment": {
-      const id = String(part.args.threadId ?? "");
-      const verb = cancelled
-        ? "Cancelled reply to comment"
-        : failed
-          ? "Failed to reply to comment"
-          : running
-            ? "Replying to comment"
-            : "Replied to comment";
-      return { icon: <MessageSquareReplyIcon className="size-4" />, title: `${verb} #${id}` };
-    }
-    default: {
-      const verb = cancelled ? "Cancelled calling" : failed ? "Failed to call" : running ? "Calling" : "Called";
-      return { icon: <WrenchIcon className="size-4" />, title: `${verb} ${part.name}` };
-    }
+/** Argument context only; tool names are displayed verbatim from the conversation. */
+export function toolDescription(args: Record<string, unknown>): string {
+  if (typeof args.path === "string") {
+    const offset = typeof args.offset === "number" ? args.offset : undefined;
+    const limit = typeof args.limit === "number" ? args.limit : undefined;
+    const range =
+      offset === undefined && limit === undefined
+        ? ""
+        : `:${offset ?? 1}${limit === undefined ? "" : `-${(offset ?? 1) + limit - 1}`}`;
+    return `${args.path}${range}`;
   }
+  if (typeof args.command === "string") return args.command;
+  if (typeof args.threadId === "number" || typeof args.threadId === "string") return `#${args.threadId}`;
+  return Object.keys(args).length === 0 ? "" : JSON.stringify(args);
 }
 
 export interface ParsedDiffLine {

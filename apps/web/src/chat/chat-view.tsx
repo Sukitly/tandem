@@ -20,6 +20,7 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
@@ -51,7 +52,11 @@ export function ChatView({ conversationId }: { conversationId: number }) {
     );
   }
   // Keyed, so a reopened instance starts from its own state.
-  return <OpenChat key={conversationId} conversationId={conversationId} conversation={conversation} />;
+  return (
+    <MessageScrollerProvider key={conversationId} autoScroll defaultScrollPosition="end">
+      <OpenChat conversationId={conversationId} conversation={conversation} />
+    </MessageScrollerProvider>
+  );
 }
 
 /**
@@ -144,6 +149,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 }
 
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
+  const { scrollToEnd } = useMessageScroller();
   const { conversations, models } = useConnected();
   const available = useReplicatedState(models.state);
   const { comments, reportFailure } = useWorkbench();
@@ -164,25 +170,23 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
 
   return (
     <ChatFrame cwd={summary?.cwd} title={summary?.title}>
-      <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-        <MessageScroller className="relative min-h-0 flex-1">
-          <MessageScrollerViewport
-            role="log"
-            aria-label="Transcript"
-            className="size-full min-h-0 min-w-0 overflow-y-auto scroll-fade-none"
-          >
-            <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-              {transcript.items.map((item) => (
-                <MessageScrollerItem key={item.key} messageId={item.key}>
-                  <TranscriptEntry item={item} />
-                </MessageScrollerItem>
-              ))}
-              <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
-            </MessageScrollerContent>
-          </MessageScrollerViewport>
-          <MessageScrollerButton />
-        </MessageScroller>
-      </MessageScrollerProvider>
+      <MessageScroller className="relative min-h-0 flex-1">
+        <MessageScrollerViewport
+          role="log"
+          aria-label="Transcript"
+          className="chat-transcript-scrollbar size-full min-h-0 min-w-0 overflow-y-auto scroll-fade-none"
+        >
+          <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+            {transcript.items.map((item) => (
+              <MessageScrollerItem key={item.key} messageId={item.key}>
+                <TranscriptEntry item={item} />
+              </MessageScrollerItem>
+            ))}
+            <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
+          </MessageScrollerContent>
+        </MessageScrollerViewport>
+        <MessageScrollerButton />
+      </MessageScroller>
       <ChatFooter>
         {notices.map((notice) => (
           <Notice key={notice.id} notice={notice} />
@@ -200,12 +204,14 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
           }
           autoFocus
           imageSupport={imageSupportOf(available?.models, agent?.model)}
-          onSend={(text, sent, images, whenBusy) =>
-            conversation.submit(
+          onSend={async (text, sent, images, whenBusy) => {
+            await conversation.submit(
               { text, comments: sent, ...(images.length === 0 ? {} : { images }), whenBusy },
               BACKGROUND_CONTEXT,
-            )
-          }
+            );
+            // Sending is an explicit return to the live conversation, even after scrolling up to read history.
+            scrollToEnd({ behavior: "auto" });
+          }}
           onStop={() => {
             conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
           }}

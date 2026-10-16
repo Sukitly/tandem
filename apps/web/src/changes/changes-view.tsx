@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
+import { CopyPathButton } from "@/components/copy-path-button.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
@@ -332,9 +333,12 @@ function ChangeView({
       aria-label={`Diff of ${file.path}`}
     >
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
-        <p className="min-w-0 flex-1 truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
-          {file.path}
-        </p>
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <p className="min-w-0 truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
+            {file.path}
+          </p>
+          <CopyPathButton key={file.path} path={file.path} />
+        </div>
         {parts.length > 0 && (
           <span className="flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums">
             {parts.map((part) => (

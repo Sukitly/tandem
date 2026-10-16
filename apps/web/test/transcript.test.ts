@@ -69,6 +69,44 @@ describe("toTranscript", () => {
     ]);
   });
 
+  test("de-emphasizes a failure only after later content in the same turn", () => {
+    const failed = {
+      id: 1,
+      kind: "pi.assistant",
+      model: [assistant([], "error", { errorMessage: "WebSocket error" })],
+    };
+    const progress = { id: 2, kind: "pi.assistant", model: [assistant("Continuing")] };
+    expect(toTranscript(view([failed, progress])).items[0]).toMatchObject({ ending: "failed", continued: true });
+    const newTurn = { id: 3, kind: "pi.user", model: [{ role: "user", content: "Try again" }] };
+    expect(toTranscript(view([failed, newTurn, progress])).items[0]).not.toHaveProperty("continued");
+  });
+
+  test("uses live content as evidence of continuation, but does not infer retrying from a busy run", () => {
+    const failed = {
+      id: 1,
+      kind: "pi.assistant",
+      model: [assistant([], "error", { errorMessage: "WebSocket error" })],
+    };
+    const before = toTranscript(view([failed], { "pi.live": { ...busy, generation: { attempt: 2 } } }));
+    expect(before.items[0]).not.toHaveProperty("continued");
+    const after = toTranscript(
+      view([failed], { "pi.live": { ...busy, generation: { attempt: 2, message: assistant("Continuing") } } }),
+    );
+    expect(after.items[0]).toMatchObject({ ending: "failed", continued: true });
+  });
+
+  test("empty or interrupted answers do not establish continuation after a failure", () => {
+    for (const message of [assistant([]), assistant("partial", "aborted")]) {
+      const { items } = toTranscript(
+        view([
+          { id: 1, kind: "pi.assistant", model: [assistant([], "error", { errorMessage: "WebSocket error" })] },
+          { id: 2, kind: "pi.assistant", model: [message] },
+        ]),
+      );
+      expect(items[0]).not.toHaveProperty("continued");
+    }
+  });
+
   test("puts thinking, text, and tool calls in order, with results, running output, and diffs", () => {
     const calls = [
       { type: "toolCall", id: "a", name: "bash", arguments: { command: "ls" } },
