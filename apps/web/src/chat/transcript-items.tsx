@@ -219,11 +219,11 @@ export function ChatError({
     ?.trim();
   const summary = firstLine === undefined ? "" : firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
   const line = (
-    <TraceLine>
-      <TraceIcon className={historical ? "text-muted-foreground" : "text-destructive"}>
+    <TraceLine status="error">
+      <TraceIcon>
         <AlertCircleIcon />
       </TraceIcon>
-      <span className={cn("shrink-0", !historical && "text-foreground")}>{title}</span>
+      <span className="shrink-0">{title}</span>
       {summary !== "" && <TraceTitle>· {summary}</TraceTitle>}
     </TraceLine>
   );
