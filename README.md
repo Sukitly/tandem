@@ -113,7 +113,15 @@ export TANDEM_RUNTIME=docker
 bun run sandbox rebuild
 ```
 
-This rebuilds the image without cache and recreates the container with the merged configuration. It may take longer than a normal start. A plain `bun run sandbox` reuses an already healthy container, and `bun run sandbox restart` only restarts it; neither applies new mounts to that running container.
+This rebuilds the image using Docker's build cache and recreates the container with the merged configuration. Unchanged system tools and dependencies can reuse cached layers; changed layers and the layers after them are rebuilt. A plain `bun run sandbox` reuses an already healthy container, and `bun run sandbox restart` only restarts it; neither applies new mounts to that running container.
+
+To explicitly rebuild without the layer cache, for example when troubleshooting a cached installation, run:
+
+```bash
+bun run sandbox rebuild --no-cache
+```
+
+This reruns installation and build steps and can take substantially longer. Both rebuild modes preserve the `tandem_data` volume.
 
 ### Management & Persistent Data
 
