@@ -79,7 +79,7 @@ export function AppSidebar() {
   const names = new Map(projects.map((project) => [project.id, project.name]));
   return (
     // Collapsed, the sidebar keeps a column of icons; the lists hide.
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
         <SidebarBrand />
       </SidebarHeader>

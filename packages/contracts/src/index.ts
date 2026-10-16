@@ -140,6 +140,8 @@ export const DEFAULT_HOST = "127.0.0.1";
 
 export const DEFAULT_PORT = 4820;
 
+export const DEV_PORT = 4821;
+
 /** WebSocket path carrying pi-protocol frames (service calls and replicated state). */
 export const RPC_PATH = "/rpc";
 
