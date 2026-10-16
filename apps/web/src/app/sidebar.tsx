@@ -12,14 +12,12 @@ import {
   KeyRoundIcon,
   MonitorIcon,
   MoonIcon,
-  PencilIcon,
   PlusIcon,
   SunIcon,
-  Trash2Icon,
 } from "lucide-react";
 import { useState } from "react";
 import { useDevicesDialog } from "@/auth/devices-dialog.tsx";
-import { DeleteConversationDialog, RenameConversationDialog } from "@/chat/conversation-dialogs.tsx";
+import { ConversationMenu } from "@/chat/conversation-menu.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,7 +126,19 @@ export function AppSidebar() {
                         </span>
                       )}
                     </SidebarMenuButton>
-                    <ConversationRowActions summary={summary} />
+                    <ConversationMenu
+                      summary={summary}
+                      side="right"
+                      trigger={
+                        <SidebarMenuAction
+                          className={CONVERSATION_ACTION_CLASS}
+                          title="More"
+                          aria-label={`More for ${summary.title}`}
+                        >
+                          <EllipsisIcon />
+                        </SidebarMenuAction>
+                      }
+                    />
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -174,41 +184,6 @@ const PROJECT_ACTION_CLASS =
 
 const CONVERSATION_ACTION_CLASS =
   "opacity-0 group-hover/conv-row:opacity-100 group-focus-within/conv-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
-
-function ConversationRowActions({ summary, className }: { summary: ConversationSummary; className?: string }) {
-  const [renaming, setRenaming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <SidebarMenuAction
-              className={cn(CONVERSATION_ACTION_CLASS, className)}
-              title="More"
-              aria-label={`More for ${summary.title}`}
-            />
-          }
-        >
-          <EllipsisIcon />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start" className="w-40">
-          <DropdownMenuItem onClick={() => setRenaming(true)}>
-            <PencilIcon />
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
-            <Trash2Icon />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <RenameConversationDialog summary={summary} open={renaming} onOpenChange={setRenaming} />
-      <DeleteConversationDialog summary={summary} open={deleting} onOpenChange={setDeleting} />
-    </>
-  );
-}
 
 /** A project that opens to show its conversations. Its row reveals actions on hover or keyboard focus. */
 function ProjectItem({
@@ -314,7 +289,19 @@ function ProjectItem({
                   <span className="truncate">{summary.title}</span>
                   {summary.running && <Spinner aria-label="Running" className="ml-auto" />}
                 </SidebarMenuSubButton>
-                <ConversationRowActions summary={summary} className="top-1 right-1" />
+                <ConversationMenu
+                  summary={summary}
+                  side="right"
+                  trigger={
+                    <SidebarMenuAction
+                      className={cn(CONVERSATION_ACTION_CLASS, "top-1 right-1")}
+                      title="More"
+                      aria-label={`More for ${summary.title}`}
+                    >
+                      <EllipsisIcon />
+                    </SidebarMenuAction>
+                  }
+                />
               </SidebarMenuSubItem>
             ))}
           </SidebarMenuSub>

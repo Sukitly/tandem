@@ -1,5 +1,6 @@
 import { type ConversationSummary, MAX_CONVERSATION_TITLE_LENGTH } from "@tandem/contracts";
-import { useEffect, useState } from "react";
+import { EllipsisIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { type ReactElement, useEffect, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import {
   AlertDialog,
@@ -21,7 +22,59 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+
+export interface ConversationMenuProps {
+  summary: ConversationSummary;
+  /** Custom trigger element. When omitted, defaults to a ghost ellipsis icon button. */
+  trigger?: ReactElement;
+  side?: "top" | "bottom" | "left" | "right";
+  align?: "start" | "center" | "end";
+}
+
+/** Action menu for a conversation offering rename and delete operations. */
+export function ConversationMenu({ summary, trigger, side = "bottom", align = "start" }: ConversationMenuProps) {
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const defaultTrigger = (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className="text-muted-foreground hover:text-foreground"
+      aria-label={`Actions for ${summary.title}`}
+      title="Conversation actions"
+    >
+      <EllipsisIcon />
+    </Button>
+  );
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={trigger ?? defaultTrigger} />
+        <DropdownMenuContent side={side} align={align} className="w-40">
+          <DropdownMenuItem onClick={() => setRenaming(true)}>
+            <PencilIcon />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+            <Trash2Icon />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <RenameConversationDialog summary={summary} open={renaming} onOpenChange={setRenaming} />
+      <DeleteConversationDialog summary={summary} open={deleting} onOpenChange={setDeleting} />
+    </>
+  );
+}
 
 export function RenameConversationDialog({
   summary,
