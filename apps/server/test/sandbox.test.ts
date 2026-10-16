@@ -36,7 +36,7 @@ case "$invocation" in
     ;;
   "sbx:3:template load /tmp/tandem-build-"[0-9]*".tar") : > "$HOME/template-loaded" ;;
   "sbx:2:stop tandem-box" | "sbx:3:rm --force tandem-box" | "sbx:2:policy ls" | "sbx:1:ls") ;;
-  "sbx:13:run --pull never -d --name tandem-box -p 127.0.0.1:4820:4820 -t tandem:latest shell $TANDEM_WORKSPACE_DIR $TANDEM_DATA_DIR") ;;
+  "sbx:14:run --pull never -d --name tandem-box -p 127.0.0.1:4820:4820 -t tandem:latest shell $TANDEM_WORKSPACE_DIR $TANDEM_DATA_DIR $PI_PROMPTS_DIR") ;;
   "sbx:6:exec tandem-box grep -oE https?://[^[:space:]]+/pair#[a-f0-9]+ /tmp/tandem.log" | \
   "sbx:6:exec tandem-box bun run service pair") ;;
   *)
@@ -75,6 +75,7 @@ function sandboxEnvironment(runtime: "docker" | "sbx", failBuild = false) {
     TANDEM_HOME: join(root, "state"),
     TANDEM_DATA_DIR: join(root, "state"),
     TANDEM_WORKSPACE_DIR: join(root, "workspace"),
+    PI_PROMPTS_DIR: join(root, "prompts"),
     TANDEM_RUNTIME: runtime,
     PORT: "4820",
     SANDBOX_TEST_LOG: join(root, "calls"),

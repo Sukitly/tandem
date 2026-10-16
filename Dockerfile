@@ -59,8 +59,8 @@ RUN mkdir -p /etc/ssh/ssh_config.d /data /workspace /root/.ssh \
   && chmod 700 /root/.ssh \
   && echo "Host *\n  StrictHostKeyChecking accept-new\n  ServerAliveInterval 60\n" > /etc/ssh/ssh_config.d/tandem.conf
 
-# Create mount points for persistent state and project workspaces
-RUN mkdir -p /data /workspace
+# Create mount points for persistent state, project workspaces, and prompt templates
+RUN mkdir -p /data /workspace /root/.pi/agent/prompts
 
 ENV TANDEM_HOME=/data
 ENV TANDEM_HOST=0.0.0.0

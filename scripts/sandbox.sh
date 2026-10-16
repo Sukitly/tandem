@@ -7,9 +7,12 @@ PORT="${PORT:-4820}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE_DIR="${TANDEM_WORKSPACE_DIR:-${ROOT_DIR}/workspace}"
 DATA_DIR="${TANDEM_DATA_DIR:-${HOME}/.tandem}"
+PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-${HOME}/.pi/agent}"
+PROMPTS_DIR="${PI_PROMPTS_DIR:-${PI_AGENT_DIR}/prompts}"
 
 export PORT
 export TANDEM_WORKSPACE_DIR="${WORKSPACE_DIR}"
+export PI_PROMPTS_DIR="${PROMPTS_DIR}"
 
 function log() {
   echo -e "\033[1;34m[Tandem Sandbox]\033[0m $*"
@@ -193,8 +196,13 @@ function display_and_open_pairing() {
   fi
 }
 
-function start_sandbox() {
+function ensure_host_configs() {
   mkdir -p "${WORKSPACE_DIR}"
+  mkdir -p "${PROMPTS_DIR}"
+}
+
+function start_sandbox() {
+  ensure_host_configs
 
   if [ "${RUNTIME}" = "sbx" ]; then
     log "Runtime: Docker Sandboxes (microVM hardware isolation)"
@@ -207,7 +215,7 @@ function start_sandbox() {
 
     if [ -z "$status" ]; then
       log "Creating Docker Sandboxes microVM (${SANDBOX_NAME})..."
-      if ! sbx run --pull never -d --name "${SANDBOX_NAME}" -p "127.0.0.1:${PORT}:${PORT}" -t "${IMAGE_TAG}" shell "${WORKSPACE_DIR}" "${DATA_DIR}"; then
+      if ! sbx run --pull never -d --name "${SANDBOX_NAME}" -p "127.0.0.1:${PORT}:${PORT}" -t "${IMAGE_TAG}" shell "${WORKSPACE_DIR}" "${DATA_DIR}" "${PROMPTS_DIR}"; then
         if [ "${TANDEM_RUNTIME:-auto}" = "auto" ]; then
           warn "Docker Sandboxes microVM failed to start on this machine (virtualization might not be supported)."
           warn "Automatically falling back to standard Docker container runtime..."
@@ -226,7 +234,7 @@ function start_sandbox() {
 
     log "Starting Tandem inside microVM sandbox..."
     if ! curl -s "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
-      sbx exec "${SANDBOX_NAME}" /bin/bash -c "cd /app && TANDEM_HOME=\"${DATA_DIR}\" nohup node apps/server/src/main.ts --host 0.0.0.0 --port ${PORT} --no-open </dev/null >/tmp/tandem.log 2>&1 & disown"
+      sbx exec "${SANDBOX_NAME}" /bin/bash -c "cd /app && TANDEM_HOME=\"${DATA_DIR}\" PI_CODING_AGENT_DIR=\"$(dirname "${PROMPTS_DIR}")\" nohup node apps/server/src/main.ts --host 0.0.0.0 --port ${PORT} --no-open </dev/null >/tmp/tandem.log 2>&1 & disown"
     fi
   else
     log "Runtime: Docker Compose (standard container isolation)"
@@ -400,6 +408,7 @@ function rebuild_sandbox() {
     start_sandbox
   else
     log "Rebuilding Tandem Docker image..."
+    ensure_host_configs
     local build_args=(build)
     if [ "${REBUILD_NO_CACHE}" -eq 1 ]; then
       build_args+=(--no-cache)

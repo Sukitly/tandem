@@ -103,6 +103,10 @@ Rebuilds use Docker's layer cache by default in both runtime modes. Unchanged sy
 ### Persistent State
 Tandem stores conversation histories, task snapshots, paired devices, and model API credentials in `/data` inside the container. This is mapped to the named volume `tandem_data` defined in `compose.yaml`, surviving container restarts and image updates.
 
+### Inheriting User Prompts & Slash Commands
+Tandem containers automatically inherit host prompt templates as a read-only mount:
+- **Slash Commands & Prompts**: Host prompt templates located at `~/.pi/agent/prompts` are mounted read-only at `/root/.pi/agent/prompts:ro`. Custom commands typed as `/...` appear seamlessly in chat. Custom host directories can be specified via `PI_PROMPTS_DIR`.
+
 ### Mounting Host Repositories into the Sandbox
 To work on your local repositories inside the sandbox, mount your projects directory into `/workspace`.
 
@@ -128,3 +132,4 @@ Inside Tandem's web UI, click **Add project** and choose `/workspace` (or subdir
 | `TANDEM_HOME` | `/data` | State and SQLite database directory. |
 | `PORT` | `4820` | Published loopback port on host (`127.0.0.1:<PORT>`). |
 | `TANDEM_ALLOWED_ORIGINS` | _(none)_ | Comma-separated list of additional allowed HTTP origins if mapping to a custom host port. |
+| `PI_PROMPTS_DIR` | `~/.pi/agent/prompts` (or `$PI_CODING_AGENT_DIR/prompts`) | Host directory of prompt templates mounted read-only into `/root/.pi/agent/prompts`. |
