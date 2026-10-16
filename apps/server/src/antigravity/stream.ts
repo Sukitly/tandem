@@ -5,6 +5,8 @@ import {
   type Context,
   calculateCost,
   createAssistantMessageEventStream,
+  getCurrentSystemPrompt,
+  getCurrentTools,
   type Model,
   type TextContent,
   type Tool,
@@ -62,6 +64,8 @@ const ANTIGRAVITY_SYSTEM_INSTRUCTION =
 const ANTIGRAVITY_NO_PREAMBLE_INSTRUCTION =
   "CRITICAL: NEVER output rule checks, formatting guidelines, constraint checklists, or your thinking preambles in the final response. Output only the final response.";
 
+const CONTINUATION_TEXT = "Continue the active task using the available instructions and context.";
+
 let toolCallCounter = 0;
 
 function sanitizeToolCallId(id: string, fallbackName?: string): string {
@@ -77,6 +81,87 @@ function toolCallIdNeeded(modelId: string, runtimeModel: string): boolean {
     runtimeModel.startsWith("claude-") ||
     runtimeModel.startsWith("gpt-oss-")
   );
+}
+
+interface SystemMessageLike {
+  role?: string;
+  content?: string | Array<{ type?: string; text?: string }>;
+  sections?: Record<string, unknown>;
+  toolsAdded?: Tool[];
+  toolsRemoved?: Array<{ name: string }>;
+  tools?: Tool[];
+}
+
+function asSystemMessages(messages: Context["messages"] | undefined): SystemMessageLike[] {
+  return [...(messages ?? [])] as SystemMessageLike[];
+}
+
+function extractTranscriptSystemPrompt(messages: readonly SystemMessageLike[]): string {
+  const parts: string[] = [];
+  for (const message of messages) {
+    if (message?.role !== "system") continue;
+    if (message.sections && typeof message.sections === "object") {
+      const sectionParts = Object.values(message.sections).filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      );
+      if (sectionParts.length > 0) {
+        parts.push(sectionParts.join("\n\n"));
+        continue;
+      }
+    }
+    if (typeof message.content === "string" && message.content.trim()) {
+      parts.push(message.content);
+    } else if (Array.isArray(message.content)) {
+      const texts = message.content
+        .map((block) => (typeof block === "string" ? block : block?.text || ""))
+        .filter((text) => text.trim().length > 0);
+      if (texts.length > 0) parts.push(texts.join("\n\n"));
+    }
+  }
+  return parts.join("\n\n");
+}
+
+function extractTranscriptTools(messages: readonly SystemMessageLike[]): Tool[] {
+  const tools = new Map<string, Tool>();
+  for (const message of messages) {
+    if (message?.role !== "system") continue;
+    for (const tool of message.toolsRemoved ?? []) {
+      tools.delete(tool.name);
+    }
+    for (const tool of [...(message.toolsAdded ?? []), ...(message.tools ?? [])]) {
+      if (tool && typeof tool.name === "string") tools.set(tool.name, tool);
+    }
+  }
+  return [...tools.values()];
+}
+
+export function resolveCurrentSystemPrompt(context: Context): string | undefined {
+  if (context.messages && context.messages.length > 0) {
+    try {
+      const fromHelper = getCurrentSystemPrompt(context.messages);
+      if (fromHelper?.trim()) return fromHelper;
+    } catch {
+      // Fall through to transcript extraction
+    }
+    const fromTranscript = extractTranscriptSystemPrompt(asSystemMessages(context.messages));
+    if (fromTranscript.trim()) return fromTranscript;
+  }
+  return context.systemPrompt;
+}
+
+export function resolveCurrentTools(context: Context, optionsTools?: Tool[]): Tool[] | undefined {
+  if (optionsTools?.length) return optionsTools;
+  if (context.messages && context.messages.length > 0) {
+    try {
+      const fromHelper = getCurrentTools(context.messages);
+      if (fromHelper.length > 0) return fromHelper;
+    } catch {
+      // Fall through to transcript extraction
+    }
+    const fromTranscript = extractTranscriptTools(asSystemMessages(context.messages));
+    if (fromTranscript.length > 0) return fromTranscript;
+  }
+  return context.tools;
 }
 
 function asTextParts(content: unknown): GeminiPart[] {
@@ -128,8 +213,11 @@ function geminiRequiresThoughtSignature(runtimeModel: string): boolean {
   return runtimeModel.startsWith("gemini-") && !runtimeModel.includes("flash-lite");
 }
 
-function isValidThoughtSignature(sig: unknown): boolean {
-  return typeof sig === "string" && sig.length >= 16;
+const base64SignaturePattern = /^[A-Za-z0-9+/]+={0,2}$/;
+function isValidThoughtSignature(signature?: string): boolean {
+  if (!signature || typeof signature !== "string" || signature.length === 0) return false;
+  if (signature.length % 4 !== 0) return false;
+  return base64SignaturePattern.test(signature);
 }
 
 export function convertMessages(model: Model<Api>, context: Context, runtimeModel: string): GeminiContent[] {
@@ -229,24 +317,343 @@ export function convertMessages(model: Model<Api>, context: Context, runtimeMode
     }
   }
 
+  // A function-call model turn is only valid immediately after a user turn
+  // (including a function-response turn).
+  for (let index = 0; index < contents.length; index += 1) {
+    const turn = contents[index];
+    if (
+      turn?.role === GeminiRole.Model &&
+      turn.parts.some((part) => "functionCall" in part) &&
+      contents[index - 1]?.role !== GeminiRole.User
+    ) {
+      contents.splice(index, 0, {
+        role: GeminiRole.User,
+        parts: [{ text: CONTINUATION_TEXT }],
+      });
+      index += 1;
+    }
+  }
+
+  // Antigravity requires a natural-language user part in the request.
+  const hasUserText = contents.some(
+    (turn) => turn.role === GeminiRole.User && turn.parts.some((part) => "text" in part && Boolean(part.text.trim())),
+  );
+  if (!hasUserText && contents.length > 0) {
+    const bridge = { text: CONTINUATION_TEXT };
+    const userTurn = contents.find((turn) => turn.role === GeminiRole.User);
+    if (userTurn) userTurn.parts.push(bridge);
+    else contents.unshift({ role: GeminiRole.User, parts: [bridge] });
+  }
+
+  const lastTurn = contents.at(-1);
+  if (lastTurn?.role === GeminiRole.Model) {
+    if (lastTurn.parts.some((part) => "functionCall" in part)) {
+      throw new Error(
+        "Antigravity request is missing tool result(s) for the final assistant tool call. Provide the corresponding tool result before continuing.",
+      );
+    }
+    appendTurn(contents, GeminiRole.User, [{ text: CONTINUATION_TEXT }]);
+  }
+
   return contents;
+}
+
+type SchemaReferenceIssue = {
+  path: string;
+  ref: string;
+  reason: string;
+};
+
+type DereferencedSchema = {
+  schema: unknown;
+  issues: SchemaReferenceIssue[];
+};
+
+type DereferenceState = {
+  nodes: number;
+};
+
+const MAX_SCHEMA_DEREFERENCE_DEPTH = 64;
+const MAX_SCHEMA_DEREFERENCE_NODES = 10_000;
+const SCHEMA_MAP_KEYWORDS = new Set(["properties", "patternProperties", "dependentSchemas", "dependencies"]);
+const SCHEMA_VALUE_KEYWORDS = new Set([
+  "additionalItems",
+  "additionalProperties",
+  "contains",
+  "contentSchema",
+  "else",
+  "if",
+  "items",
+  "not",
+  "propertyNames",
+  "then",
+  "unevaluatedItems",
+  "unevaluatedProperties",
+]);
+const SCHEMA_ARRAY_KEYWORDS = new Set(["allOf", "anyOf", "oneOf", "prefixItems"]);
+
+function resolveLocalJsonPointer(ref: string, rootSchema: unknown): unknown {
+  if (ref === "#") return rootSchema;
+  if (!ref.startsWith("#/")) return undefined;
+
+  let current: unknown = rootSchema;
+  for (const token of ref.slice(2).split("/")) {
+    const key = token.replace(/~1/g, "/").replace(/~0/g, "~");
+    if (Array.isArray(current)) {
+      if (!/^(0|[1-9]\d*)$/.test(key)) return undefined;
+      const index = Number(key);
+      if (!Number.isSafeInteger(index) || index >= current.length) return undefined;
+      current = current[index];
+      continue;
+    }
+    if (!current || typeof current !== "object") return undefined;
+    if (!Object.hasOwn(current, key)) return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function dereferenceSchemaMap(
+  schemaMap: unknown,
+  rootSchema: unknown,
+  refStack: Set<string>,
+  objectStack: Set<object>,
+  state: DereferenceState,
+  path: string,
+  depth: number,
+): DereferencedSchema {
+  if (!isRecord(schemaMap)) {
+    return dereferenceSchema(schemaMap, rootSchema, refStack, objectStack, state, path, depth);
+  }
+
+  const out: Record<string, unknown> = {};
+  const issues: SchemaReferenceIssue[] = [];
+  for (const [key, value] of Object.entries(schemaMap)) {
+    const result = dereferenceSchema(value, rootSchema, refStack, objectStack, state, `${path}.${key}`, depth);
+    out[key] = result.schema;
+    issues.push(...result.issues);
+  }
+  return { schema: out, issues };
+}
+
+function dereferenceSchema(
+  schema: unknown,
+  rootSchema: unknown = schema,
+  refStack = new Set<string>(),
+  objectStack = new Set<object>(),
+  state: DereferenceState = { nodes: 0 },
+  path = "$",
+  depth = 0,
+): DereferencedSchema {
+  if (depth > MAX_SCHEMA_DEREFERENCE_DEPTH) {
+    return {
+      schema: {},
+      issues: [
+        {
+          path,
+          ref: "(depth limit)",
+          reason: `schema expansion exceeded ${MAX_SCHEMA_DEREFERENCE_DEPTH} levels`,
+        },
+      ],
+    };
+  }
+  state.nodes += 1;
+  if (state.nodes > MAX_SCHEMA_DEREFERENCE_NODES) {
+    return {
+      schema: {},
+      issues: [
+        {
+          path,
+          ref: "(node limit)",
+          reason: `schema expansion exceeded ${MAX_SCHEMA_DEREFERENCE_NODES} nodes`,
+        },
+      ],
+    };
+  }
+  if (!schema || typeof schema !== "object") return { schema, issues: [] };
+
+  if (Array.isArray(schema)) {
+    const results = schema.map((item, index) =>
+      dereferenceSchema(item, rootSchema, refStack, objectStack, state, `${path}[${index}]`, depth + 1),
+    );
+    return {
+      schema: results.map((result) => result.schema),
+      issues: results.flatMap((result) => result.issues),
+    };
+  }
+
+  const s = schema as Record<string, unknown>;
+  if (objectStack.has(s)) {
+    return {
+      schema: {},
+      issues: [{ path, ref: "(object cycle)", reason: "circular schema object" }],
+    };
+  }
+
+  const nextObjectStack = new Set(objectStack);
+  nextObjectStack.add(s);
+
+  if (typeof s.$ref === "string") {
+    const ref = s.$ref;
+    if (refStack.has(ref)) {
+      return {
+        schema: {},
+        issues: [{ path, ref, reason: "circular local reference" }],
+      };
+    }
+
+    const target = resolveLocalJsonPointer(ref, rootSchema);
+    if (target === undefined) {
+      return {
+        schema: {},
+        issues: [{ path, ref, reason: "target is not present in the root schema" }],
+      };
+    }
+
+    const nextRefStack = new Set(refStack);
+    nextRefStack.add(ref);
+    const resolved = dereferenceSchema(target, rootSchema, nextRefStack, nextObjectStack, state, path, depth + 1);
+    const { $ref: _, ...siblings } = s;
+    const siblingResult = dereferenceSchema(siblings, rootSchema, refStack, nextObjectStack, state, path, depth + 1);
+
+    if (isRecord(resolved.schema) && isRecord(siblingResult.schema)) {
+      return {
+        schema: { ...resolved.schema, ...siblingResult.schema },
+        issues: [...resolved.issues, ...siblingResult.issues],
+      };
+    }
+    return {
+      schema: resolved.schema,
+      issues: [...resolved.issues, ...siblingResult.issues],
+    };
+  }
+
+  const out: Record<string, unknown> = {};
+  const issues: SchemaReferenceIssue[] = [];
+  for (const [key, value] of Object.entries(s)) {
+    if (key === "$defs" || key === "definitions") continue;
+
+    let result: DereferencedSchema | undefined;
+    if (SCHEMA_MAP_KEYWORDS.has(key)) {
+      result = dereferenceSchemaMap(value, rootSchema, refStack, nextObjectStack, state, `${path}.${key}`, depth + 1);
+    } else if (SCHEMA_VALUE_KEYWORDS.has(key) || SCHEMA_ARRAY_KEYWORDS.has(key)) {
+      result = dereferenceSchema(value, rootSchema, refStack, nextObjectStack, state, `${path}.${key}`, depth + 1);
+    }
+
+    if (result) {
+      out[key] = result.schema;
+      issues.push(...result.issues);
+    } else {
+      out[key] = value;
+    }
+  }
+  return { schema: out, issues };
+}
+
+function ensureRootObjectSchema(schema: unknown): Record<string, unknown> {
+  if (!isRecord(schema)) {
+    return { type: "object", properties: {} };
+  }
+  if (!schema.type) {
+    return { ...schema, type: "object", properties: schema.properties || {} };
+  }
+  return schema;
+}
+
+const META_SCHEMA_KEYWORDS = new Set([
+  "$schema",
+  "$id",
+  "$anchor",
+  "$dynamicAnchor",
+  "$vocabulary",
+  "$comment",
+  "$defs",
+  "definitions",
+]);
+
+function stripMetaSchemaMap(schemaMap: unknown): unknown {
+  if (!isRecord(schemaMap)) return stripMetaSchema(schemaMap);
+  return Object.fromEntries(Object.entries(schemaMap).map(([key, value]) => [key, stripMetaSchema(value)]));
+}
+
+function stripMetaSchema(schema: unknown): unknown {
+  if (!schema || typeof schema !== "object") return schema;
+  if (Array.isArray(schema)) return schema.map(stripMetaSchema);
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (META_SCHEMA_KEYWORDS.has(key)) continue;
+    if (SCHEMA_MAP_KEYWORDS.has(key)) {
+      out[key] = stripMetaSchemaMap(value);
+    } else if (SCHEMA_VALUE_KEYWORDS.has(key) || SCHEMA_ARRAY_KEYWORDS.has(key)) {
+      out[key] = stripMetaSchema(value);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+const CUSTOM_TOOL_SCHEMA_ALLOW = new Set(["type", "description", "properties", "required", "items", "enum"]);
+
+function normalizeCustomToolType(value: unknown): unknown {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return undefined;
+  const entries = value as unknown[];
+  const scalar = entries.find((entry): entry is string => typeof entry === "string" && entry !== "null");
+  return scalar;
+}
+
+function normalizeCustomToolSchema(schema: unknown): unknown {
+  if (!schema || typeof schema !== "object") return schema;
+  if (Array.isArray(schema)) return schema.map(normalizeCustomToolSchema);
+
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (!CUSTOM_TOOL_SCHEMA_ALLOW.has(key)) continue;
+    if (key === "type") {
+      const normalizedType = normalizeCustomToolType(value);
+      if (normalizedType !== undefined) out.type = normalizedType;
+      continue;
+    }
+    if (key === "properties" && value && typeof value === "object" && !Array.isArray(value)) {
+      const props: Record<string, unknown> = {};
+      for (const [propName, propSchema] of Object.entries(value as Record<string, unknown>)) {
+        props[propName] = normalizeCustomToolSchema(propSchema);
+      }
+      out.properties = props;
+      continue;
+    }
+    if (key === "enum" && Array.isArray(value) && !value.every((entry) => typeof entry === "string")) {
+      continue;
+    }
+    out[key] = normalizeCustomToolSchema(value);
+  }
+  return out;
 }
 
 export function convertTools(
   tools: Tool[] | undefined,
   useLegacyParameters = false,
 ): { functionDeclarations: GeminiFunctionDeclaration[] }[] | undefined {
-  if (!tools || tools.length === 0) return undefined;
-  const functionDeclarations: GeminiFunctionDeclaration[] = tools.map((tool) => {
-    const schema = tool.parameters && isRecord(tool.parameters) ? { ...tool.parameters } : {};
-    delete schema.$schema;
-    delete schema.$id;
-    return {
-      name: tool.name,
-      description: tool.description,
-      ...(useLegacyParameters ? { parameters: schema } : { parametersJsonSchema: schema }),
-    };
+  if (!tools?.length) return undefined;
+
+  const functionDeclarations = tools.flatMap((tool) => {
+    const dereferenced = dereferenceSchema(tool.parameters);
+    if (dereferenced.issues.length > 0) return [];
+
+    const rootObject = ensureRootObjectSchema(dereferenced.schema);
+    const schema = stripMetaSchema(rootObject);
+    return [
+      {
+        name: tool.name,
+        description: tool.description,
+        ...(useLegacyParameters ? { parameters: normalizeCustomToolSchema(schema) } : { parametersJsonSchema: schema }),
+      },
+    ];
   });
+
+  if (!functionDeclarations.length) return undefined;
   return [{ functionDeclarations }];
 }
 
@@ -263,21 +670,14 @@ export function buildRequest(
   options: AntigravityStreamOptions,
   runtimeModel: string,
 ): AntigravityGenerateRequest {
-  const systemPromptText = context.systemPrompt ? sanitizeText(context.systemPrompt) : undefined;
+  const systemPromptText = resolveCurrentSystemPrompt(context);
+  const declaredTools = resolveCurrentTools(context, options.tools);
+
   const systemParts = systemPromptText
-    ? [{ text: systemPromptText }]
+    ? [{ text: sanitizeText(systemPromptText) }]
     : [{ text: ANTIGRAVITY_SYSTEM_INSTRUCTION }, { text: ANTIGRAVITY_NO_PREAMBLE_INSTRUCTION }];
 
   const contents = convertMessages(model, context, runtimeModel);
-  const hasUserText = contents.some(
-    (turn) => turn.role === GeminiRole.User && turn.parts.some((part) => "text" in part && Boolean(part.text.trim())),
-  );
-  if (!hasUserText) {
-    contents.unshift({
-      role: GeminiRole.User,
-      parts: [{ text: "Apply the active system instructions." }],
-    });
-  }
 
   const request: GeminiRequestBody = {
     contents,
@@ -294,8 +694,12 @@ export function buildRequest(
   generationConfig.maxOutputTokens = getMaxOutputTokens(model.id, runtimeModel);
   request.generationConfig = generationConfig;
 
-  const isNonGemini = runtimeModel.startsWith("claude-") || runtimeModel.startsWith("gpt-oss-");
-  const tools = convertTools(options.tools ?? context.tools, isNonGemini);
+  const isNonGemini =
+    runtimeModel.startsWith("claude-") ||
+    runtimeModel.startsWith("gpt-oss-") ||
+    model.id.startsWith("claude-") ||
+    model.id.startsWith("gpt-oss-");
+  const tools = convertTools(declaredTools, isNonGemini);
   if (tools) request.tools = tools;
   if (options.toolChoice) {
     request.toolConfig = {
@@ -307,7 +711,7 @@ export function buildRequest(
 
   const sessionTrajectory = resolveSessionTrajectory(context, options.sessionId as string | undefined);
   const envelope = antigravityRequestEnvelope(runtimeModel, Boolean(tools?.length), {
-    isClaude: runtimeModel.startsWith("claude-"),
+    isClaude: runtimeModel.startsWith("claude-") || model.id.startsWith("claude-"),
     isNonGemini,
     trajectoryId: sessionTrajectory.trajectoryId,
     conversationId: sessionTrajectory.conversationId,
@@ -500,6 +904,7 @@ export async function parseSseStream(
           stream.push({ type: "thinking_start", contentIndex: blockIndex(), partial: output });
         } else if (currentBlock.type === "thinking") {
           currentBlock.thinking += text;
+          if (part.thoughtSignature) currentBlock.thinkingSignature = part.thoughtSignature;
         }
         if (text) {
           ensureStarted();
@@ -526,6 +931,7 @@ export async function parseSseStream(
           stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
         } else if (currentBlock.type === "text") {
           currentBlock.text += part.text;
+          if (part.thoughtSignature) currentBlock.textSignature = part.thoughtSignature;
         }
         if (part.text) {
           ensureStarted();
