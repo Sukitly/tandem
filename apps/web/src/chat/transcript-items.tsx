@@ -7,7 +7,15 @@ import { CodeBlock, CodeBlockContent, CodeBlockLine } from "@/components/ui/code
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker.tsx";
 import { Message, MessageContent, MessageFooter } from "@/components/ui/message.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
-import { Trace } from "@/components/ui/trace.tsx";
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from "@/components/ui/trace.tsx";
 import { cn } from "@/lib/utils.ts";
 import { Markdown } from "./markdown.tsx";
 import type { AssistantPart, TranscriptItem } from "./transcript.ts";
@@ -176,7 +184,9 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
             Interrupted
           </Badge>
         )}
-        {item.ending === "failed" && <ChatError error={item.error} attempts={item.attempts} />}
+        {item.ending === "failed" && (
+          <ChatError error={item.error} attempts={item.attempts} historical={item.continued} />
+        )}
         {item.ending === "complete" && answer && text !== "" && (
           <MessageFooter className="px-0">
             <CopyAction text={text} />
@@ -187,41 +197,59 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
   );
 }
 
-/** A compact, subtle error callout for failed model generations or chat notices. */
+/** A failure is an expandable trace event, not a separate alert card. */
 export function ChatError({
-  title = "Answer failed",
+  title = "Generation failed",
   error,
   attempts,
+  historical = false,
   className,
 }: {
   title?: string;
   error?: string;
   attempts?: number;
+  historical?: boolean;
   className?: string;
 }) {
+  const hasError = error !== undefined && error !== "";
+  const multipleAttempts = attempts !== undefined && attempts > 1;
+  const firstLine = error
+    ?.split("\n")
+    .find((line) => line.trim() !== "")
+    ?.trim();
+  const summary = firstLine === undefined ? "" : firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
+  const line = (
+    <TraceLine>
+      <TraceIcon className={historical ? "text-muted-foreground" : "text-destructive"}>
+        <AlertCircleIcon />
+      </TraceIcon>
+      <span className={cn("shrink-0", !historical && "text-foreground")}>{title}</span>
+      {summary !== "" && <TraceTitle>· {summary}</TraceTitle>}
+    </TraceLine>
+  );
   return (
-    <div
-      className={cn(
-        "group/error group/message flex w-full max-w-xl flex-col gap-1.5 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm dark:bg-destructive/10",
-        className,
+    <Trace className={cn("group/message", className)} data-historical={historical || undefined}>
+      {hasError || multipleAttempts ? (
+        <TraceCollapsible>
+          <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
+          <TraceCollapsibleContent>
+            <div className="grid min-w-0 gap-2">
+              {multipleAttempts && <p className="text-xs">{attempts} attempts</p>}
+              {hasError && (
+                <div className="flex min-w-0 items-start gap-2">
+                  <pre className="min-w-0 flex-1 font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">
+                    {error}
+                  </pre>
+                  <CopyAction text={error} className="opacity-100" />
+                </div>
+              )}
+            </div>
+          </TraceCollapsibleContent>
+        </TraceCollapsible>
+      ) : (
+        line
       )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <AlertCircleIcon className="size-4 shrink-0 text-destructive" />
-          <span className="font-medium text-foreground">{title}</span>
-          {attempts !== undefined && attempts > 1 && (
-            <Badge variant="outline" className="border-destructive/30 px-1.5 py-0 text-[10px] text-muted-foreground">
-              {attempts} attempts
-            </Badge>
-          )}
-        </div>
-        {error !== undefined && error !== "" && <CopyAction text={error} />}
-      </div>
-      {error !== undefined && error !== "" && (
-        <p className="text-xs text-muted-foreground leading-relaxed break-words">{error}</p>
-      )}
-    </div>
+    </Trace>
   );
 }
 
