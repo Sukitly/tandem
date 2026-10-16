@@ -291,7 +291,11 @@ function FilesToggle() {
 
 /** Under the transcript: notices and the message box. */
 function ChatFooter({ children }: { children: ReactNode }) {
-  return <div className="mx-auto grid w-full max-w-3xl gap-3 px-4 pt-2 pb-4">{children}</div>;
+  return (
+    <div className="mx-auto grid w-full max-w-3xl shrink-0 gap-2 px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:gap-3">
+      {children}
+    </div>
+  );
 }
 
 function sameModel(a: ModelRef | undefined, b: ModelRef | undefined): boolean {

@@ -64,12 +64,15 @@ export function StatusBar({
   };
 
   return (
-    <div className={cn("flex min-w-0 flex-1 items-center gap-1 text-xs text-muted-foreground", className)}>
+    <div
+      className={cn("flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs text-muted-foreground", className)}
+    >
       <ModelPicker agent={agent} current={current} onConfigure={onConfigure} />
       {current !== undefined && current.thinkingLevels.length > 1 && (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
-            {thinkingLabel(agent?.thinkingLevel ?? "off")}
+          <DropdownMenuTrigger render={<Button variant="ghost" size="xs" className="shrink-0" />}>
+            <span className="hidden sm:inline">{thinkingLabel(agent?.thinkingLevel ?? "off")}</span>
+            <span className="sm:hidden">{shortThinkingLabel(agent?.thinkingLevel ?? "off")}</span>
             <ChevronDownIcon />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-40">
@@ -88,12 +91,17 @@ export function StatusBar({
       )}
       {contextWindow > 0 && (
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <span className="font-mono tabular-nums">{formatCost(usage.cost)}</span>
+          <span className="hidden font-mono tabular-nums sm:inline">{formatCost(usage.cost)}</span>
           <Context
             usedTokens={usage.tokens}
             maxTokens={contextWindow}
             cost={usage.cost}
-            label={`${percent.toFixed(0)}% of ${formatTokens(contextWindow)}`}
+            label={
+              <>
+                <span>{percent.toFixed(0)}%</span>
+                <span className="hidden sm:inline"> of {formatTokens(contextWindow)}</span>
+              </>
+            }
           />
         </div>
       )}
@@ -136,7 +144,9 @@ function ModelPicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<Button variant="ghost" size="xs" className="min-w-0" />}>
+      <PopoverTrigger
+        render={<Button variant="ghost" size="xs" className="shrink min-w-0 max-w-36 text-left sm:max-w-none" />}
+      >
         <span className="truncate">
           {current?.name ?? (agent?.model === undefined ? "Choose a model" : `${agent.model.modelId} (unavailable)`)}
         </span>
@@ -194,6 +204,10 @@ function groupByProvider(
 
 function thinkingLabel(level: string): string {
   return level === "off" ? "No thinking" : `Thinking: ${level}`;
+}
+
+function shortThinkingLabel(level: string): string {
+  return level === "off" ? "Off" : (level[0]?.toUpperCase() ?? "") + level.slice(1);
 }
 
 export function formatCost(dollars: number): string {
