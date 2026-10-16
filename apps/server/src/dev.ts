@@ -2,13 +2,13 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { DEFAULT_HOST, DEFAULT_PORT, HEALTH_PATH } from "@tandem/contracts";
+import { DEFAULT_HOST, DEV_PORT, HEALTH_PATH } from "@tandem/contracts";
 import { type DevChild, runChild, terminate } from "./dev-children.ts";
 import { pairingUrl, runningPair, showPairing } from "./launch.ts";
 
 const { values } = parseArgs({ options: { "no-open": { type: "boolean", default: false } } });
 const root = fileURLToPath(new URL("../../../", import.meta.url));
-const serverUrl = new URL(`http://${DEFAULT_HOST}:${DEFAULT_PORT}`);
+const serverUrl = new URL(`http://${DEFAULT_HOST}:${DEV_PORT}`);
 const webUrl = new URL(`http://${DEFAULT_HOST}:5173`);
 const children: DevChild[] = [];
 let stopping = false;
@@ -42,7 +42,7 @@ const requireWeb = createRequire(new URL("../../web/package.json", import.meta.u
 const viteEntry = join(dirname(requireWeb.resolve("vite/package.json")), "bin/vite.js");
 if ((await runningPair(serverUrl)) !== undefined)
   throw new Error("Tandem is already running. Stop it before development, or use bun run start to open it.");
-start("server", process.execPath, ["--watch", "apps/server/src/main.ts", "--no-open"]);
+start("server", process.execPath, ["--watch", "apps/server/src/main.ts", "--port", String(DEV_PORT), "--no-open"]);
 start("web", process.execPath, [viteEntry, "--config", "apps/web/vite.config.ts", "apps/web"]);
 try {
   const deadline = Date.now() + 60_000;

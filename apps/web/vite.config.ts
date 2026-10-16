@@ -4,7 +4,7 @@ import {
   AUTH_PATH,
   BOOTSTRAP_PATH,
   DEFAULT_HOST,
-  DEFAULT_PORT,
+  DEV_PORT,
   HEALTH_PATH,
   IMAGE_PATH,
   PTY_PATH,
@@ -13,7 +13,7 @@ import {
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-const backend = `http://${DEFAULT_HOST}:${DEFAULT_PORT}`;
+const backend = `http://${DEFAULT_HOST}:${DEV_PORT}`;
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

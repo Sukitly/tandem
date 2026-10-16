@@ -57,7 +57,7 @@ function Workbench() {
     <WorkbenchProvider>
       <AppSidebarProvider>
         <AppSidebar />
-        <SidebarInset className="h-dvh min-w-0">
+        <SidebarInset className="h-dvh min-w-0 md:peer-data-[variant=inset]:h-[calc(100dvh-1rem)] md:peer-data-[variant=inset]:overflow-hidden">
           <ConnectionAlert />
           <Main />
         </SidebarInset>
