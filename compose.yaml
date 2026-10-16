@@ -17,6 +17,8 @@ services:
       - tandem_data:/data
       # Mount project workspace directory
       - ${TANDEM_WORKSPACE_DIR:-./workspace}:/workspace
+      # Inherit user's pi prompt templates and slash commands
+      - ${PI_PROMPTS_DIR:-${HOME}/.pi/agent/prompts}:/root/.pi/agent/prompts:ro
     security_opt:
       - no-new-privileges:true
     cap_drop:

@@ -58,6 +58,9 @@ if (existing !== undefined) {
     ...(webOrigin !== undefined ? { webEntry: webOrigin } : {}),
     ...(allowedOrigins.length > 0 ? { allowedOrigins } : {}),
     ...(hasDist ? { webRoot: distDir } : {}),
+    ...(process.env.TANDEM_GLOBAL_PROMPTS_DIR !== undefined
+      ? { globalPromptsDir: process.env.TANDEM_GLOBAL_PROMPTS_DIR }
+      : {}),
     providers: [
       ...defaultProviders(),
       ...(faux ? [createFauxProvider({ tokensPerSecond: 40, respond: demoResponse })] : []),

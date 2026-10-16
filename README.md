@@ -91,6 +91,8 @@ In Tandem's **Add project** workflow, use container paths, not host paths:
 
 **Mounted files are writable:** agent and terminal changes under `/workspace` affect the corresponding files on your host. Mount only directories you want Tandem to access.
 
+**Inherited host configurations:** Tandem automatically inherits your prompt commands (`~/.pi/agent/prompts`) through a read-only mount, so your agent slash commands work seamlessly inside the container.
+
 ### 2. Start Tandem
 
 ```bash
