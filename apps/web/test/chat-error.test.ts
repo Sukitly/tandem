@@ -10,13 +10,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("a failure is a compact collapsed trace event with only its icon colored red", () => {
+test("a failure is a compact collapsed trace event with error status styling", () => {
   const { container } = render(createElement(ChatError, { error: "WebSocket error" }));
   const trigger = screen.getByRole("button", { name: /Generation failed.*WebSocket error/ });
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
   expect(container.querySelector("[data-slot=trace]")).not.toBeNull();
-  expect(container.querySelector("[data-slot=trace-icon]")?.classList.contains("text-destructive")).toBe(true);
-  expect(screen.getByText("Generation failed").classList.contains("text-foreground")).toBe(true);
+  expect(container.querySelector("[data-slot=trace-line]")?.getAttribute("data-status")).toBe("error");
+  expect(screen.getByText("Generation failed").classList.contains("text-foreground")).toBe(false);
   expect(container.querySelector(".bg-destructive\\/5, .border-destructive\\/20")).toBeNull();
   expect(container.querySelector("pre")).toBeNull();
   expect(container.textContent).not.toMatch(/Retrying|Reconnecting/);
@@ -47,7 +47,7 @@ test("long summaries stay compact while the expanded details remain complete", a
   await waitFor(() => expect(container.querySelector("pre")?.textContent).toBe(error));
 });
 
-test("historical failures use a muted icon without claiming the retry succeeded", () => {
+test("historical failures preserve error status styling without claiming the retry succeeded", () => {
   const item: TranscriptItem = {
     kind: "assistant",
     key: "failed",
@@ -58,8 +58,7 @@ test("historical failures use a muted icon without claiming the retry succeeded"
   };
   const { container } = render(createElement(TranscriptEntry, { item }));
   expect(container.querySelector("[data-historical=true]")).not.toBeNull();
-  expect(container.querySelector("[data-slot=trace-icon]")?.classList.contains("text-muted-foreground")).toBe(true);
-  expect(container.querySelector(".text-destructive")).toBeNull();
+  expect(container.querySelector("[data-slot=trace-line]")?.getAttribute("data-status")).toBe("error");
   expect(screen.getByText("Generation failed")).toBeDefined();
   expect(container.textContent).not.toMatch(/Recovered|Retrying|Reconnecting/);
 });
