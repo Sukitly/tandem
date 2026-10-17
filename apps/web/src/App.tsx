@@ -19,7 +19,7 @@ import { DevicesDialogProvider } from "./auth/devices-dialog.tsx";
 import { PairScreen } from "./auth/pair-screen.tsx";
 import { ChatView, NewChat } from "./chat/chat-view.tsx";
 import { ProvidersDialogProvider } from "./models/providers-dialog.tsx";
-import { ConnectionProvider, useConnected } from "./rpc/connection.tsx";
+import { ConnectionProvider, type ConnectionState, useConnected } from "./rpc/connection.tsx";
 import { useReplicatedState } from "./rpc/use-replicated-state.ts";
 import { ThemeProvider, useTheme } from "./theme.tsx";
 import { PublicAccessPageProvider } from "./tunnel/public-access.tsx";
@@ -186,7 +186,7 @@ function ConnectionAlert() {
   );
 }
 
-function ConnectionScreen({ state }: { state: { kind: "connecting" | "unauthorized" | "failed"; message?: string } }) {
+function ConnectionScreen({ state }: { state: Exclude<ConnectionState, { kind: "connected" }> }) {
   if (state.kind === "unauthorized") return <PairScreen />;
   return (
     <Empty className="h-dvh">
@@ -206,6 +206,9 @@ function ConnectionScreen({ state }: { state: { kind: "connecting" | "unauthoriz
             </EmptyMedia>
             <EmptyTitle>Cannot reach the Tandem server</EmptyTitle>
             <EmptyDescription>{state.message}</EmptyDescription>
+            <Button size="sm" variant="outline" onClick={state.retry}>
+              Try again
+            </Button>
           </>
         )}
       </EmptyHeader>

@@ -94,6 +94,31 @@ async function refused(server: TandemServer, path: string, token: string, origin
 }
 
 describe("a terminal", () => {
+  test("answers application pings on the same socket and rejects malformed ping IDs", async () => {
+    const { server, terminals, workspaceId } = await start();
+    const id = await terminals.create({ workspaceId }, context);
+    const url = new URL(terminalPath(id), server.url);
+    url.protocol = "ws:";
+    const socket = new WebSocket(url, { headers: { authorization: `Bearer ${server.token}` } });
+    sockets.push(socket);
+    const events: unknown[] = [];
+    let closeCode: number | undefined;
+    socket.on("message", (data, binary) => {
+      if (!binary) events.push(JSON.parse(data.toString()));
+    });
+    socket.on("close", (code) => {
+      closeCode = code;
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("open", resolve);
+      socket.once("error", reject);
+    });
+    socket.send(JSON.stringify({ type: "ping", id: 7 }));
+    await waitFor(() => events.some((event) => JSON.stringify(event) === JSON.stringify({ type: "pong", id: 7 })));
+    socket.send(JSON.stringify({ type: "ping", id: "invalid" }));
+    await waitFor(() => closeCode !== undefined);
+    expect(closeCode).toBe(1003);
+  });
   test("runs a shell in the project's directory, and lists its exit code", async () => {
     const { terminals, workspaceId, cwd, list, open } = await start();
     const id = await terminals.create({ workspaceId }, context);

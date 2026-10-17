@@ -7,6 +7,12 @@ import {
   terminalPath,
 } from "@tandem/contracts";
 import { authenticatedSocket } from "./authenticated-socket.ts";
+import {
+  CONNECTION_TIMEOUT_MS,
+  onConnectionWake,
+  PROBE_INTERVAL_MS,
+  PROBE_TIMEOUT_MS,
+} from "./connection-lifecycle.ts";
 
 /** What a terminal's connection needs of the screen that shows it: an xterm `Terminal`, or a recorder. */
 export interface TerminalScreen {
@@ -47,16 +53,28 @@ const MAX_INPUT_CHUNK = 64 * 1024;
  */
 export class TerminalConnection {
   readonly #options: TerminalConnectionOptions;
+  readonly #unbindWindowEvents: () => void;
   #socket: WebSocket | undefined;
   #retry = 0;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #closed = false;
+  #dropped = false;
+  #deadline: ReturnType<typeof setTimeout> | undefined;
+  #heartbeat: ReturnType<typeof setInterval> | undefined;
+  #pingSequence = 0;
+  #pendingPing: number | undefined;
   /** The size the page shows, sent on every connection: the newest size wins on the server. */
   #size: TerminalSize | undefined;
 
   constructor(options: TerminalConnectionOptions) {
     this.#options = options;
-    this.#connect();
+    this.#unbindWindowEvents = onConnectionWake(() => this.#wakeUp());
+    try {
+      this.#connect();
+    } catch (error) {
+      this.close();
+      throw error;
+    }
   }
 
   /** Text the user typed or pasted, as xterm's `onData` gives it: sent as UTF-8. */
@@ -83,6 +101,7 @@ export class TerminalConnection {
   /** Connect again after the connection closed for good. */
   reconnect(): void {
     if (this.#closed || this.#socket !== undefined) return;
+    this.#dropped = false;
     clearTimeout(this.#timer);
     this.#retry = 0;
     this.#connect();
@@ -90,10 +109,61 @@ export class TerminalConnection {
 
   close(): void {
     this.#closed = true;
+    this.#unbindWindowEvents();
     clearTimeout(this.#timer);
+    this.#clearHealth();
     const socket = this.#socket;
     this.#socket = undefined;
     socket?.close(TERMINAL_CLOSED);
+  }
+
+  #wakeUp(): void {
+    if (this.#closed) return;
+    if (this.#socket?.readyState === WebSocket.OPEN) {
+      this.#probe();
+    } else if (this.#socket === undefined && this.#dropped) {
+      clearTimeout(this.#timer);
+      this.#retry = 0;
+      this.#connect();
+    }
+  }
+
+  #clearHealth(): void {
+    clearTimeout(this.#deadline);
+    clearInterval(this.#heartbeat);
+    this.#pendingPing = undefined;
+  }
+
+  #probe(): void {
+    const socket = this.#socket;
+    if (this.#closed || socket?.readyState !== WebSocket.OPEN || this.#pendingPing !== undefined) return;
+    const id = ++this.#pingSequence;
+    this.#pendingPing = id;
+    this.#deadline = setTimeout(() => this.#drop(socket), PROBE_TIMEOUT_MS);
+    try {
+      const ping: TerminalControl = { type: "ping", id };
+      socket.send(JSON.stringify(ping));
+    } catch {
+      this.#drop(socket);
+    }
+  }
+
+  // Detach first: a dead socket's delayed close/message must not affect its replacement.
+  #drop(socket: WebSocket): void {
+    if (this.#closed || this.#socket !== socket) return;
+    this.#socket = undefined;
+    this.#clearHealth();
+    socket.close();
+    this.#scheduleReconnect();
+  }
+
+  #scheduleReconnect(): void {
+    this.#dropped = true;
+    this.#options.onLink?.("connecting");
+    const delay = Math.min(RETRY_MS[1], RETRY_MS[0] * 2 ** this.#retry);
+    this.#retry += 1;
+    clearTimeout(this.#timer);
+    this.#timer = setTimeout(() => this.#connect(), delay);
   }
 
   #send(bytes: Uint8Array<ArrayBuffer>): void {
@@ -105,6 +175,7 @@ export class TerminalConnection {
   }
 
   #connect(): void {
+    if (this.#closed) return;
     const url = new URL(terminalPath(this.#options.id), this.#options.baseUrl);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const socket = (this.#options.socket ?? ((target) => authenticatedSocket(target, this.#options.token)))(
@@ -113,38 +184,50 @@ export class TerminalConnection {
     socket.binaryType = "arraybuffer";
     this.#socket = socket;
     this.#options.onLink?.("connecting");
+    this.#deadline = setTimeout(() => this.#drop(socket), CONNECTION_TIMEOUT_MS);
     socket.onopen = () => {
+      if (this.#socket !== socket || this.#closed) return;
+      clearTimeout(this.#deadline);
+      this.#heartbeat = setInterval(() => {
+        if (typeof document === "undefined" || document.visibilityState !== "hidden") this.#probe();
+      }, PROBE_INTERVAL_MS);
+      this.#dropped = false;
       this.#retry = 0;
       this.#options.onLink?.("open");
       this.#sendSize();
     };
     socket.onmessage = (message: MessageEvent) => {
+      if (this.#socket !== socket || this.#closed) return;
       if (typeof message.data === "string") this.#event(JSON.parse(message.data) as TerminalEvent);
       else this.#options.screen.write(new Uint8Array(message.data as ArrayBuffer));
     };
     socket.onclose = (event: CloseEvent) => {
       if (this.#socket !== socket) return;
       this.#socket = undefined;
+      this.#clearHealth();
       if (this.#closed) return;
       if (event.code === TERMINAL_BAD_MESSAGE) {
         // The page's fault, not the terminal's: it is still there, and the user can connect again.
         this.#options.onError?.(new Error(`The terminal refused a message: ${event.reason || "bad message"}`));
       }
       if (event.code === TERMINAL_CLOSED || event.code === TERMINAL_BAD_MESSAGE) {
+        this.#dropped = false;
         this.#options.onLink?.("closed");
         return;
       }
-      // Dropped: tried again, sooner first.
-      this.#options.onLink?.("connecting");
-      const delay = Math.min(RETRY_MS[1], RETRY_MS[0] * 2 ** this.#retry);
-      this.#retry += 1;
-      this.#timer = setTimeout(() => this.#connect(), delay);
+      this.#scheduleReconnect();
     };
   }
 
   #event(event: TerminalEvent): void {
     const { screen } = this.#options;
     switch (event.type) {
+      case "pong":
+        if (event.id === this.#pendingPing) {
+          clearTimeout(this.#deadline);
+          this.#pendingPing = undefined;
+        }
+        return;
       case "screen":
         screen.reset();
         screen.resize(event.cols, event.rows);

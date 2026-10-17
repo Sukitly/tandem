@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { ServerListener } from "@earendil-works/pi-server";
 import { type WebSocket, WebSocketServer } from "ws";
+import { startSocketHeartbeat } from "./socket-heartbeat.ts";
 
 export interface WebSocketListenerOptions {
   /** Largest WebSocket message accepted from a client. */
@@ -10,6 +11,11 @@ export interface WebSocketListenerOptions {
   maxPendingBytes?: number;
   /** How long `close()` waits for the closing handshake before terminating the socket. */
   gracefulCloseTimeoutMs?: number;
+  /**
+   * Interval in milliseconds between keepalive ping frames. Set to 0 to disable.
+   * Keeps mobile/NAT connections alive and detects dead sockets. Defaults to 30,000ms.
+   */
+  pingIntervalMs?: number;
   onError?: (error: Error) => void;
 }
 
@@ -19,6 +25,7 @@ type ByteConnection = Parameters<ByteConnectionAcceptor>[0];
 
 const DEFAULT_MAX_PAYLOAD = 64 * 1024 * 1024;
 const DEFAULT_GRACEFUL_CLOSE_TIMEOUT_MS = 1_000;
+const DEFAULT_PING_INTERVAL_MS = 30_000;
 
 /**
  * A pi-server listener for WebSocket connections. It does not own an HTTP server: the caller authorizes each upgrade
@@ -37,6 +44,7 @@ export class WebSocketListener implements ServerListener {
       maxPayload,
       maxPendingBytes: options.maxPendingBytes ?? maxPayload * 4,
       gracefulCloseTimeoutMs: options.gracefulCloseTimeoutMs ?? DEFAULT_GRACEFUL_CLOSE_TIMEOUT_MS,
+      pingIntervalMs: options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS,
       onError: options.onError,
     };
     this.#server = new WebSocketServer({ noServer: true, maxPayload });
@@ -76,6 +84,7 @@ export class WebSocketListener implements ServerListener {
     );
     this.#connections.add(connection);
     const handler = accept(connection);
+    startSocketHeartbeat(webSocket, this.#options.pingIntervalMs);
     webSocket.on("message", (data, isBinary) => {
       if (!isBinary) {
         handler.onError(new Error("Received a non-binary WebSocket message"));

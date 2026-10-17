@@ -50,7 +50,7 @@ export function clampTerminalSize(size: TerminalSize): TerminalSize {
 /**
  * A message from a page to a terminal, sent as a WebSocket text frame. Binary frames carry the user's input, as bytes.
  */
-export type TerminalControl = { type: "resize"; cols: number; rows: number };
+export type TerminalControl = { type: "resize"; cols: number; rows: number } | { type: "ping"; id: number };
 
 /**
  * A message from a terminal to a page, sent as a text frame. Binary frames carry the shell's output, as bytes. A page
@@ -58,7 +58,8 @@ export type TerminalControl = { type: "resize"; cols: number; rows: number };
  */
 export type TerminalEvent =
   | { type: "screen"; data: string; cols: number; rows: number }
-  | { type: "resize"; cols: number; rows: number };
+  | { type: "resize"; cols: number; rows: number }
+  | { type: "pong"; id: number };
 
 /**
  * Close codes of a terminal's socket. The server closes it with `TERMINAL_CLOSED` once the terminal is gone, and with

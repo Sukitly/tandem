@@ -8,6 +8,13 @@ import {
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Client, createClientServiceTransport } from "@earendil-works/pi-client";
 import { BOOTSTRAP_PATH, type BootstrapResponse, type ImageRef, imagePath, RPC_PATH } from "@tandem/contracts";
+import {
+  CONNECTION_TIMEOUT_MS,
+  onConnectionWake,
+  PROBE_INTERVAL_MS,
+  PROBE_TIMEOUT_MS,
+  withDeadline,
+} from "./connection-lifecycle.ts";
 import { TerminalConnection, type TerminalConnectionOptions, type TerminalScreen } from "./terminal-connection.ts";
 import { createWebSocketTransportFactory } from "./websocket-transport.ts";
 
@@ -31,6 +38,8 @@ export interface ConnectOptions {
   services: readonly { readonly id: string }[];
   /** `false` disables reconnecting after the connection drops. */
   reconnect?: ReconnectOptions | false;
+  /** Cancels initial connection work and closes the connection if it has already opened. */
+  signal?: AbortSignal;
   onError?: (error: Error) => void;
 }
 
@@ -71,14 +80,20 @@ const DEFAULT_MAX_DELAY_MS = 5_000;
 export async function connect(options: ConnectOptions): Promise<TandemConnection> {
   const baseUrl = new URL(options.baseUrl);
   const onError = options.onError ?? (() => {});
-  const { serverId, deviceId } = await bootstrap(baseUrl, options.token);
+  const { serverId, deviceId } = await withDeadline(
+    (signal) => bootstrap(baseUrl, options.token, signal),
+    CONNECTION_TIMEOUT_MS,
+    options.signal,
+  );
 
   const rpcUrl = new URL(RPC_PATH, baseUrl);
   rpcUrl.protocol = baseUrl.protocol === "https:" ? "wss:" : "ws:";
 
+  let transportSignal: AbortSignal | undefined;
   const client = new Client({
     serverId,
-    transportFactory: createWebSocketTransportFactory(rpcUrl, { token: options.token }),
+    transportFactory: (handlers) =>
+      createWebSocketTransportFactory(rpcUrl, { token: options.token, signal: transportSignal })(handlers),
     onListenerError: onError,
   });
   const binding = createRemoteServiceBinding({
@@ -95,6 +110,12 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
   let delayMs = initialDelayMs;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
+  let unauthorized = false;
+  let active: AbortController | undefined;
+  let probe: AbortController | undefined;
+  let generation = 0;
+  let stopWake = (): void => {};
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
 
   // Rebinding is serialized so that bound and unbound transitions apply in connection order.
   let transitions = Promise.resolve();
@@ -104,58 +125,147 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
       .catch((error: unknown) => onError(toError(error)));
   };
 
+  const clearRetry = (): void => {
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+  };
+
   const scheduleReconnect = (reason: string): void => {
-    if (closed || reconnect === undefined) {
-      status.replace(BACKGROUND_CONTEXT, { status: "disconnected", reason, retryInMs: null });
-      return;
-    }
-    if (retryTimer !== undefined) return;
-    const wait = delayMs;
+    if (closed || unauthorized || active !== undefined || retryTimer !== undefined) return;
+    const wait = reconnect === undefined ? null : delayMs;
     delayMs = Math.min(delayMs * 2, maxDelayMs);
     status.replace(BACKGROUND_CONTEXT, { status: "disconnected", reason, retryInMs: wait });
-    retryTimer = setTimeout(() => {
-      retryTimer = undefined;
-      if (closed) return;
-      status.replace(BACKGROUND_CONTEXT, { status: "connecting" });
-      // A failed attempt reports `disconnected` through the state listener, which schedules the next one.
-      bootstrap(baseUrl, options.token).then(
-        () => {
-          if (!closed) client.reconnect().catch(() => {});
+    if (wait !== null) retryTimer = setTimeout(() => void establish(false), wait);
+  };
+
+  // Exactly one bootstrap/handshake/rebind attempt can run at a time. Its controller is also its identity.
+  const establish = async (initial: boolean): Promise<void> => {
+    if (closed || unauthorized || active !== undefined) return;
+    clearRetry();
+    const attempt = new AbortController();
+    active = attempt;
+    status.replace(BACKGROUND_CONTEXT, { status: "connecting" });
+    let failure: Error | undefined;
+    try {
+      await withDeadline(
+        async (signal) => {
+          if (!initial) await bootstrap(baseUrl, options.token, signal);
+          signal.throwIfAborted();
+          transportSignal = signal;
+          await client.connect();
+          await transitions;
+          signal.throwIfAborted();
         },
-        (error: unknown) => {
-          if (closed) return;
-          if (error instanceof BootstrapError && error.status === 401)
-            status.replace(BACKGROUND_CONTEXT, { status: "unauthorized" });
-          else scheduleReconnect(toError(error).message);
-        },
+        CONNECTION_TIMEOUT_MS,
+        attempt.signal,
       );
-    }, wait);
+    } catch (error) {
+      if (active !== attempt || closed) return;
+      failure = toError(error);
+      if (error instanceof BootstrapError && error.status === 401) {
+        unauthorized = true;
+        stopWake();
+        clearInterval(heartbeat);
+        status.replace(BACKGROUND_CONTEXT, { status: "unauthorized" });
+      }
+      client.disconnect(failure.message);
+      if (initial) throw error;
+    } finally {
+      if (active === attempt) active = undefined;
+    }
+    if (failure !== undefined) scheduleReconnect(failure.message);
+    else if (!client.connected) scheduleReconnect("Disconnected");
+  };
+
+  // This read-only RPC travels over the existing socket, not a separate HTTP connection.
+  const checkConnection = (): void => {
+    if (closed || unauthorized || !client.connected || active !== undefined || probe !== undefined) return;
+    const checking = new AbortController();
+    const current = generation;
+    probe = checking;
+    void withDeadline(
+      (signal) => client.serviceCatalogue({ serverId: client.serverId }, signal),
+      PROBE_TIMEOUT_MS,
+      checking.signal,
+    )
+      .catch(() => {
+        if (closed || unauthorized || probe !== checking || current !== generation) return;
+        client.disconnect("Connection probe timed out or failed");
+        // A failed probe already waited for its deadline; do not add backoff before the first recovery attempt.
+        if (reconnect !== undefined) void establish(false);
+      })
+      .finally(() => {
+        if (probe === checking) probe = undefined;
+      });
   };
 
   const stopListening = client.onConnectionStateChange(({ state, error }) => {
-    // Closing disconnects the client too; the binding is disposed by then.
     if (closed) return;
     if (state === "connected") {
+      const current = ++generation;
       delayMs = initialDelayMs;
       rebind(true, BACKGROUND_CONTEXT);
-      // Reported once the services are bound, so that whoever reacts to it can call them.
       transitions = transitions.then(() => {
-        if (client.connected) status.replace(BACKGROUND_CONTEXT, { status: "connected" });
+        if (!closed && !unauthorized && current === generation && client.connected)
+          status.replace(BACKGROUND_CONTEXT, { status: "connected" });
       });
     } else if (state === "disconnected") {
+      generation += 1;
+      const previous = probe;
+      probe = undefined;
+      previous?.abort();
       rebind(false, BACKGROUND_CONTEXT);
       scheduleReconnect(error?.message ?? "Disconnected");
     }
   });
 
-  try {
-    await client.connect();
-  } catch (error) {
+  let closePromise: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    if (closePromise !== undefined) return closePromise;
     closed = true;
-    await client.dispose();
+    stopWake();
+    clearInterval(heartbeat);
+    clearRetry();
+    options.signal?.removeEventListener("abort", onAbort);
+    stopListening();
+    const previous = active;
+    active = undefined;
+    previous?.abort();
+    probe?.abort();
+    probe = undefined;
+    // Reject outstanding RPCs before waiting for binding cleanup.
+    client.disconnect();
+    closePromise = (async () => {
+      await transitions;
+      await binding.dispose(BACKGROUND_CONTEXT);
+      await client.dispose();
+    })();
+    return closePromise;
+  };
+  const onAbort = (): void => {
+    void close().catch(onError);
+  };
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    options.signal?.throwIfAborted();
+    await establish(true);
+    options.signal?.throwIfAborted();
+  } catch (error) {
+    await close();
     throw error;
   }
-  await transitions;
+  stopWake = onConnectionWake(() => {
+    if (closed || unauthorized || reconnect === undefined || active !== undefined) return;
+    if (client.connected) checkConnection();
+    else {
+      delayMs = initialDelayMs;
+      void establish(false);
+    }
+  });
+  heartbeat = setInterval(() => {
+    if (typeof document === "undefined" || document.visibilityState !== "hidden") checkConnection();
+  }, PROBE_INTERVAL_MS);
 
   return {
     deviceId,
@@ -172,20 +282,14 @@ export async function connect(options: ConnectOptions): Promise<TandemConnection
       if (!response.ok) throw new Error(`The image could not be loaded (status ${response.status})`);
       return response.blob();
     },
-    async close() {
-      if (closed) return;
-      closed = true;
-      stopListening();
-      if (retryTimer !== undefined) clearTimeout(retryTimer);
-      await transitions;
-      await binding.dispose(BACKGROUND_CONTEXT);
-      await client.dispose();
-    },
+    close,
   };
 }
 
-async function bootstrap(baseUrl: URL, token?: string): Promise<BootstrapResponse> {
+async function bootstrap(baseUrl: URL, token: string | undefined, signal: AbortSignal): Promise<BootstrapResponse> {
   const response = await fetch(new URL(BOOTSTRAP_PATH, baseUrl), {
+    signal,
+    cache: "no-store",
     headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new BootstrapError(response.status);
