@@ -41,6 +41,62 @@ async function fixture(t, mobile = false, layout = false) {
   return page;
 }
 
+test("desktop Escape is not dismissal and nested overlay dialogs close first", async (t) => {
+  const page = await fixture(t, false, true);
+  const region = page.getByRole("region", { name: "Project panel" });
+  await region.waitFor();
+  assert.equal(await page.getByRole("dialog", { name: "Project panel" }).count(), 0);
+  await page.getByRole("textbox", { name: "Chat draft" }).press("Escape");
+  assert.equal(await region.isVisible(), true);
+  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+  const terminal = page.locator(".xterm-helper-textarea").first();
+  await terminal.focus();
+  await terminal.press("Escape");
+  assert.equal(await region.isVisible(), true);
+  await page.getByRole("button", { name: "Close Shell one", exact: true }).click();
+  const confirmation = page.getByRole("alertdialog");
+  await confirmation.waitFor();
+  await page.keyboard.press("Escape");
+  await confirmation.waitFor({ state: "hidden" });
+  assert.equal(await region.isVisible(), true);
+  await page.setViewportSize({ width: 500, height: 844 });
+  const overlay = page.getByRole("dialog", { name: "Project panel", exact: true });
+  await overlay.waitFor();
+  await page.getByRole("button", { name: "Close Shell one", exact: true }).click();
+  await confirmation.waitFor();
+  await page.keyboard.press("Escape");
+  await confirmation.waitFor({ state: "hidden" });
+  assert.equal(await overlay.isVisible(), true);
+  assert.equal(await overlay.getAttribute("aria-modal"), "true");
+  await overlay.focus();
+  await page.keyboard.press("Escape");
+  await overlay.waitFor({ state: "hidden" });
+  assert.deepEqual(await page.evaluate(() => window.browserErrors), []);
+});
+
+test("overlay swipe and backdrop dismissal leave the persistent host reusable", async (t) => {
+  const page = await fixture(t, true, true);
+  const dialog = page.getByRole("dialog", { name: "Project panel", exact: true });
+  await dialog.waitFor();
+  const handle = await page.locator('[data-slot="drawer-swipe-handle"]').boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const x = handle.x + handle.width / 2;
+  const y = handle.y + handle.height / 2;
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  for (let distance = 50; distance <= 500; distance += 50) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y + distance }] });
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await dialog.waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "Toggle panel", exact: true }).click();
+  await dialog.waitFor();
+  await page.mouse.click(10, 60);
+  await dialog.waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.activeElement?.textContent === "Toggle panel");
+  assert.deepEqual(await page.evaluate(() => window.browserErrors), []);
+});
+
 test("user-resized panel width survives collapse, overlay transitions, and reload", async (t) => {
   const page = await fixture(t, false, true);
   await page.getByRole("tab", { name: "Files", exact: true }).waitFor();
@@ -205,7 +261,8 @@ test("available workspace width controls overlay mode and desktop positioning wi
       Math.abs(slot.height - popup.height) < 2
     );
   });
-  assert.equal(await dialog.isVisible(), true);
+  assert.equal(await dialog.count(), 0);
+  assert.equal(await page.getByRole("region", { name: "Project panel" }).isVisible(), true);
   assert.equal(await frame.getByRole("textbox", { name: "Draft" }).inputValue(), "Container resize state");
 });
 
