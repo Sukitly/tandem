@@ -4,14 +4,18 @@ import { type CSSProperties, type RefObject, useCallback, useEffect, useRef, use
 export interface HoveredLine {
   side: "additions" | "deletions";
   line: number;
+  /** Top of the number cell, in the container's coordinates (CSS pixels). */
   top: number;
+  /** Height of the number cell, in CSS pixels. */
   height: number;
+  /** Right edge of the number cell, in the container's coordinates (CSS pixels). */
   right: number;
 }
 
 const CONTROL_WIDTH = 24;
 const CONTROL_OVERHANG = 6;
 
+/** Position the comment control in the same container coordinate system as the hovered number cell. */
 export function controlPlacement(hovered: HoveredLine): CSSProperties {
   return { top: hovered.top, left: hovered.right - CONTROL_WIDTH + CONTROL_OVERHANG, height: hovered.height };
 }
