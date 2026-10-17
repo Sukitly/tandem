@@ -1,6 +1,6 @@
 import type { CommentMessage, CommentThread } from "@tandem/contracts";
 import { type RefObject, useRef, useState, useSyncExternalStore } from "react";
-import { useDrafts, useInputDraft } from "@/app/drafts.tsx";
+import { useDrafts, useTextDraft } from "@/app/drafts.tsx";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { Markdown } from "@/chat/markdown.tsx";
 import {
@@ -62,7 +62,7 @@ export function CommentDraft({
   onCancel(): void;
 }) {
   const drafts = useDrafts();
-  const draft = useInputDraft(draftKey, initial);
+  const draft = useTextDraft(draftKey, initial);
   const { text, sending: saving, error } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   const composingUntil = useRef(0);
   const box = useCommentBox(embedded ? undefined : view);
@@ -73,13 +73,13 @@ export function CommentDraft({
     void draft
       .send(() => onSave(text.trim()))
       .then((saved) => {
-        if (saved && draftKey !== undefined) drafts?.forget(draftKey);
+        if (saved && draftKey !== undefined && draft.getSnapshot().text === "") drafts?.forgetText(draftKey, draft);
       });
   };
   const cancel = (): void => {
     if (saving) return;
-    draft.dispose();
-    if (draftKey !== undefined) drafts?.forget(draftKey);
+    if (draftKey !== undefined && drafts !== null) drafts.forgetText(draftKey, draft);
+    else draft.reset();
     onCancel();
   };
   const group = (

@@ -13,8 +13,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useInputDraft } from "@/app/drafts.tsx";
-import type { InputDraft } from "@/app/input-draft.ts";
+import { useMessageDraft } from "@/app/drafts.tsx";
+import type { MessageDraft } from "@/app/message-draft.ts";
 import { CommentList } from "@/comments/comment-list.tsx";
 import type { WaitingComment } from "@/comments/project-comments.ts";
 import {
@@ -78,7 +78,7 @@ export function imageSupportOf(models: readonly ModelSummary[] | undefined, mode
 const IME_SETTLE_MS = 10;
 
 export interface ChatComposerProps {
-  draft?: InputDraft;
+  draft?: MessageDraft;
   busy: boolean;
   stopping?: boolean;
   queued: QueuedMessage[];
@@ -126,7 +126,7 @@ export function ChatComposer({
   status,
   imageSupport,
 }: ChatComposerProps) {
-  const localDraft = useInputDraft();
+  const localDraft = useMessageDraft();
   const draft = suppliedDraft ?? localDraft;
   const {
     text,

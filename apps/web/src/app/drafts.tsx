@@ -1,37 +1,54 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { InputDraft } from "./input-draft.ts";
+import { MessageDraft } from "./message-draft.ts";
+import { TextDraft } from "./text-draft.ts";
 
+/** Page-owned drafts. Moving a message never replaces an object held by a subscriber. */
 export class Drafts {
-  readonly #drafts = new Map<string, InputDraft>();
+  readonly #messages = new Map<string, MessageDraft>();
+  readonly #texts = new Map<string, TextDraft>();
+  #disposed = false;
 
-  get(key: string, initial = ""): InputDraft {
-    let draft = this.#drafts.get(key);
+  message(key: string, initial = ""): MessageDraft {
+    if (this.#disposed) throw new Error("Draft store is disposed");
+    let draft = this.#messages.get(key);
     if (draft === undefined) {
-      draft = new InputDraft(initial);
-      this.#drafts.set(key, draft);
+      draft = new MessageDraft(initial);
+      this.#messages.set(key, draft);
     }
     return draft;
   }
-
-  move(from: string, to: string): void {
-    const draft = this.#drafts.get(from);
-    if (draft === undefined) return;
-    this.#drafts.get(to)?.dispose();
-    this.#drafts.set(to, draft);
-    this.#drafts.delete(from);
+  text(key: string, initial = ""): TextDraft {
+    if (this.#disposed) throw new Error("Draft store is disposed");
+    let draft = this.#texts.get(key);
+    if (draft === undefined) {
+      draft = new TextDraft(initial);
+      this.#texts.set(key, draft);
+    }
+    return draft;
   }
-
-  forget(key: string): void {
-    this.#drafts.get(key)?.dispose();
-    this.#drafts.delete(key);
+  move(from: string, to: string): "moved" | "missing" | "conflict" {
+    const draft = this.#messages.get(from);
+    if (draft === undefined) return "missing";
+    if (from === to) return "moved";
+    if (this.#messages.has(to)) return "conflict";
+    this.#messages.set(to, draft);
+    this.#messages.delete(from);
+    return "moved";
   }
-
+  forgetText(key: string, expected: TextDraft): void {
+    if (this.#texts.get(key) !== expected) return;
+    this.#texts.delete(key);
+    expected.dispose();
+  }
   dispose(): void {
-    for (const draft of this.#drafts.values()) draft.dispose();
-    this.#drafts.clear();
+    if (this.#disposed) return;
+    this.#disposed = true;
+    for (const draft of this.#messages.values()) draft.dispose();
+    for (const draft of this.#texts.values()) draft.dispose();
+    this.#messages.clear();
+    this.#texts.clear();
   }
 }
-
 const Context = createContext<Drafts | null>(null);
 
 /** Above connection and layout boundaries; drafts never enter localStorage or replicated server state. */
@@ -40,16 +57,23 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
   useDispose(drafts);
   return <Context.Provider value={drafts}>{children}</Context.Provider>;
 }
-
 export function useDrafts(): Drafts | null {
   return useContext(Context);
 }
 
-/** Without a provider/key this is an ordinary component-owned draft (also useful in isolated controls). */
-export function useInputDraft(key?: string, initial = ""): InputDraft {
+export function useMessageDraft(key?: string, initial = ""): MessageDraft {
   const drafts = useDrafts();
   const draft = useMemo(
-    () => (key !== undefined && drafts !== null ? drafts.get(key, initial) : new InputDraft(initial)),
+    () => (key !== undefined && drafts !== null ? drafts.message(key, initial) : new MessageDraft(initial)),
+    [drafts, key, initial],
+  );
+  useDispose(draft, key === undefined || drafts === null);
+  return draft;
+}
+export function useTextDraft(key?: string, initial = ""): TextDraft {
+  const drafts = useDrafts();
+  const draft = useMemo(
+    () => (key !== undefined && drafts !== null ? drafts.text(key, initial) : new TextDraft(initial)),
     [drafts, key, initial],
   );
   useDispose(draft, key === undefined || drafts === null);

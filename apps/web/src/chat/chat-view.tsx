@@ -8,7 +8,7 @@ import {
   MessageCircleDashedIcon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useDrafts, useInputDraft } from "@/app/drafts.tsx";
+import { useDrafts, useMessageDraft } from "@/app/drafts.tsx";
 import { SidebarToggle } from "@/app/sidebar.tsx";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
@@ -87,7 +87,7 @@ export function ChatView({ conversationId }: { conversationId: number }) {
 export function NewChat({ workspaceId }: { workspaceId: number }) {
   const drafts = useDrafts();
   const draftKey = `new:${workspaceId}`;
-  const inputDraft = useInputDraft(draftKey);
+  const inputDraft = useMessageDraft(draftKey);
   const { workspaces, conversations, models } = useConnected();
   const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
   const available = useReplicatedState(models.state);
@@ -162,8 +162,15 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
               { workspaceId, text, comments: sent, ...(images.length === 0 ? {} : { images }), ...agent },
               BACKGROUND_CONTEXT,
             );
-            drafts?.move(draftKey, `conversation:${id}`);
+            const moved = drafts?.move(draftKey, `conversation:${id}`);
             select(id);
+            if (moved === "conflict")
+              reportFailure(
+                "Conversation started; both drafts were kept",
+                new Error(
+                  "The conversation already has a draft. Any newer input remains in this project’s New conversation draft.",
+                ),
+              );
           }}
           onStop={() => {}}
           statusBar={<StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />}
@@ -176,7 +183,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
   const [stopping, setStopping] = useState(false);
-  const inputDraft = useInputDraft(`conversation:${conversationId}`);
+  const inputDraft = useMessageDraft(`conversation:${conversationId}`);
   const { scrollToEnd } = useMessageScroller();
   const { conversations, models } = useConnected();
   const available = useReplicatedState(models.state);

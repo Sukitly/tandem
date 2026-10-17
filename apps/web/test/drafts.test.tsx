@@ -2,8 +2,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { Drafts, DraftsProvider, useInputDraft } from "../src/app/drafts.tsx";
-import { InputDraft } from "../src/app/input-draft.ts";
+import { Drafts, DraftsProvider, useMessageDraft } from "../src/app/drafts.tsx";
+import { MessageDraft } from "../src/app/message-draft.ts";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
 import { CommentDraft } from "../src/comments/comment-box.tsx";
 
@@ -17,7 +17,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 function Composer({ id, onSend = async () => {} }: { id: string; onSend?: () => Promise<void> }) {
-  const draft = useInputDraft(id);
+  const draft = useMessageDraft(id);
   return (
     <ChatComposer
       draft={draft}
@@ -99,7 +99,7 @@ test("a failed send remains actionable after its original view unmounts", async 
 
 test("new conversation adoption retains post-submit input and clears the old workspace slot", async () => {
   const drafts = new Drafts();
-  const draft = drafts.get("new:1");
+  const draft = drafts.message("new:1");
   draft.setText("Send");
   let finish!: () => void;
   const sending = draft.send(
@@ -112,12 +112,30 @@ test("new conversation adoption retains post-submit input and clears the old wor
   drafts.move("new:1", "conversation:2");
   finish();
   await sending;
-  expect(drafts.get("conversation:2").getSnapshot().text).toBe("Next");
-  expect(drafts.get("new:1").getSnapshot().text).toBe("");
+  expect(drafts.message("conversation:2").getSnapshot().text).toBe("Next");
+  expect(drafts.message("new:1").getSnapshot().text).toBe("");
+});
+
+test("message moves preserve both drafts and their subscribers on collision", () => {
+  const drafts = new Drafts();
+  const source = drafts.message("new:1", "Unsent source");
+  const target = drafts.message("conversation:2", "Unsent target");
+  const notify = vi.fn();
+  target.subscribe(notify);
+  expect(drafts.move("new:1", "new:1")).toBe("moved");
+  expect(drafts.message("new:1")).toBe(source);
+  expect(drafts.move("new:1", "conversation:2")).toBe("conflict");
+  expect(drafts.message("new:1")).toBe(source);
+  expect(drafts.message("conversation:2")).toBe(target);
+  expect(target.getSnapshot().text).toBe("Unsent target");
+  expect(source.getSnapshot().text).toBe("Unsent source");
+  target.setText("Still subscribed");
+  expect(notify).toHaveBeenCalledOnce();
+  drafts.dispose();
 });
 
 test("editing away and back to the submitted text still counts as a new draft", async () => {
-  const draft = new InputDraft("same");
+  const draft = new MessageDraft("same");
   let finish!: () => void;
   const sending = draft.send(
     () =>
@@ -166,7 +184,7 @@ test("comment drafts survive remounts, preserve initial edit text under StrictMo
 });
 
 test("concurrent attachments share the byte and model limits", async () => {
-  const draft = new InputDraft();
+  const draft = new MessageDraft();
   const first = new File(["a"], "first.png", { type: "image/png" });
   const second = new File(["b"], "second.png", { type: "image/png" });
   Object.defineProperty(first, "size", { value: 6 * 1024 * 1024 });
@@ -174,7 +192,7 @@ test("concurrent attachments share the byte and model limits", async () => {
   await Promise.all([draft.attach([first]), draft.attach([second])]);
   expect(draft.getSnapshot().images.map((image) => image.name)).toEqual(["first.png"]);
   expect(draft.getSnapshot().error).toContain("MB together");
-  draft.dispose();
+  draft.reset();
   await Promise.all([
     draft.attach([new File(["a"], "a.png", { type: "image/png" })], 1),
     draft.attach([new File(["b"], "b.png", { type: "image/png" })], 1),
@@ -185,7 +203,7 @@ test("concurrent attachments share the byte and model limits", async () => {
 });
 
 test("disposing a draft revokes images whose asynchronous reads complete later", async () => {
-  const draft = new InputDraft();
+  const draft = new MessageDraft();
   const reading = draft.attach([new File(["a"], "a.png", { type: "image/png" })]);
   await Promise.resolve();
   draft.dispose();
@@ -193,6 +211,20 @@ test("disposing a draft revokes images whose asynchronous reads complete later",
   expect(draft.getSnapshot().images).toHaveLength(0);
   expect(URL.createObjectURL).toHaveBeenCalledOnce();
   expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:draft");
+});
+
+test("a disposed message cannot attach more images or notify subscribers", async () => {
+  const draft = new MessageDraft();
+  const notify = vi.fn();
+  draft.subscribe(notify);
+  draft.dispose();
+  notify.mockClear();
+  await draft.attach([new File(["a"], "a.png", { type: "image/png" })]);
+  draft.setText("Not live");
+  expect(draft.getSnapshot().images).toEqual([]);
+  expect(draft.getSnapshot().text).toBe("");
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+  expect(notify).not.toHaveBeenCalled();
 });
 
 test("Escape cancels only the comment editor", () => {
