@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useCommentDraftStore } from "@/app/drafts.tsx";
 import { anchorAt, indexLines } from "./comment-anchor.ts";
 import { type AnchoredDraft, type CommentSide, type DraftLines, locateDraft } from "./comment-drafts.ts";
@@ -39,14 +39,17 @@ export function useCommentDrafts(workspaceId: number, path: string, kind: "file"
     return result;
   }, [placed]);
   const detached = useMemo(() => placed.filter((entry) => entry.line === undefined), [placed]);
-  const start = (side: CommentSide, line: number): void => {
-    if (snapshot[side]?.get(line) === undefined || placed.some((entry) => entry.side === side && entry.line === line))
-      return;
-    store.create(
-      workspaceId,
-      anchorAt({ path, side, line }, (number) => snapshot[side]?.get(number)),
-      { kind, snapshot },
-    );
-  };
+  const start = useCallback(
+    (side: CommentSide, line: number): void => {
+      if (snapshot[side]?.get(line) === undefined || placed.some((entry) => entry.side === side && entry.line === line))
+        return;
+      store.create(
+        workspaceId,
+        anchorAt({ path, side, line }, (number) => snapshot[side]?.get(number)),
+        { kind, snapshot },
+      );
+    },
+    [snapshot, placed, store, workspaceId, path, kind],
+  );
   return { store, placed, detached, byLine, start };
 }

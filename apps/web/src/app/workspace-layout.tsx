@@ -31,9 +31,9 @@ export function WithFiles({
     workspaceId !== null &&
     (availableWorkspaceIds === undefined || availableWorkspaceIds.includes(workspaceId));
   const visible = shown && frame.visible && (overlay || frame.panelWidth > 0);
-  const [retained, setRetained] = useState<readonly number[]>([]);
-  const projects = retainedProjects(retained, workspaceId, visible, availableWorkspaceIds);
-  if (projects !== retained) setRetained(projects);
+  const retained = useRef<readonly number[]>([]);
+  retained.current = retainedProjects(retained.current, workspaceId, visible, availableWorkspaceIds);
+  const projects = retained.current;
   const layout = useDefaultLayout({
     id: "tandem.layout",
     panelIds: ["conversation", "files"],

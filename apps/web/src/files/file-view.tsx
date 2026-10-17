@@ -151,8 +151,7 @@ function FileText({
   const { path } = opened;
   const body = text.endsWith("\n") ? text.slice(0, -1) : text;
   const lines = useMemo(() => body.split("\n"), [body]);
-  const [virtual, setVirtual] = useState(lines.length > MAX_HIGHLIGHTED_LINES);
-  if (!virtual && lines.length > MAX_HIGHLIGHTED_LINES) setVirtual(true);
+  const virtual = lines.length > MAX_HIGHLIGHTED_LINES;
   const language =
     lines.length <= MAX_HIGHLIGHTED_LINES ? languageOfFile(path.slice(path.lastIndexOf("/") + 1)) : undefined;
   const tokens = useHighlighted(body, language, false);
@@ -193,7 +192,7 @@ function FileText({
     scroller.current?.querySelector(target)?.scrollIntoView({ block: "center" });
   }, [opened, line, isAbove]);
 
-  if (virtual || lines.length > MAX_HIGHLIGHTED_LINES) {
+  if (virtual) {
     return (
       <VirtualFile
         text={text}

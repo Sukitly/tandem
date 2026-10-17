@@ -83,11 +83,14 @@ export function useTextDraft(key?: string, initial = ""): TextDraft {
   return draft;
 }
 
+const DUMMY_DISPOSABLE = { dispose() {} };
+const FALLBACK_DRAFTS = new CommentDrafts();
+
 export function useCommentDraftStore(): CommentDrafts {
   const drafts = useDrafts();
-  const [local] = useState(() => new CommentDrafts());
-  useDispose(local);
-  return drafts?.comments ?? local;
+  const [local] = useState(() => (drafts === null ? new CommentDrafts() : null));
+  useDispose(local ?? DUMMY_DISPOSABLE, local !== null);
+  return drafts?.comments ?? local ?? FALLBACK_DRAFTS;
 }
 
 /** Defer disposal one microtask so StrictMode's cleanup/setup replay does not erase live input. */

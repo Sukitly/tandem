@@ -1,6 +1,6 @@
-import { CodeView, type CodeViewFileItem, type CodeViewHandle } from "@pierre/diffs/react";
+import { CodeView, type CodeViewFileItem, type CodeViewHandle, type CodeViewProps } from "@pierre/diffs/react";
 import type { CommentThread } from "@tandem/contracts";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { DIFF_COMMENT_CSS } from "@/changes/diff-plain-annotations.ts";
 import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
 import type { PlacedThread } from "@/comments/comment-anchor.ts";
@@ -96,6 +96,26 @@ export function VirtualFile({
     shown.current = opened;
   }, [opened, path, line]);
 
+  const onLineNumberClick = useCallback(
+    ({ lineNumber }: { lineNumber: number }): void => {
+      setInput(String(lineNumber));
+      drafts.start("additions", lineNumber);
+    },
+    [drafts],
+  );
+
+  const options: CodeViewProps<CommentThread, undefined>["options"] = useMemo(
+    () => ({
+      theme: { dark: "github-dark", light: "github-light" },
+      themeType: choice,
+      disableFileHeader: true,
+      overflow: wrap ? "wrap" : "scroll",
+      unsafeCSS: DIFF_COMMENT_CSS,
+      onLineNumberClick,
+    }),
+    [choice, wrap, onLineNumberClick],
+  );
+
   return (
     <div ref={box} className="flex h-full min-h-0 flex-col" data-virtual-file>
       <form
@@ -173,17 +193,7 @@ export function VirtualFile({
         ref={view}
         className="min-h-0 flex-1 overflow-auto text-xs"
         items={items}
-        options={{
-          theme: { dark: "github-dark", light: "github-light" },
-          themeType: choice,
-          disableFileHeader: true,
-          overflow: wrap ? "wrap" : "scroll",
-          unsafeCSS: DIFF_COMMENT_CSS,
-          onLineNumberClick: ({ lineNumber }) => {
-            setInput(String(lineNumber));
-            drafts.start("additions", lineNumber);
-          },
-        }}
+        options={options}
         renderAnnotation={(annotation) => (
           <CommentThreadBox thread={annotation.metadata} comments={comments} view={box} />
         )}

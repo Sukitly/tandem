@@ -9,7 +9,7 @@ import {
   SquareTerminalIcon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { panelTabOf, useWorkbench } from "@/app/workbench.tsx";
 import { ChangesView } from "@/changes/changes-view.tsx";
@@ -44,9 +44,9 @@ export function ProjectPanel({
   const files = workbench.projectFiles(workspaceId);
   const comments = workbench.comments(workspaceId);
   // Retained projects create expensive tabs only after the user visits them.
-  const [visited, setVisited] = useState(() => new Set([panelTab]));
-  if (!visited.has(panelTab)) setVisited(new Set(visited).add(panelTab));
-  const changes = useProjectChanges(workspaceId, active && visited.has("changes"));
+  const visited = useRef(new Set<string>([panelTab]));
+  visited.current.add(panelTab);
+  const changes = useProjectChanges(workspaceId, active && visited.current.has("changes"));
   const changesFailure = useProjectChangesFailure(workspaceId);
   const failure = useProjectFiles(files, (current) => current.failure);
   const opened = useProjectFiles(files, (current) => current.opened !== null);
@@ -144,7 +144,7 @@ export function ProjectPanel({
         </div>
       </header>
       <TabsContent value="files" keepMounted className="flex min-h-0 flex-col">
-        {visited.has("files") && (
+        {visited.current.has("files") && (
           <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
             <ResizablePanel id="tree" minSize={80} className="overflow-auto p-2">
               <FileTree files={files} showHidden={showHiddenFiles} />
@@ -161,7 +161,7 @@ export function ProjectPanel({
         )}
       </TabsContent>
       <TabsContent value="changes" keepMounted className="flex min-h-0 flex-col">
-        {visited.has("changes") && (
+        {visited.current.has("changes") && (
           <ChangesView
             active={active && panelTab === "changes"}
             changes={changes}
@@ -173,13 +173,13 @@ export function ProjectPanel({
       </TabsContent>
       {/* Kept mounted, so the terminals keep their screens and connections while another tab shows. */}
       <TabsContent value="terminal" keepMounted className="flex min-h-0 flex-col">
-        {visited.has("terminal") && (
+        {visited.current.has("terminal") && (
           <TerminalsView workspaceId={workspaceId} active={active && panelTab === "terminal"} />
         )}
       </TabsContent>
       {/* Kept mounted, so the preview iframe keeps its page state while another tab shows. */}
       <TabsContent value="preview" keepMounted className="flex min-h-0 flex-1 flex-col">
-        {visited.has("preview") && <PreviewView active={active && panelTab === "preview"} />}
+        {visited.current.has("preview") && <PreviewView active={active && panelTab === "preview"} />}
       </TabsContent>
     </Tabs>
   );
