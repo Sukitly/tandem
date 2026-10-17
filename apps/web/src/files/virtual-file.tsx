@@ -6,7 +6,7 @@ import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
 import type { PlacedThread } from "@/comments/comment-anchor.ts";
 import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
-import type { useCommentDrafts } from "@/comments/use-comment-drafts.ts";
+import type { PlacedDraft, useCommentDrafts } from "@/comments/use-comment-drafts.ts";
 import { CodeCopyButton } from "@/components/copy-text.tsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 import { useRenderVersion } from "@/hooks/use-render-version.ts";
 import { useTheme } from "@/theme.tsx";
 import type { OpenedFile } from "./project-files.ts";
+
+type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; draft: PlacedDraft };
 
 /** Long files use the existing virtual renderer; the editor stays mounted even when its line scrolls away. */
 export function VirtualFile({
@@ -40,7 +42,7 @@ export function VirtualFile({
   const { path } = opened;
   const { choice } = useTheme();
   const box = useRef<HTMLDivElement>(null);
-  const view = useRef<CodeViewHandle<CommentThread, undefined>>(null);
+  const view = useRef<CodeViewHandle<Annotation, undefined>>(null);
   const shown = useRef<OpenedFile | null>(null);
   const [input, setInput] = useState("1");
   const inputId = useId();
@@ -50,20 +52,25 @@ export function VirtualFile({
   const [searchStatus, setSearchStatus] = useState<string | null>(null);
   const target = Number(input);
   const valid = Number.isSafeInteger(target) && target >= 1 && target <= lines.length;
-  const version = useRenderVersion([text, placed]);
-  const items = useMemo<CodeViewFileItem<CommentThread>[]>(
+  const version = useRenderVersion([text, placed, drafts.placed]);
+  const items = useMemo<CodeViewFileItem<Annotation>[]>(
     () => [
       {
         id: path,
         type: "file",
         version,
         file: { name: path, contents: text, lang: "text" },
-        annotations: placed.flatMap(({ thread, line }) =>
-          line === undefined ? [] : [{ lineNumber: line, metadata: thread }],
-        ),
+        annotations: [
+          ...placed.flatMap(({ thread, line }) =>
+            line === undefined ? [] : [{ lineNumber: line, metadata: { kind: "thread" as const, thread } }],
+          ),
+          ...drafts.placed.flatMap((draft) =>
+            draft.line === undefined ? [] : [{ lineNumber: draft.line, metadata: { kind: "draft" as const, draft } }],
+          ),
+        ],
       },
     ],
-    [path, text, placed, version],
+    [path, text, placed, drafts.placed, version],
   );
 
   const go = (number: number): void => {
@@ -104,7 +111,7 @@ export function VirtualFile({
     [drafts],
   );
 
-  const options: CodeViewProps<CommentThread, undefined>["options"] = useMemo(
+  const options: CodeViewProps<Annotation, undefined>["options"] = useMemo(
     () => ({
       theme: { dark: "github-dark", light: "github-light" },
       themeType: choice,
@@ -139,18 +146,6 @@ export function VirtualFile({
         <Button type="submit" size="sm" variant="outline" disabled={!valid}>
           Go to line
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!valid}
-          onClick={() => {
-            go(target);
-            drafts.start("additions", target);
-          }}
-        >
-          Add comment
-        </Button>
         <CodeCopyButton value={text} aria-label="Copy entire file" />
         <Input
           type="search"
@@ -180,6 +175,19 @@ export function VirtualFile({
           Large file: only nearby lines are rendered. Search here, jump to a line, or copy the entire file.
         </p>
       </form>
+      {drafts.detached.length > 0 && (
+        <div className="max-h-1/2 shrink-0 overflow-auto border-b">
+          {drafts.detached.map((draft) => (
+            <AnchoredCommentEditor
+              key={draft.record.id}
+              draft={draft}
+              store={drafts.store}
+              comments={comments}
+              view={box}
+            />
+          ))}
+        </div>
+      )}
       {above.length > 0 && (
         <div className="max-h-1/2 shrink-0 overflow-auto border-b">
           {above.map(({ thread, why }) => (
@@ -194,23 +202,23 @@ export function VirtualFile({
         className="min-h-0 flex-1 overflow-auto text-xs"
         items={items}
         options={options}
-        renderAnnotation={(annotation) => (
-          <CommentThreadBox thread={annotation.metadata} comments={comments} view={box} />
-        )}
+        renderAnnotation={(annotation) => {
+          const written = annotation.metadata;
+          if (written === undefined) return null;
+          if (written.kind === "draft") {
+            return (
+              <AnchoredCommentEditor
+                key={written.draft.record.id}
+                draft={written.draft}
+                store={drafts.store}
+                comments={comments}
+                view={box}
+              />
+            );
+          }
+          return <CommentThreadBox thread={written.thread} comments={comments} view={box} />;
+        }}
       />
-      {drafts.placed.length > 0 && (
-        <div className="max-h-[40%] shrink-0 overflow-auto border-t">
-          {drafts.placed.map((draft) => (
-            <AnchoredCommentEditor
-              key={draft.record.id}
-              draft={draft}
-              store={drafts.store}
-              comments={comments}
-              view={box}
-            />
-          ))}
-        </div>
-      )}
     </div>
   );
 }

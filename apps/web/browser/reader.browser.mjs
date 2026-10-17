@@ -119,7 +119,10 @@ test("long files render a bounded window, reveal distant lines, and retain comme
   await page.locator('[data-line="15000"]').filter({ hasText: "row 15000: two" }).waitFor();
   const input = page.getByRole("spinbutton", { name: "Line", exact: true });
   await input.fill("15000");
-  await page.getByRole("button", { name: "Add comment", exact: true }).click();
+  await page.getByRole("button", { name: "Go to line", exact: true }).click();
+  const line = page.locator('[data-column-number="15000"]').first();
+  await line.waitFor();
+  await line.click();
   await page.getByRole("textbox", { name: "Comment", exact: true }).fill("Keep while scrolling");
   await input.fill("1");
   await page.getByRole("button", { name: "Go to line" }).click();
