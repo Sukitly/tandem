@@ -8,7 +8,6 @@ import {
   type DiffLineAnnotation,
 } from "@pierre/diffs/react";
 import type { CommentThread, FilePatch } from "@tandem/contracts";
-import { PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
@@ -23,7 +22,6 @@ import { useTheme } from "@/theme.tsx";
 import type { ChangeTarget } from "./change-target.ts";
 import { diffLineCount, diffLines } from "./diff-lines.ts";
 import { DIFF_COMMENT_CSS } from "./diff-plain-annotations.ts";
-import { controlPlacement, useHoveredLine } from "./hovered-line.ts";
 
 type Side = "additions" | "deletions";
 
@@ -62,7 +60,6 @@ export function ChangeDiff({
   const { choice } = useTheme();
   const box = useRef<HTMLDivElement>(null);
   const view = useRef<CodeViewHandle<Annotation, undefined>>(null);
-  const { hovered, onLineEnter, onLineLeave } = useHoveredLine(box);
   const { openFile } = useWorkbench();
   const text = patch.kind === "patch" ? patch.patch : "";
   const threads = useCommentThreads(comments);
@@ -180,11 +177,6 @@ export function ChangeDiff({
       diffStyle: style,
       disableFileHeader: true,
       overflow: wrap ? "wrap" : "scroll",
-      // Clicking a line's number writes a comment on it too. The library's own hover button is left off: its button
-      // and the row it marks belong to the item, and a comment arriving re-renders the item, which strands both on
-      // the row they were on.
-      onLineEnter,
-      onLineLeave,
       onLineClick: (props) => {
         if (!("annotationSide" in props) || (props.event.pointerType !== "touch" && props.event.pointerType !== "pen"))
           return;
@@ -197,7 +189,7 @@ export function ChangeDiff({
         startDraft(props.annotationSide, props.lineNumber);
       },
     }),
-    [choice, style, wrap, onLineEnter, onLineLeave, startDraft],
+    [choice, style, wrap, startDraft],
   );
 
   if (patch.kind !== "patch") {
@@ -221,11 +213,6 @@ export function ChangeDiff({
         <p className="p-3 text-sm text-muted-foreground">No line changes.</p>
       </div>
     );
-  // A line that is being commented on, or already carries a comment, has nothing to add: no button is shown there.
-  const taken =
-    hovered !== null &&
-    (drafts.placed.some((draft) => draft.line === hovered.line && draft.side === hovered.side) ||
-      placed.some(({ thread, line }) => line === hovered.line && (thread.anchor.side ?? "additions") === hovered.side));
   return (
     <div className="flex h-full min-h-0 flex-col">
       {orphaned}
@@ -261,20 +248,6 @@ export function ChangeDiff({
         </div>
       )}
       <div ref={box} className="relative min-h-0 flex-1">
-        {/* The line the pointer is on, where a code host shows it: beside the number, half over the code. */}
-        {hovered !== null && !taken && (
-          <Button
-            type="button"
-            variant="default"
-            size="icon-xs"
-            aria-label={`Comment on line ${hovered.line}`}
-            className="absolute z-10"
-            style={controlPlacement(hovered)}
-            onClick={() => startDraft(hovered.side, hovered.line)}
-          >
-            <PlusIcon />
-          </Button>
-        )}
         <CodeView
           onScroll={(top) => {
             if (restored.current) reading?.positions.set(path, top);
