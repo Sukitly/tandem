@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { navigate, subscribeNavigation, useLocationHash } from "../src/app/navigation.ts";
+import { navigate, parseRoute, routeHash, subscribeNavigation, useLocationHash } from "../src/app/navigation.ts";
 
 afterEach(cleanup);
 function Location() {
@@ -28,6 +28,19 @@ test("pushState, browser Back/Forward, and native hash links share navigation no
   listener.mockClear();
   act(() => navigate("/#43"));
   expect(listener).not.toHaveBeenCalled();
+});
+
+test("routes have explicit page semantics, including unknown destinations", () => {
+  for (const route of [
+    { kind: "none" },
+    { kind: "publicAccess" },
+    { kind: "conversation", id: 42 },
+    { kind: "unknown", hash: "#future-page" },
+  ] as const)
+    expect(parseRoute(routeHash(route))).toEqual(route);
+  expect(parseRoute("#")).toEqual({ kind: "none" });
+  expect(parseRoute("#-1")).toEqual({ kind: "unknown", hash: "#-1" });
+  expect(parseRoute("#1.5")).toEqual({ kind: "unknown", hash: "#1.5" });
 });
 
 test("application navigation cannot push a foreign origin", () => {

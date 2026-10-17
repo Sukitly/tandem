@@ -2,7 +2,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { tunnelTokenIdentity } from "@tandem/contracts";
 import { ArrowLeftIcon } from "lucide-react";
 import { createContext, type MouseEvent, type ReactNode, useContext, useEffect, useRef, useState } from "react";
-import { navigate as navigateTo, useLocationHash } from "@/app/navigation.ts";
+import { navigate as navigateTo, routeHash, useRoute } from "@/app/navigation.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -24,7 +24,7 @@ import { PublicAccessFlow } from "./setup-guide.tsx";
 import { OpenLink } from "./step.tsx";
 
 const PublicAccessPageContext = createContext<{ href: string; onClick(event: MouseEvent<HTMLAnchorElement>): void }>({
-  href: "/#public-access",
+  href: `/${routeHash({ kind: "publicAccess" })}`,
   onClick: () => {},
 });
 export function usePublicAccessPage() {
@@ -33,11 +33,12 @@ export function usePublicAccessPage() {
 
 export function PublicAccessPageProvider({ children }: { children: ReactNode }) {
   const workspaceUrl = useRef("/");
-  const hash = useLocationHash();
-  const open = hash === "#public-access";
+  const route = useRoute();
+  const open = route.kind === "publicAccess";
   useEffect(() => {
-    if (!open) workspaceUrl.current = window.location.pathname + window.location.search + hash;
-  }, [open, hash]);
+    if (route.kind !== "publicAccess")
+      workspaceUrl.current = window.location.pathname + window.location.search + window.location.hash;
+  }, [route]);
   useEffect(() => {
     if (!open) return;
     const previous = document.title;
@@ -62,7 +63,9 @@ export function PublicAccessPageProvider({ children }: { children: ReactNode }) 
     navigateTo(event.currentTarget.href);
   };
   return (
-    <PublicAccessPageContext.Provider value={{ href: "/#public-access", onClick: (event) => navigate(event, true) }}>
+    <PublicAccessPageContext.Provider
+      value={{ href: `/${routeHash({ kind: "publicAccess" })}`, onClick: (event) => navigate(event, true) }}
+    >
       <div hidden={open}>{children}</div>
       {open && <PublicAccessPage backHref={workspaceUrl.current} onBack={(event) => navigate(event, false)} />}
     </PublicAccessPageContext.Provider>

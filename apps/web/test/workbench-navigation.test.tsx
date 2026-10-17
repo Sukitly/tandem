@@ -72,6 +72,18 @@ test("public access and browser traversal never desynchronize the selected conve
   await waitFor(() => selection(42));
 });
 
+test("unknown pages do not clear the workbench selection or a new-conversation draft", () => {
+  setup();
+  act(() => navigate("/#future-page"));
+  selection(41);
+  fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+  selection(null, 2);
+  act(() => navigate("/#another-page"));
+  selection(null, 2);
+  act(() => navigate("/"));
+  selection(null, 2);
+});
+
 test("returning from public access preserves the active new-conversation workspace", async () => {
   setup();
   fireEvent.click(screen.getByRole("button", { name: "New conversation" }));

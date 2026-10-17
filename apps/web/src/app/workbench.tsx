@@ -9,7 +9,7 @@ import { preferences } from "@/lib/preferences.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
-import { navigate, subscribeNavigation } from "./navigation.ts";
+import { navigate, parseRoute, routeHash, subscribeNavigation } from "./navigation.ts";
 
 const FILES_SHOWN_KEY = "tandem.filesShown";
 const PANEL_TAB_KEY = "tandem.panelTab";
@@ -125,14 +125,14 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const select = useCallback((id: number | null): void => {
     setSelected(id);
     setDraft(null);
-    navigate(id === null ? window.location.pathname + window.location.search : `#${id}`);
+    navigate(id === null ? window.location.pathname + window.location.search : routeHash({ kind: "conversation", id }));
   }, []);
 
   useEffect(() => {
     const onChange = (): void => {
-      // Public access hides the workbench; it must not clear its conversation or new-conversation draft.
-      if (window.location.hash === "#public-access") return;
-      const id = selectedInHash();
+      const route = parseRoute(window.location.hash);
+      if (route.kind !== "conversation" && route.kind !== "none") return;
+      const id = route.kind === "conversation" ? route.id : null;
       setSelected(id);
       // Following a link to a conversation leaves the new one. Clearing the hash for a new one must not.
       if (id !== null) setDraft(null);
@@ -260,12 +260,8 @@ export function panelTabOf(value: unknown): PanelTab {
 }
 
 function selectedInHash(): number | null {
-  return parseId(window.location.hash.slice(1)) ?? null;
-}
-
-function parseId(text: string): number | undefined {
-  const id = Number(text);
-  return text !== "" && Number.isSafeInteger(id) && id >= 0 ? id : undefined;
+  const route = parseRoute(window.location.hash);
+  return route.kind === "conversation" ? route.id : null;
 }
 
 function messageOf(error: unknown): string {

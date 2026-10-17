@@ -1,4 +1,37 @@
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+
+export type Route =
+  | { kind: "conversation"; id: number }
+  | { kind: "publicAccess" }
+  | { kind: "none" }
+  | { kind: "unknown"; hash: string };
+
+/** Unknown pages must not clear the workbench selection or its new-conversation draft. */
+export function parseRoute(hash: string): Route {
+  if (hash === "" || hash === "#") return { kind: "none" };
+  if (hash === "#public-access") return { kind: "publicAccess" };
+  const text = hash.startsWith("#") ? hash.slice(1) : "";
+  const id = Number(text);
+  return text !== "" && Number.isSafeInteger(id) && id >= 0 ? { kind: "conversation", id } : { kind: "unknown", hash };
+}
+
+export function routeHash(route: Route): string {
+  switch (route.kind) {
+    case "conversation":
+      return `#${route.id}`;
+    case "publicAccess":
+      return "#public-access";
+    case "none":
+      return "";
+    case "unknown":
+      return route.hash;
+  }
+}
+
+export function useRoute(): Route {
+  const hash = useLocationHash();
+  return useMemo(() => parseRoute(hash), [hash]);
+}
 
 const NAVIGATED = "tandem:navigated";
 
