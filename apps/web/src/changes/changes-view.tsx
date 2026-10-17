@@ -18,7 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { preferences } from "@/lib/preferences.ts";
 import { cn } from "@/lib/utils";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { ChangeDiff } from "./change-diff.tsx";
+import { ChangeDiff, type DiffReadingState } from "./change-diff.tsx";
 import {
   ADDITIONS_COLOR,
   type CountPart,
@@ -66,6 +66,7 @@ export function ChangesView({
   const state = useReplicatedState(changes?.state);
   const [selected, setSelected] = useState<string | null>(() => state?.files[0]?.path ?? null);
   const initialized = useRef(selected !== null);
+  const [reading] = useState<DiffReadingState>(() => ({ positions: new Map(), revealed: new WeakSet() }));
   /** The place the diff is scrolling to, kept while this panel is shown. */
   const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
   const [inlineStyled, setInlineStyled] = useState<"split" | "unified">(() => storedDiffStyle("inline"));
@@ -93,9 +94,13 @@ export function ChangesView({
     forgetChangeTarget();
   }, [reveal, state, openFile, forgetChangeTarget]);
 
-  // The shown file follows the list: a file that leaves it takes the patch with it.
+  // Only an authoritative file list can remove a selection. A released or reconnecting service cannot.
   useEffect(() => {
-    if (!initialized.current && state?.files && state.files.length > 0) {
+    if (state?.status !== "ready") return;
+    for (const path of reading.positions.keys()) {
+      if (!state.files.some((file) => file.path === path)) reading.positions.delete(path);
+    }
+    if (!initialized.current && state.files.length > 0) {
       initialized.current = true;
       setSelected(state.files[0]?.path ?? null);
       return;
@@ -103,7 +108,7 @@ export function ChangesView({
     setSelected((current) =>
       current !== null && state?.files.some((file) => file.path === current) === true ? current : null,
     );
-  }, [state]);
+  }, [state, reading]);
 
   // Read the patch again for every published change of the file, and for every other selection.
   useEffect(() => {
@@ -200,6 +205,7 @@ export function ChangesView({
             <ResizableHandle />
             <ResizablePanel id="diff" defaultSize="70" minSize={120}>
               <ChangeView
+                reading={reading}
                 active={active}
                 file={selectedFile}
                 reveal={revealed ?? undefined}
@@ -255,6 +261,7 @@ function titleOf(status: "ready" | "notRepository" | "error"): string {
 
 /** The selected file's patch, with the controls that change how it is shown. */
 function ChangeView({
+  reading,
   active,
   file,
   patch,
@@ -271,6 +278,7 @@ function ChangeView({
   reveal,
   onClose,
 }: {
+  reading: DiffReadingState;
   active: boolean;
   file: ChangedFile;
   patch: FilePatch | null;
@@ -405,6 +413,7 @@ function ChangeView({
           </Empty>
         ) : (
           <ChangeDiff
+            reading={reading}
             key={file.path}
             path={file.path}
             patch={patch}

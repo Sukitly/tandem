@@ -1,5 +1,5 @@
 import type { Comments, Files } from "@tandem/contracts";
-import { createContext, createElement, type ReactNode, useContext, useState } from "react";
+import { createContext, createElement, type ReactNode, useContext, useEffect, useState } from "react";
 import { ProjectComments } from "../src/comments/project-comments.ts";
 import { ProjectFiles } from "../src/files/project-files.ts";
 
@@ -52,7 +52,17 @@ const connected = {
 };
 export const useConnected = () => connected;
 export const useOptionalConnected = () => connected;
-export const useProjectChanges = () => undefined;
+export function useProjectChanges(workspaceId: number, enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    const key = `changesHold${workspaceId}`;
+    document.body.dataset[key] = String(Number(document.body.dataset[key] ?? 0) + 1);
+    return () => {
+      document.body.dataset[key] = String(Number(document.body.dataset[key]) - 1);
+    };
+  }, [workspaceId, enabled]);
+  return undefined;
+}
 export const useProjectChangesFailure = () => null;
 export const panelTabOf = (value: string) => value;
 function useWorkbenchValue() {

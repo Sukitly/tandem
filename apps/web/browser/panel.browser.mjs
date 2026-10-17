@@ -74,6 +74,26 @@ test("desktop Escape is not dismissal and nested overlay dialogs close first", a
   assert.deepEqual(await page.evaluate(() => window.browserErrors), []);
 });
 
+test("changes holds follow project visibility without disposing retained panels", async (t) => {
+  const page = await fixture(t, false, true);
+  await page.getByRole("tab", { name: "Files", exact: true }).waitFor();
+  await page.getByRole("tab", { name: "Changes", exact: true }).click();
+  await page.waitForFunction(() => document.body.dataset.changesHold1 === "1");
+  await page.getByRole("button", { name: "Project two", exact: true }).click();
+  await page.waitForFunction(
+    () => document.body.dataset.changesHold1 === "0" && document.body.dataset.changesHold2 === "1",
+  );
+  await page.getByRole("button", { name: "Project one", exact: true }).click();
+  await page.waitForFunction(
+    () => document.body.dataset.changesHold1 === "1" && document.body.dataset.changesHold2 === "0",
+  );
+  await page.getByRole("button", { name: "Toggle panel" }).click();
+  await page.waitForFunction(() => document.body.dataset.changesHold1 === "0");
+  await page.getByRole("button", { name: "Toggle panel" }).click();
+  await page.waitForFunction(() => document.body.dataset.changesHold1 === "1");
+  assert.deepEqual(await page.evaluate(() => window.browserErrors), []);
+});
+
 test("overlay swipe and backdrop dismissal leave the persistent host reusable", async (t) => {
   const page = await fixture(t, true, true);
   const dialog = page.getByRole("dialog", { name: "Project panel", exact: true });

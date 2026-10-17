@@ -2,7 +2,7 @@ import type { Files } from "@tandem/contracts";
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DraftsProvider } from "../src/app/drafts.tsx";
-import { ChangeDiff } from "../src/changes/change-diff.tsx";
+import { ChangeDiff, type DiffReadingState } from "../src/changes/change-diff.tsx";
 import { CommentDraft } from "../src/comments/comment-box.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
 import { ReaderSurface } from "../src/components/reader-surface.tsx";
@@ -58,6 +58,10 @@ function Fixture() {
 }
 function DiffFixture() {
   const [value, setValue] = useState("one");
+  const [shown, setShown] = useState(true);
+  const [reading] = useState<DiffReadingState>(() => ({ positions: new Map(), revealed: new WeakSet() }));
+  const [reveal, setReveal] = useState<{ path: string; line: number }>();
+  const long = location.search.includes("scroll");
   const comments = {
     workspaceId: 1,
     start: async (anchor: { side?: string }, _text: string) => {
@@ -65,19 +69,29 @@ function DiffFixture() {
       return 1;
     },
   } as ProjectComments;
+  const patch = long
+    ? `diff --git a/a.ts b/a.ts\n--- /dev/null\n+++ b/a.ts\n@@ -0,0 +1,1000 @@\n${Array.from({ length: 1000 }, (_, index) => `+row ${index + 1}`).join("\n")}\n`
+    : `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,3 +1,3 @@\n context\n-old\n+${value}\n tail\n`;
   return (
     <div className="flex h-dvh flex-col">
       <Button onClick={() => setValue("two")}>Update patch</Button>
-      <div className="min-h-0 flex-1">
-        <ChangeDiff
-          path="a.ts"
-          style="split"
-          comments={comments}
-          patch={{
-            kind: "patch",
-            patch: `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,3 +1,3 @@\n context\n-old\n+${value}\n tail\n`,
-          }}
-        />
+      {long && (
+        <div className="flex">
+          <Button onClick={() => setShown(!shown)}>Toggle diff</Button>
+          <Button onClick={() => setReveal({ path: "a.ts", line: 500 })}>Reveal diff line</Button>
+        </div>
+      )}
+      <div data-testid="diff-area" className="min-h-0 flex-1">
+        {shown && (
+          <ChangeDiff
+            path="a.ts"
+            style="split"
+            comments={comments}
+            reading={reading}
+            reveal={reveal}
+            patch={{ kind: "patch", patch }}
+          />
+        )}
       </div>
     </div>
   );

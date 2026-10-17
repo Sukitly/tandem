@@ -58,6 +58,12 @@ test("changes are not opened before first use and the hold is released on unmoun
   expect(mock.hold).toHaveBeenCalledWith(1);
   hook.rerender({ enabled: true });
   expect(mock.hold).toHaveBeenCalledOnce();
-  hook.unmount();
+  hook.rerender({ enabled: false });
   expect(mock.release).toHaveBeenCalledOnce();
+  hook.rerender({ enabled: false });
+  expect(mock.release).toHaveBeenCalledOnce();
+  hook.rerender({ enabled: true });
+  expect(mock.hold).toHaveBeenCalledTimes(2);
+  hook.unmount();
+  expect(mock.release).toHaveBeenCalledTimes(2);
 });

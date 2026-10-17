@@ -22,6 +22,12 @@ import { controlPlacement, useHoveredLine } from "./hovered-line.ts";
 
 type Side = "additions" | "deletions";
 
+/** Local reading intent outlives a temporarily released changes service, not its replicated file list. */
+export interface DiffReadingState {
+  positions: Map<string, number>;
+  revealed: WeakSet<ChangeTarget>;
+}
+
 /** What is written on a line of the diff: a thread or an independently identified pending draft. */
 type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; draft: PlacedDraft };
 
@@ -31,6 +37,7 @@ type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; d
  * own header is off: the panel's header names the path already.
  */
 export function ChangeDiff({
+  reading,
   path,
   patch,
   style,
@@ -38,6 +45,7 @@ export function ChangeDiff({
   comments,
   reveal,
 }: {
+  reading?: DiffReadingState;
   path: string;
   patch: FilePatch;
   style: "split" | "unified";
@@ -118,12 +126,22 @@ export function ChangeDiff({
     }));
   }, [path, version, files, placed, drafts.placed]);
 
+  const initialScroll = useRef(reading?.positions.get(path) ?? 0);
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || items.length === 0) return;
+    restored.current = true;
+    if (reveal === undefined || reading?.revealed.has(reveal))
+      view.current?.scrollTo({ type: "position", position: initialScroll.current });
+  }, [items, reading, reveal]);
+
   // Scroll to the place that was asked for, once, as soon as the patch is rendered and can be scrolled.
   const revealed = useRef<ChangeTarget | null>(null);
   useEffect(() => {
     const item = items[0];
     if (reveal === undefined || reveal.path !== path || reveal.line === undefined) return;
-    if (item === undefined || revealed.current === reveal) return;
+    if (item === undefined || revealed.current === reveal || reading?.revealed.has(reveal)) return;
+    reading?.revealed.add(reveal);
     const missing = detached.find(({ thread }) => thread.id === reveal.threadId);
     if (missing !== undefined) {
       box.current?.parentElement
@@ -142,7 +160,7 @@ export function ChangeDiff({
       side: reveal.side ?? "additions",
       align: "center",
     });
-  }, [reveal, items, path, placed, detached]);
+  }, [reveal, items, path, placed, detached, reading]);
 
   /** Write a comment on a line. A patch holds one file. */
   const startDraft = (side: Side, line: number): void => {
@@ -282,6 +300,9 @@ export function ChangeDiff({
           </Button>
         )}
         <CodeView
+          onScroll={(top) => {
+            if (restored.current) reading?.positions.set(path, top);
+          }}
           ref={view}
           className="h-full overflow-auto text-xs"
           items={items}

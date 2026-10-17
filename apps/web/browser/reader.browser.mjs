@@ -71,6 +71,30 @@ test("comment drafts keep identity across readers and never follow an unverified
   await editor.waitFor({ state: "hidden" });
 });
 
+test("a re-created diff restores reading position without replaying an old reveal", async (t) => {
+  const { page, url } = await fixture(t, false);
+  await page.goto(`${url}?diff&scroll`);
+  const scroll = page.locator('[data-testid="diff-area"] .h-full.overflow-auto');
+  await scroll.waitFor();
+  await page.getByRole("button", { name: "Reveal diff line", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="diff-area"] .h-full.overflow-auto')?.scrollTop > 3000,
+  );
+  await scroll.evaluate((element) => {
+    element.scrollTop = 2000;
+  });
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="diff-area"] .h-full.overflow-auto')?.scrollTop === 2000,
+  );
+  await page.getByRole("button", { name: "Toggle diff", exact: true }).click();
+  await scroll.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "Toggle diff", exact: true }).click();
+  await scroll.waitFor();
+  await page.waitForFunction(
+    () => Math.abs(document.querySelector('[data-testid="diff-area"] .h-full.overflow-auto')?.scrollTop - 2000) < 2,
+  );
+});
+
 test("reader focus targets survive changes to toggle labels", async (t) => {
   const { page, url } = await fixture(t);
   await page.goto(`${url}?renamed`);
