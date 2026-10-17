@@ -1,6 +1,6 @@
 # Browser regressions
 
-These tests use a real Chromium browser via Playwright and Node's test runner, separately from the Vitest unit suite.
+These tests use a real Chromium browser via Playwright and Node's test runner, separately from the Vitest unit suite. The CI Browser Regressions job installs Chromium with its system dependencies and runs this suite on pull requests and pushes to main.
 
 ```sh
 cd apps/web
@@ -12,7 +12,7 @@ The preview isolation test starts disposable HTTP servers on port `0`, proxies t
 
 The reader regressions run the actual shared fullscreen container inside a mobile drawer, checking viewport bounds, reader identity, scroll restoration, draft preservation, focus containment/return, and nested Escape handling. Additional tests use the real `ChangeDiff` and Pierre renderer (only service boundaries are stubbed) to check split-column hover, equal-length patch updates, touch code/line-number activation, and the explicit line control.
 
-Composer regressions check long-input height budgets, visible transcript space, touch-sized Stop controls, touch follow-up selection and command completion, click-accessible context details, native undo/redo against an ordinary textarea, visible keyboard focus, scrollable dialogs after viewport resizing, and theme/composer operation when accessing `localStorage` throws a `SecurityError`. Fixture servers use separate Vite caches so concurrent suites cannot invalidate each other's dependency bundles.
+Composer regressions check long-input height budgets, visible transcript space, touch-sized Stop controls, touch follow-up selection and command completion, click-accessible context details, native undo/redo against an ordinary textarea, absence of added gray focus rings while preserving ordinary borders and invalid-field feedback (not a complete keyboard-focus accessibility audit), scrollable dialogs after viewport resizing, and theme/composer operation when accessing `localStorage` throws a `SecurityError`. Fixture servers use separate Vite caches so concurrent suites cannot invalidate each other's dependency bundles.
 
 Project-panel regressions exercise the actual toolbar in a 240px container on desktop and touch viewports, and verify that switching preview ports/tabs preserves iframe form state while Reload replaces only the chosen frame. A separate Node integration test loads the real Vite configuration and checks `/preview` HTTP forwarding and WebSocket upgrades against an ephemeral backend.
 
