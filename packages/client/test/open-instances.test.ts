@@ -51,7 +51,7 @@ function setup() {
 }
 
 describe("opening instance failures", () => {
-  it("exposes failures, clears them on retry, and deduplicates retry clicks", async () => {
+  it("exposes failures, clears them on retry, and deduplicates concurrent retries", async () => {
     const f = setup();
     const notify = vi.fn();
     f.instances.subscribe(notify);
@@ -83,6 +83,22 @@ describe("opening instance failures", () => {
     await Promise.resolve();
     expect(f.instances.failure(7)).toBeUndefined();
     expect(f.onError).not.toHaveBeenCalled();
+    f.instances.dispose();
+  });
+
+  it("notifies when the last release clears a failure, but not on duplicate release", async () => {
+    const f = setup();
+    const release = f.instances.hold(7);
+    const other = f.instances.hold(7);
+    const seen: (string | undefined)[] = [];
+    f.instances.subscribe(() => seen.push(f.instances.failure(7)?.message));
+    f.attempts[0]?.reject(new Error("No access"));
+    await Promise.resolve();
+    release();
+    expect(seen).toEqual(["No access"]);
+    other();
+    other();
+    expect(seen).toEqual(["No access", undefined]);
     f.instances.dispose();
   });
 

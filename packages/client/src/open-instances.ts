@@ -60,7 +60,7 @@ export class OpenInstances<TKey, TInstance> {
     return this.#failures.get(key);
   }
 
-  /** Retry a failed, still-held instance; repeated clicks cannot open duplicate attempts. */
+  /** Retry a failed, still-held instance. Idempotent while an attempt is in flight. */
   retry(key: TKey): void {
     if (!this.#disposed && this.#holds.has(key) && this.#failures.has(key) && !this.#instances.has(key))
       this.#open(key);
@@ -82,14 +82,14 @@ export class OpenInstances<TKey, TInstance> {
       }
       this.#holds.delete(key);
       this.#attempts.delete(key);
-      this.#failures.delete(key);
+      if (this.#failures.delete(key)) this.#notify();
       this.#options.close(key, BACKGROUND_CONTEXT).catch(() => {
         // Disconnected: the instance is gone already.
       });
     };
   }
 
-  /** Called when an instance arrives or leaves. */
+  /** Called when an instance or its opening failure changes. */
   subscribe(listener: () => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
