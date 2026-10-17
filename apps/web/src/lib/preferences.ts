@@ -1,6 +1,7 @@
 /** Optional browser preferences. Storage denial or quota exhaustion must never disable the application. */
 const remembered = new Map<string, string | null>();
 const unsaved = new Set<string>();
+/** Storage access never throws: unavailable storage and failed writes fall back to page memory. */
 export const preferences = {
   getItem(key: string): string | null {
     if (unsaved.has(key)) return remembered.get(key) ?? null;

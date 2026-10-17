@@ -68,8 +68,8 @@ export function ChangesView({
   const initialized = useRef(selected !== null);
   /** The place the diff is scrolling to, kept while this panel is shown. */
   const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
-  const [inlineStyled, setInlineStyled] = useState<"split" | "unified">(() => storedDiffStyle(false));
-  const [zoomedStyled, setZoomedStyled] = useState<"split" | "unified">(() => storedDiffStyle(true));
+  const [inlineStyled, setInlineStyled] = useState<"split" | "unified">(() => storedDiffStyle("inline"));
+  const [zoomedStyled, setZoomedStyled] = useState<"split" | "unified">(() => storedDiffStyle("fullscreen"));
   const [inlineWrap, setInlineWrap] = useState<boolean>(() => storedDiffWrap(false));
   const [zoomedWrap, setZoomedWrap] = useState<boolean>(() => storedDiffWrap(true));
   const [loaded, setLoaded] = useState<LoadedPatch | null>(null);
@@ -292,7 +292,7 @@ function ChangeView({
     if (!active) setZoomed(false);
   }, [active]);
   const isMobile = useIsMobile();
-  const [mobileStyle, setMobileStyle] = useState(() => storedDiffStyle(false, true));
+  const [mobileStyle, setMobileStyle] = useState(() => storedDiffStyle("narrow"));
   const styled = isMobile ? mobileStyle : zoomed ? zoomedStyled : inlineStyled;
   const wrap = zoomed ? zoomedWrap : inlineWrap;
   const next = styled === "split" ? "unified" : "split";
@@ -300,9 +300,7 @@ function ChangeView({
 
   const toggleWrap = (): void => {
     const nextWrap = !wrap;
-    if (typeof preferences !== "undefined") {
-      preferences.setItem(zoomed ? DIFF_WRAP_ZOOMED_KEY : DIFF_WRAP_KEY, String(nextWrap));
-    }
+    preferences.setItem(zoomed ? DIFF_WRAP_ZOOMED_KEY : DIFF_WRAP_KEY, String(nextWrap));
     if (zoomed) {
       onZoomedWrap(nextWrap);
     } else {
@@ -313,16 +311,10 @@ function ChangeView({
   const toggleStyled = (): void => {
     if (isMobile) {
       setMobileStyle(next);
-      try {
-        preferences.setItem(DIFF_STYLE_MOBILE_KEY, next);
-      } catch {
-        /* Storage is optional. */
-      }
+      preferences.setItem(DIFF_STYLE_MOBILE_KEY, next);
       return;
     }
-    if (typeof preferences !== "undefined") {
-      preferences.setItem(zoomed ? DIFF_STYLE_ZOOMED_KEY : DIFF_STYLE_KEY, next);
-    }
+    preferences.setItem(zoomed ? DIFF_STYLE_ZOOMED_KEY : DIFF_STYLE_KEY, next);
     if (zoomed) {
       onZoomedStyled(next);
     } else {
@@ -425,16 +417,9 @@ function ChangeView({
   );
 }
 
-export function storedDiffStyle(zoomed: boolean, narrow = false): "split" | "unified" {
-  if (narrow) {
-    try {
-      return preferences.getItem(DIFF_STYLE_MOBILE_KEY) === "split" ? "split" : "unified";
-    } catch {
-      return "unified";
-    }
-  }
-  if (typeof preferences === "undefined") return zoomed ? "split" : "unified";
-  if (zoomed) {
+export function storedDiffStyle(surface: "inline" | "fullscreen" | "narrow"): "split" | "unified" {
+  if (surface === "narrow") return preferences.getItem(DIFF_STYLE_MOBILE_KEY) === "split" ? "split" : "unified";
+  if (surface === "fullscreen") {
     return preferences.getItem(DIFF_STYLE_ZOOMED_KEY) === "unified" ? "unified" : "split";
   }
   const stored = preferences.getItem(DIFF_STYLE_KEY);
@@ -442,7 +427,6 @@ export function storedDiffStyle(zoomed: boolean, narrow = false): "split" | "uni
 }
 
 export function storedDiffWrap(zoomed: boolean): boolean {
-  if (typeof preferences === "undefined") return false;
   if (zoomed) {
     return preferences.getItem(DIFF_WRAP_ZOOMED_KEY) === "true";
   }

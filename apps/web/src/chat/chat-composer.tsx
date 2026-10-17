@@ -136,19 +136,11 @@ export function ChatComposer({
   const sendMode = mobile ? mobileSendMode : "steer";
   const chooseSendMode = (mode: SendMode): void => {
     setSendMode(mode);
-    try {
-      preferences.setItem(SEND_MODE_KEY, mode);
-    } catch {
-      /* Preferences are optional. */
-    }
+    preferences.setItem(SEND_MODE_KEY, mode);
   };
   const chooseKeyboard = (mode: KeyboardMode): void => {
     setKeyboardMode(mode);
-    try {
-      preferences.setItem(KEYBOARD_MODE_KEY, mode);
-    } catch {
-      /* Preferences are optional. */
-    }
+    preferences.setItem(KEYBOARD_MODE_KEY, mode);
   };
   const picker = useRef<HTMLInputElement>(null);
   const [highlight, setHighlight] = useState(0);

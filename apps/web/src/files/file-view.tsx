@@ -36,20 +36,10 @@ export function FileView({
     [content],
   );
   const [zoomed, setZoomed] = useState(false);
-  const [wrap, setWrap] = useState(() => {
-    try {
-      return preferences.getItem("tandem.fileWrap") === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [wrap, setWrap] = useState(() => preferences.getItem("tandem.fileWrap") === "true");
   const toggleWrap = (): void => {
     setWrap(!wrap);
-    try {
-      preferences.setItem("tandem.fileWrap", String(!wrap));
-    } catch {
-      /* Storage is optional. */
-    }
+    preferences.setItem("tandem.fileWrap", String(!wrap));
   };
   useEffect(() => {
     if (!active) setZoomed(false);

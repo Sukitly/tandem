@@ -15,23 +15,15 @@ import { preferences } from "@/lib/preferences.ts";
 export type KeyboardMode = "platform" | "emacs";
 export type SendMode = "steer" | "followUp";
 export const KEYBOARD_MODE_KEY = "tandem.keyboardMode";
-// Retain the existing key for compatibility; only mobile layouts apply this preference.
+// Narrow-layout send preference. Keep values written by earlier revisions of this PR.
 export const SEND_MODE_KEY = "tandem.sendMode";
 
 export function storedSendMode(): SendMode {
-  try {
-    return preferences.getItem(SEND_MODE_KEY) === "followUp" ? "followUp" : "steer";
-  } catch {
-    return "steer";
-  }
+  return preferences.getItem(SEND_MODE_KEY) === "followUp" ? "followUp" : "steer";
 }
 
 export function storedKeyboardMode(): KeyboardMode {
-  try {
-    return preferences.getItem(KEYBOARD_MODE_KEY) === "emacs" ? "emacs" : "platform";
-  } catch {
-    return "platform";
-  }
+  return preferences.getItem(KEYBOARD_MODE_KEY) === "emacs" ? "emacs" : "platform";
 }
 
 export function ComposerOptions({
