@@ -139,9 +139,7 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
                     return (
                       <Terminal
                         key={step.callId}
-                        name={step.name}
                         command={String(step.args.command ?? "")}
-                        input={step.args}
                         output={step.output}
                         status={step.status}
                       />

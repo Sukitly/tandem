@@ -18,7 +18,6 @@ function entry(name: string, args: Record<string, unknown>, output = "") {
 }
 
 const cases = [
-  { name: "bash", args: { command: `${"echo long-command; ".repeat(100)}\nprintf 'done\\n'`, timeout: 120 } },
   { name: "read", args: { path: "src/app.ts", offset: 10, limit: 20 } },
   { name: "edit", args: { path: "src/app.ts", edits: [{ oldText: "old\ntext", newText: "new\ntext" }] } },
   { name: "write", args: { path: "src/new.ts", content: "const message = 'hello';\n".repeat(100) } },
@@ -41,12 +40,23 @@ test.each(cases)("expanding $name shows every input parameter alongside the outp
   expect(container.querySelector("script")).toBeNull();
 });
 
-test.each(["bash", "new_backend_tool"])("%s input is expandable even without any output", async (name) => {
-  render(entry(name, { command: "echo hello", extra: { enabled: true } }));
+test("generic tool input is expandable even without any output", async () => {
+  render(entry("new_backend_tool", { command: "echo hello", extra: { enabled: true } }));
   fireEvent.click(screen.getByRole("button"));
   await waitFor(() => expect(screen.getByText("Input")).toBeDefined());
   expect(screen.queryByText("Output")).toBeNull();
   expect(screen.getByText(/"enabled": true/)).toBeDefined();
+});
+
+test("bash expands directly to output instead of generic tool input and output sections", async () => {
+  const { container } = render(entry("bash", { command: "echo hello", timeout: 120 }, "hello"));
+  expect(screen.getByText("Ran echo hello")).toBeDefined();
+  expect(container.querySelector("[data-slot=badge]")).toBeNull();
+  fireEvent.click(screen.getByRole("button"));
+  await waitFor(() => expect(screen.getByText("hello")).toBeDefined());
+  expect(screen.queryByText("Input")).toBeNull();
+  expect(screen.queryByText("Output")).toBeNull();
+  expect(container.querySelectorAll("[data-slot=code-block-content]")).toHaveLength(1);
 });
 
 test("an empty input is still available as an empty object", async () => {
