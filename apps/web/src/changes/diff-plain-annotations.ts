@@ -12,9 +12,11 @@ export const DIFF_COMMENT_CSS = `
   position: relative;
 }
 @media (hover: hover) {
+  [data-column-number]:hover [data-line-number-content],
   [data-column-number][data-hovered] [data-line-number-content] {
     visibility: hidden;
   }
+  [data-column-number]:hover::after,
   [data-column-number][data-hovered]::after {
     content: "+";
     position: absolute;

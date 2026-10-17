@@ -118,6 +118,7 @@ export function VirtualFile({
       disableFileHeader: true,
       overflow: wrap ? "wrap" : "scroll",
       unsafeCSS: DIFF_COMMENT_CSS,
+      lineHoverHighlight: "both",
       onLineNumberClick,
     }),
     [choice, wrap, onLineNumberClick],

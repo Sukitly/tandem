@@ -177,6 +177,7 @@ export function ChangeDiff({
       diffStyle: style,
       disableFileHeader: true,
       overflow: wrap ? "wrap" : "scroll",
+      lineHoverHighlight: "both",
       onLineClick: (props) => {
         if (!("annotationSide" in props) || (props.event.pointerType !== "touch" && props.event.pointerType !== "pen"))
           return;
