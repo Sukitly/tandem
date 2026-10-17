@@ -7,7 +7,10 @@ import { ResponsiveDialogContent } from "../src/components/responsive-dialog.tsx
 import { Button } from "../src/components/ui/button.tsx";
 import { Dialog, DialogTitle } from "../src/components/ui/dialog.tsx";
 import { Input } from "../src/components/ui/input.tsx";
+import { InputGroup, InputGroupInput } from "../src/components/ui/input-group.tsx";
+import { Select, SelectTrigger, SelectValue } from "../src/components/ui/select.tsx";
 import { Tabs, TabsList, TabsTrigger } from "../src/components/ui/tabs.tsx";
+import { Textarea } from "../src/components/ui/textarea.tsx";
 import { ThemeProvider, useTheme } from "../src/theme.tsx";
 import "../src/index.css";
 
@@ -79,10 +82,36 @@ function Fixture() {
     </div>
   );
 }
+function FocusFixture() {
+  const theme = useTheme();
+  return (
+    <div className="grid gap-4 p-6">
+      <Button onClick={() => theme.setChoice(theme.choice === "dark" ? "light" : "dark")}>Switch theme</Button>
+      <Input aria-label="Input" />
+      <Textarea aria-label="Textarea" />
+      <InputGroup data-testid="input-group">
+        <InputGroupInput aria-label="Grouped input" />
+      </InputGroup>
+      <Button>Default button</Button>
+      <Button variant="outline">Outline button</Button>
+      <Tabs defaultValue="one">
+        <TabsList>
+          <TabsTrigger value="one">One</TabsTrigger>
+          <TabsTrigger value="two">Two</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <Select defaultValue="one" items={[{ value: "one", label: "One" }]}>
+        <SelectTrigger aria-label="Choice">
+          <SelectValue />
+        </SelectTrigger>
+      </Select>
+      <Input aria-label="Invalid input" aria-invalid="true" />
+    </div>
+  );
+}
+
 const root = document.getElementById("root");
 if (root)
   createRoot(root).render(
-    <ThemeProvider>
-      <Fixture />
-    </ThemeProvider>,
+    <ThemeProvider>{location.search.includes("focus") ? <FocusFixture /> : <Fixture />}</ThemeProvider>,
   );

@@ -3,10 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, expect, test, vi } from "vitest";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
 
+vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => window.innerWidth < 768 }));
 vi.mock("../src/app/workbench.tsx", () => ({ useWorkbench: () => ({ openChange: vi.fn() }) }));
 Element.prototype.scrollIntoView = vi.fn();
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   localStorage.removeItem("tandem.keyboardMode");
   localStorage.removeItem("tandem.sendMode");
 });
@@ -42,7 +44,8 @@ test("Stop remains reachable with input and while a send is pending", async () =
   finish();
   await waitFor(() => expect(input.value).toBe(""));
 });
-test("follow-up can be selected and sent without a modifier key", async () => {
+test("mobile follow-up can be selected and sent without a modifier key", async () => {
+  vi.stubGlobal("innerWidth", 390);
   const { input, send } = setup();
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
   fireEvent.click(await screen.findByRole("menuitemradio", { name: "Queue follow-up" }));
@@ -51,6 +54,30 @@ test("follow-up can be selected and sent without a modifier key", async () => {
   expect(send).toHaveBeenCalledWith("Later", [], [], "followUp");
   expect(localStorage.getItem("tandem.sendMode")).toBe("followUp");
   await waitFor(() => expect(input.value).toBe(""));
+});
+test("desktop ignores the saved mobile mode for Enter, slash commands, and the send button", async () => {
+  localStorage.setItem("tandem.sendMode", "followUp");
+  const { input, send } = setup();
+  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  expect(await screen.findByRole("menuitemradio", { name: "Emacs editing" })).toBeTruthy();
+  expect(screen.queryByRole("menuitemradio", { name: "Queue follow-up" })).toBeNull();
+  expect(screen.queryByRole("menuitemradio", { name: "Steer current turn" })).toBeNull();
+  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+  for (const text of ["Steer now", "/rev"]) {
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(send).toHaveBeenLastCalledWith(text === "/rev" ? "/review " : text, [], [], "steer");
+    await waitFor(() => expect(input.value).toBe(""));
+  }
+  fireEvent.change(input, { target: { value: "Button" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(send).toHaveBeenLastCalledWith("Button", [], [], "steer");
+  await waitFor(() => expect(input.value).toBe(""));
+  fireEvent.change(input, { target: { value: "Later" } });
+  fireEvent.keyDown(input, { key: "Enter", altKey: true });
+  expect(send).toHaveBeenLastCalledWith("Later", [], [], "followUp");
+  await waitFor(() => expect(input.value).toBe(""));
+  expect(localStorage.getItem("tandem.sendMode")).toBe("followUp");
 });
 test("platform shortcuts and native history are not intercepted by default; Emacs is opt-in", async () => {
   const { input } = setup(false);

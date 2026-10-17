@@ -6,6 +6,7 @@ import { createElement } from "react";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { ChatComposer, type ImageSupport, imageSupportOf } from "../src/chat/chat-composer.tsx";
 
+vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => window.innerWidth < 768 }));
 vi.mock("../src/app/workbench.tsx", () => ({
   useWorkbench: () => ({ openChange: vi.fn() }),
 }));

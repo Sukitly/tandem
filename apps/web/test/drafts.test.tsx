@@ -7,6 +7,7 @@ import { InputDraft } from "../src/app/input-draft.ts";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
 import { CommentDraft } from "../src/comments/comment-box.tsx";
 
+vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => window.innerWidth < 768 }));
 vi.mock("../src/app/workbench.tsx", () => ({ useWorkbench: () => ({ openChange: vi.fn() }) }));
 vi.mock("../src/comments/use-comment-width.ts", () => ({ useCommentWidth: () => undefined }));
 beforeEach(() => {

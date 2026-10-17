@@ -100,7 +100,8 @@ export interface ChatComposerProps {
 }
 
 /**
- * The message box. Enter uses the chosen send mode (steering by default); Alt+Enter explicitly queues a follow-up.
+ * The message box. Desktop Enter always steers; mobile uses its chosen send mode (steering by default).
+ * Alt+Enter explicitly queues a follow-up on either layout.
  * Shift+Enter starts a new line. Platform editing is the default; Emacs shortcuts are an explicit preference.
  *
  * The box is a combobox, and its suggestion menu is Tandem's own, laid over the box rather than rendered by a popover
@@ -135,7 +136,9 @@ export function ChatComposer({
   } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   const [dragging, setDragging] = useState(false);
   const [keyboardMode, setKeyboardMode] = useState(storedKeyboardMode);
-  const [sendMode, setSendMode] = useState(storedSendMode);
+  const mobile = useIsMobile();
+  const [mobileSendMode, setSendMode] = useState(storedSendMode);
+  const sendMode = mobile ? mobileSendMode : "steer";
   const chooseSendMode = (mode: SendMode): void => {
     setSendMode(mode);
     try {
@@ -527,6 +530,7 @@ export function ChatComposer({
               )}
               {statusBar !== undefined && <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">{statusBar}</div>}
               <ComposerOptions
+                mobile={mobile}
                 keyboard={keyboardMode}
                 onKeyboard={chooseKeyboard}
                 mode={sendMode}

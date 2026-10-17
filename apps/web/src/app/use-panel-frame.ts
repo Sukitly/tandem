@@ -1,4 +1,5 @@
 import { type RefObject, useLayoutEffect, useState } from "react";
+import { flushSync } from "react-dom";
 
 type Frame = { visible: boolean; width: number; left: number; top: number; panelWidth: number; height: number };
 const EMPTY: Frame = { visible: false, width: 0, left: 0, top: 0, panelWidth: 0, height: 0 };
@@ -32,7 +33,8 @@ export function usePanelFrame(root: RefObject<HTMLDivElement | null>, slot: RefO
       if (pending !== undefined) return;
       pending = requestAnimationFrame(() => {
         pending = undefined;
-        update();
+        // Commit in this frame, before other observers can synchronously flush a queued render.
+        flushSync(update);
       });
     };
     const observer = new ResizeObserver(schedule);

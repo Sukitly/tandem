@@ -3,15 +3,7 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } fro
 import { cn } from "@/lib/utils.ts";
 
 export function PromptInput({ className, ...props }: ComponentProps<typeof InputGroup>) {
-  return (
-    <InputGroup
-      className={cn(
-        "bg-background shadow-xs transition-shadow focus-within:ring-1 focus-within:ring-ring/50",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <InputGroup className={cn("bg-background shadow-xs", className)} {...props} />;
 }
 
 export function PromptInputTextarea({ className, ...props }: ComponentProps<typeof InputGroupTextarea>) {

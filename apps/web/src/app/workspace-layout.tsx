@@ -49,22 +49,49 @@ export function WithFiles({
   const [retained, setRetained] = useState<readonly number[]>([]);
   const projects = retainedProjects(retained, workspaceId, visible, availableWorkspaceIds);
   if (projects !== retained) setRetained(projects);
+  const layout = useDefaultLayout({
+    id: "tandem.layout",
+    panelIds: ["conversation", "files"],
+    storage: preferences,
+    onlySaveAfterUserInteractions: true,
+  });
+  const savedWidth = layout.defaultLayout?.files;
+  const expandedWidth = useRef(
+    savedWidth !== undefined && Number.isFinite(savedWidth) && savedWidth > 0 && savedWidth < 100 ? savedWidth : 35,
+  );
+  // Defaults initialize the group once; hiding it must not replace the user's expanded layout.
+  const [initialLayout] = useState(() =>
+    shown && !overlay
+      ? { conversation: 100 - expandedWidth.current, files: expandedWidth.current }
+      : { conversation: 100, files: 0 },
+  );
   const [panel, panelRef] = usePanelCallbackRef();
   useLayoutEffect(() => {
     if (panel === null) return;
-    if (shown && !overlay) panel.expand();
+    if (shown && !overlay) panel.resize(`${expandedWidth.current}%`);
     else panel.collapse();
   }, [shown, overlay, panel]);
-  const layout = useDefaultLayout({ id: "tandem.layout", panelIds: ["conversation", "files"], storage: preferences });
 
   return (
     <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <ResizablePanelGroup
         orientation="horizontal"
         className="min-h-0 flex-1"
-        defaultLayout={shown && !overlay ? layout.defaultLayout : { conversation: 100, files: 0 }}
+        defaultLayout={initialLayout}
         onLayoutChanged={(next, meta) => {
-          if (!overlay && shown) layout.onLayoutChanged(next, meta);
+          const width = meta.requestedLayout?.files ?? next.files;
+          if (
+            !overlay &&
+            shown &&
+            meta.isUserInteraction &&
+            width !== undefined &&
+            Number.isFinite(width) &&
+            width > 0 &&
+            width < 100
+          ) {
+            expandedWidth.current = width;
+            layout.onLayoutChanged(next, meta);
+          }
         }}
       >
         <ResizablePanel id="conversation" minSize={overlay ? 0 : 360} className="flex min-w-0 flex-col">
@@ -74,7 +101,7 @@ export function WithFiles({
         <ResizablePanel
           id="files"
           panelRef={panelRef}
-          defaultSize={shown && !overlay ? "35%" : "0%"}
+          defaultSize="35%"
           minSize={240}
           collapsible
           collapsedSize={0}

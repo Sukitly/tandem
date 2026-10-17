@@ -15,6 +15,7 @@ import { preferences } from "@/lib/preferences.ts";
 export type KeyboardMode = "platform" | "emacs";
 export type SendMode = "steer" | "followUp";
 export const KEYBOARD_MODE_KEY = "tandem.keyboardMode";
+// Retain the existing key for compatibility; only mobile layouts apply this preference.
 export const SEND_MODE_KEY = "tandem.sendMode";
 
 export function storedSendMode(): SendMode {
@@ -34,11 +35,13 @@ export function storedKeyboardMode(): KeyboardMode {
 }
 
 export function ComposerOptions({
+  mobile,
   keyboard,
   onKeyboard,
   mode,
   onMode,
 }: {
+  mobile: boolean;
   keyboard: KeyboardMode;
   onKeyboard(mode: KeyboardMode): void;
   mode: SendMode;
@@ -50,18 +53,22 @@ export function ComposerOptions({
         <Settings2Icon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>While the agent is running</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={mode} onValueChange={(value) => onMode(value as SendMode)}>
-            <DropdownMenuRadioItem value="steer" closeOnClick>
-              Steer current turn
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="followUp" closeOnClick>
-              Queue follow-up
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
+        {mobile && (
+          <>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>While the agent is running</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={mode} onValueChange={(value) => onMode(value as SendMode)}>
+                <DropdownMenuRadioItem value="steer" closeOnClick>
+                  Steer current turn
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="followUp" closeOnClick>
+                  Queue follow-up
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+          </>
+        )}
         <DropdownMenuGroup>
           <DropdownMenuLabel>Keyboard shortcuts</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={keyboard} onValueChange={(value) => onKeyboard(value as KeyboardMode)}>

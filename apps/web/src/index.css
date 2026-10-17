@@ -198,10 +198,30 @@
   }
 }
 
-/* Keyboard focus is distinct from the selected tab's underline. Text fields retain the library's focus styles. */
-[data-slot="tabs-trigger"]:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
+/* Focus must not add gray rings/outlines. Keep ordinary shadows, borders, and invalid-field feedback. */
+:focus-visible:not([aria-invalid="true"]):not(:has([aria-invalid="true"])) {
+  outline: none;
+}
+[class*="focus-visible:ring-"]:focus-visible:not([aria-invalid="true"]):not(:has([aria-invalid="true"])),
+[data-slot="input-group"]:focus-within:not(:has([aria-invalid="true"])) {
+  box-shadow: var(--tw-shadow, 0 0 #0000);
+}
+
+[class~="focus-visible:border-ring"]:focus-visible:not([aria-invalid="true"]) {
+  border-color: transparent;
+}
+:is([class~="border-input"], [data-slot="sidebar-input"]):focus-visible:not([aria-invalid="true"]),
+[data-slot="input-group"]:focus-within:not(:has([aria-invalid="true"])) {
+  border-color: var(--input);
+}
+[class~="border-border"]:focus-visible:not([aria-invalid="true"]) {
+  border-color: var(--border);
+}
+.dark [class~="dark:border-input"]:focus-visible:not([aria-invalid="true"]),
+.dark
+  [data-slot="tabs-list"][data-variant="default"]
+  [data-slot="tabs-trigger"][data-active]:focus-visible:not([aria-invalid="true"]) {
+  border-color: var(--input);
 }
 
 @media (pointer: coarse) {

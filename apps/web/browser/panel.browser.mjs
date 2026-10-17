@@ -27,6 +27,10 @@ async function fixture(t, mobile = false, layout = false) {
     hasTouch: mobile,
   });
   page.on("pageerror", (error) => t.diagnostic(error.stack ?? error.message));
+  await page.addInitScript(() => {
+    window.browserErrors = [];
+    window.addEventListener("error", (event) => window.browserErrors.push(event.message));
+  });
   await page.route(/\/preview\/\d+\//, (route) =>
     route.fulfill({
       contentType: "text/html",
@@ -36,6 +40,65 @@ async function fixture(t, mobile = false, layout = false) {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/browser/panel.html${layout ? "?layout" : ""}`);
   return page;
 }
+
+test("user-resized panel width survives collapse, overlay transitions, and reload", async (t) => {
+  const page = await fixture(t, false, true);
+  await page.getByRole("tab", { name: "Files", exact: true }).waitFor();
+  const panel = page.locator("#files");
+  const initial = (await panel.boundingBox()).width;
+  const separator = await page.locator('[data-slot="resizable-handle"]').first().boundingBox();
+  await page.mouse.move(separator.x - 1, separator.y + separator.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(separator.x - 160, separator.y + separator.height / 2, { steps: 20 });
+  await page.mouse.up();
+  await page.waitForFunction(
+    (before) => document.getElementById("files").getBoundingClientRect().width > before + 100,
+    initial,
+  );
+  const resized = (await panel.boundingBox()).width;
+  const storageKey = "react-resizable-panels:tandem.layout:conversation:files";
+  await page.waitForFunction((key) => Number(JSON.parse(localStorage.getItem(key) ?? "{}").files) > 40, storageKey);
+  const saved = await page.evaluate((key) => localStorage.getItem(key), storageKey);
+  for (let index = 0; index < 2; index += 1) {
+    await page.getByRole("button", { name: "Toggle panel" }).click();
+    await page.waitForFunction(() => document.getElementById("files").getBoundingClientRect().width < 1);
+    assert.equal(await page.evaluate((key) => localStorage.getItem(key), storageKey), saved);
+    await page.getByRole("button", { name: "Toggle panel" }).click();
+    await page.waitForFunction(
+      (width) => Math.abs(document.getElementById("files").getBoundingClientRect().width - width) < 2,
+      resized,
+    );
+  }
+  await page.getByTestId("workspace-host").evaluate((element) => {
+    element.style.width = "520px";
+  });
+  await page.waitForFunction(
+    () => document.querySelector('[data-slot="drawer-viewport"]')?.getAttribute("data-modal") === "true",
+  );
+  await page.waitForFunction(() => document.getElementById("files").getBoundingClientRect().width < 1);
+  await page
+    .getByRole("dialog", { name: "Project panel" })
+    .evaluate((element) =>
+      Promise.allSettled(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
+    );
+  assert.deepEqual(await page.evaluate(() => window.browserErrors), [], "entering overlay");
+  await page.getByTestId("workspace-host").evaluate((element) => {
+    element.style.width = "100%";
+  });
+  await page.waitForFunction(
+    (width) => Math.abs(document.getElementById("files").getBoundingClientRect().width - width) < 2,
+    resized,
+  );
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), storageKey), saved);
+  assert.deepEqual(await page.evaluate(() => window.browserErrors), []);
+  await page.getByRole("button", { name: "Toggle panel" }).click();
+  await page.waitForFunction(() => document.getElementById("files").getBoundingClientRect().width < 1);
+  assert.equal(await page.evaluate((key) => localStorage.getItem(key), storageKey), saved);
+  await page.reload();
+  await page.getByRole("tab", { name: "Files", exact: true }).waitFor();
+  assert.ok(Math.abs((await panel.boundingBox()).width - resized) < 2);
+  assert.deepEqual(await page.evaluate(() => window.browserErrors), []);
+});
 
 test("project and responsive switches retain real frames and terminal instances until deletion or disposal", async (t) => {
   const page = await fixture(t, false, true);
