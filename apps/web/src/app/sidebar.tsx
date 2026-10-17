@@ -15,7 +15,7 @@ import {
   PlusIcon,
   SunIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
 import { useDevicesDialog } from "@/auth/devices-dialog.tsx";
 import { ConversationMenu } from "@/chat/conversation-menu.tsx";
 import {
@@ -75,6 +75,7 @@ export function AppSidebar() {
   const projects = useReplicatedState(workspaces.state)?.workspaces ?? [];
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
   const { selected, addProject } = useWorkbench();
+  const closeNavigation = useCloseSidebarOnNavigate();
   const providers = useProvidersDialog();
   const devices = useDevicesDialog();
   const publicAccess = usePublicAccessPage();
@@ -112,7 +113,13 @@ export function AppSidebar() {
                 {list.map((summary) => (
                   <SidebarMenuItem key={summary.id} className="group/conv-row relative">
                     <SidebarMenuButton
-                      render={<a href={`#${summary.id}`} aria-current={summary.id === selected ? "page" : undefined} />}
+                      render={
+                        <a
+                          href={`#${summary.id}`}
+                          onClick={closeNavigation}
+                          aria-current={summary.id === selected ? "page" : undefined}
+                        />
+                      }
                       isActive={summary.id === selected}
                       className={cn(summary.id === selected && "bg-sidebar-accent", "pr-7")}
                       title={summary.cwd}
@@ -196,6 +203,7 @@ function ProjectItem({
   selected: number | null;
 }) {
   const { newConversation, removeProject } = useWorkbench();
+  const closeNavigation = useCloseSidebarOnNavigate();
   const { terminals } = useConnected();
   // The project's terminals whose shell still runs: removing the project ends them, and adding it again does not bring
   // them back.
@@ -220,7 +228,10 @@ function ProjectItem({
           className={`${PROJECT_ACTION_CLASS} right-7`}
           title={`New conversation in ${project.name}`}
           aria-label={`New conversation in ${project.name}`}
-          onClick={() => newConversation(project.id)}
+          onClick={() => {
+            newConversation(project.id);
+            closeNavigation();
+          }}
         >
           <PlusIcon />
         </SidebarMenuAction>
@@ -282,6 +293,7 @@ function ProjectItem({
               <SidebarMenuSubItem key={summary.id} className="group/conv-row relative">
                 <SidebarMenuSubButton
                   href={`#${summary.id}`}
+                  onClick={closeNavigation}
                   isActive={summary.id === selected}
                   aria-current={summary.id === selected ? "page" : undefined}
                   className={cn(summary.id === selected && "bg-sidebar-accent", "pr-7")}
@@ -369,6 +381,19 @@ function ThemeMenu() {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+/** Native links still own navigation, including modified clicks that open another tab. */
+function useCloseSidebarOnNavigate() {
+  const { isMobile, setOpenMobile } = useSidebar();
+  return (event?: MouseEvent): void => {
+    if (
+      event &&
+      (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
+    )
+      return;
+    if (isMobile) setOpenMobile(false);
+  };
 }
 
 /** A button to open or close the sidebar on small screens. */

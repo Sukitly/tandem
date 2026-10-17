@@ -1,19 +1,12 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { FileIcon } from "@react-symbols/icons/utils";
 import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
-import {
-  AlertCircleIcon,
-  Columns2Icon,
-  Maximize2Icon,
-  Minimize2Icon,
-  Rows2Icon,
-  WrapTextIcon,
-  XIcon,
-} from "lucide-react";
+import { AlertCircleIcon, Columns2Icon, Maximize2Icon, Minimize2Icon, Rows2Icon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
 import { CopyPathButton } from "@/components/copy-path-button.tsx";
+import { ReaderSurface, ReaderWrapButton } from "@/components/reader-surface.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
@@ -21,9 +14,11 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsMobile } from "@/hooks/use-mobile.ts";
+import { preferences } from "@/lib/preferences.ts";
 import { cn } from "@/lib/utils";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { ChangeDiff } from "./change-diff.tsx";
+import { ChangeDiff, type DiffReadingState } from "./change-diff.tsx";
 import {
   ADDITIONS_COLOR,
   type CountPart,
@@ -35,6 +30,7 @@ import {
 } from "./change-status.ts";
 import type { ChangeTarget } from "./change-target.ts";
 
+const DIFF_STYLE_MOBILE_KEY = "tandem.diffStyle.mobile";
 const DIFF_STYLE_KEY = "tandem.diffStyle";
 const DIFF_STYLE_ZOOMED_KEY = "tandem.diffStyle.zoomed";
 const DIFF_WRAP_KEY = "tandem.diffWrap";
@@ -51,11 +47,13 @@ interface LoadedPatch {
  * read again whenever the files on disk change, so an agent's edits arrive without asking.
  */
 export function ChangesView({
+  active = true,
   changes,
   failure,
   comments,
   reveal,
 }: {
+  active?: boolean;
   changes: ProjectChanges | undefined;
   /** Why the project's changes are not there, if opening them failed. */
   failure: string | null;
@@ -68,10 +66,11 @@ export function ChangesView({
   const state = useReplicatedState(changes?.state);
   const [selected, setSelected] = useState<string | null>(() => state?.files[0]?.path ?? null);
   const initialized = useRef(selected !== null);
+  const [reading] = useState<DiffReadingState>(() => ({ positions: new Map(), revealed: new WeakSet() }));
   /** The place the diff is scrolling to, kept while this panel is shown. */
   const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
-  const [inlineStyled, setInlineStyled] = useState<"split" | "unified">(() => storedDiffStyle(false));
-  const [zoomedStyled, setZoomedStyled] = useState<"split" | "unified">(() => storedDiffStyle(true));
+  const [inlineStyled, setInlineStyled] = useState<"split" | "unified">(() => storedDiffStyle("inline"));
+  const [zoomedStyled, setZoomedStyled] = useState<"split" | "unified">(() => storedDiffStyle("fullscreen"));
   const [inlineWrap, setInlineWrap] = useState<boolean>(() => storedDiffWrap(false));
   const [zoomedWrap, setZoomedWrap] = useState<boolean>(() => storedDiffWrap(true));
   const [loaded, setLoaded] = useState<LoadedPatch | null>(null);
@@ -95,9 +94,13 @@ export function ChangesView({
     forgetChangeTarget();
   }, [reveal, state, openFile, forgetChangeTarget]);
 
-  // The shown file follows the list: a file that leaves it takes the patch with it.
+  // Only an authoritative file list can remove a selection. A released or reconnecting service cannot.
   useEffect(() => {
-    if (!initialized.current && state?.files && state.files.length > 0) {
+    if (state?.status !== "ready") return;
+    for (const path of reading.positions.keys()) {
+      if (!state.files.some((file) => file.path === path)) reading.positions.delete(path);
+    }
+    if (!initialized.current && state.files.length > 0) {
       initialized.current = true;
       setSelected(state.files[0]?.path ?? null);
       return;
@@ -105,7 +108,7 @@ export function ChangesView({
     setSelected((current) =>
       current !== null && state?.files.some((file) => file.path === current) === true ? current : null,
     );
-  }, [state]);
+  }, [state, reading]);
 
   // Read the patch again for every published change of the file, and for every other selection.
   useEffect(() => {
@@ -202,6 +205,8 @@ export function ChangesView({
             <ResizableHandle />
             <ResizablePanel id="diff" defaultSize="70" minSize={120}>
               <ChangeView
+                reading={reading}
+                active={active}
                 file={selectedFile}
                 reveal={revealed ?? undefined}
                 patch={loaded?.path === selectedFile.path ? loaded.patch : null}
@@ -256,6 +261,8 @@ function titleOf(status: "ready" | "notRepository" | "error"): string {
 
 /** The selected file's patch, with the controls that change how it is shown. */
 function ChangeView({
+  reading,
+  active,
   file,
   patch,
   failure,
@@ -271,6 +278,8 @@ function ChangeView({
   reveal,
   onClose,
 }: {
+  reading: DiffReadingState;
+  active: boolean;
   file: ChangedFile;
   patch: FilePatch | null;
   failure: string | null;
@@ -287,28 +296,20 @@ function ChangeView({
   onClose(): void;
 }) {
   const [zoomed, setZoomed] = useState(false);
-  const styled = zoomed ? zoomedStyled : inlineStyled;
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!active) setZoomed(false);
+  }, [active]);
+  const isMobile = useIsMobile();
+  const [mobileStyle, setMobileStyle] = useState(() => storedDiffStyle("narrow"));
+  const styled = isMobile ? mobileStyle : zoomed ? zoomedStyled : inlineStyled;
   const wrap = zoomed ? zoomedWrap : inlineWrap;
   const next = styled === "split" ? "unified" : "split";
   const parts = countParts(file.additions, file.deletions);
 
-  useEffect(() => {
-    if (!zoomed) return;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setZoomed(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [zoomed]);
-
   const toggleWrap = (): void => {
     const nextWrap = !wrap;
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(zoomed ? DIFF_WRAP_ZOOMED_KEY : DIFF_WRAP_KEY, String(nextWrap));
-    }
+    preferences.setItem(zoomed ? DIFF_WRAP_ZOOMED_KEY : DIFF_WRAP_KEY, String(nextWrap));
     if (zoomed) {
       onZoomedWrap(nextWrap);
     } else {
@@ -317,9 +318,12 @@ function ChangeView({
   };
 
   const toggleStyled = (): void => {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(zoomed ? DIFF_STYLE_ZOOMED_KEY : DIFF_STYLE_KEY, next);
+    if (isMobile) {
+      setMobileStyle(next);
+      preferences.setItem(DIFF_STYLE_MOBILE_KEY, next);
+      return;
     }
+    preferences.setItem(zoomed ? DIFF_STYLE_ZOOMED_KEY : DIFF_STYLE_KEY, next);
     if (zoomed) {
       onZoomedStyled(next);
     } else {
@@ -328,10 +332,7 @@ function ChangeView({
   };
 
   return (
-    <section
-      className={cn("flex min-h-0 flex-col bg-background", zoomed ? "fixed inset-0 z-40 h-dvh w-dvw" : "h-full")}
-      aria-label={`Diff of ${file.path}`}
-    >
+    <ReaderSurface toggleRef={toggleRef} expanded={zoomed} onExpandedChange={setZoomed} label={`Diff of ${file.path}`}>
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <p className="min-w-0 truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
@@ -348,22 +349,7 @@ function ChangeView({
             ))}
           </span>
         )}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={wrap ? "secondary" : "ghost"}
-                size="icon-xs"
-                aria-label={wrap ? "Do not wrap lines" : "Wrap lines"}
-                aria-pressed={wrap}
-                onClick={toggleWrap}
-              />
-            }
-          >
-            <WrapTextIcon />
-          </TooltipTrigger>
-          <TooltipContent>{wrap ? "Do not wrap lines" : "Wrap lines"}</TooltipContent>
-        </Tooltip>
+        <ReaderWrapButton wrap={wrap} onToggle={toggleWrap} />
         <Tooltip>
           <TooltipTrigger
             render={
@@ -383,6 +369,7 @@ function ChangeView({
           <TooltipTrigger
             render={
               <Button
+                ref={toggleRef}
                 variant={zoomed ? "secondary" : "ghost"}
                 size="icon-xs"
                 aria-label={zoomed ? "Exit full screen" : "Full screen"}
@@ -425,26 +412,34 @@ function ChangeView({
             </EmptyHeader>
           </Empty>
         ) : (
-          <ChangeDiff path={file.path} patch={patch} style={styled} wrap={wrap} comments={comments} reveal={reveal} />
+          <ChangeDiff
+            reading={reading}
+            key={file.path}
+            path={file.path}
+            patch={patch}
+            style={styled}
+            wrap={wrap}
+            comments={comments}
+            reveal={reveal}
+          />
         )}
       </div>
-    </section>
+    </ReaderSurface>
   );
 }
 
-export function storedDiffStyle(zoomed: boolean): "split" | "unified" {
-  if (typeof localStorage === "undefined") return zoomed ? "split" : "unified";
-  if (zoomed) {
-    return localStorage.getItem(DIFF_STYLE_ZOOMED_KEY) === "unified" ? "unified" : "split";
+export function storedDiffStyle(surface: "inline" | "fullscreen" | "narrow"): "split" | "unified" {
+  if (surface === "narrow") return preferences.getItem(DIFF_STYLE_MOBILE_KEY) === "split" ? "split" : "unified";
+  if (surface === "fullscreen") {
+    return preferences.getItem(DIFF_STYLE_ZOOMED_KEY) === "unified" ? "unified" : "split";
   }
-  const stored = localStorage.getItem(DIFF_STYLE_KEY);
+  const stored = preferences.getItem(DIFF_STYLE_KEY);
   return stored === "split" ? "split" : "unified";
 }
 
 export function storedDiffWrap(zoomed: boolean): boolean {
-  if (typeof localStorage === "undefined") return false;
   if (zoomed) {
-    return localStorage.getItem(DIFF_WRAP_ZOOMED_KEY) === "true";
+    return preferences.getItem(DIFF_WRAP_ZOOMED_KEY) === "true";
   }
-  return localStorage.getItem(DIFF_WRAP_KEY) === "true";
+  return preferences.getItem(DIFF_WRAP_KEY) === "true";
 }

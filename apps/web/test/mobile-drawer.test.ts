@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { WithFiles } from "../src/App.tsx";
 import { ProjectPanel } from "../src/app/project-panel.tsx";
+import { WithFiles } from "../src/app/workspace-layout.tsx";
 
 const mobileState = vi.hoisted(() => ({
   isMobile: false,
@@ -96,13 +96,13 @@ describe("WithFiles responsive layout", () => {
     expect(markup).toContain("Chat");
   });
 
-  test("renders full-width conversation without ResizablePanelGroup on mobile", () => {
+  test("keeps the conversation in the same layout tree on mobile", () => {
     mobileState.isMobile = true;
     mobileState.filesShown = false;
     const markup = renderToStaticMarkup(
       createElement(WithFiles, { workspaceId: 1 }, createElement("div", null, "Chat")),
     );
-    expect(markup).not.toContain('id="conversation"');
+    expect(markup).toContain('id="conversation"');
     expect(markup).toContain("Chat");
   });
 });

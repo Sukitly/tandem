@@ -2,17 +2,11 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { AuthType, ProviderSummary } from "@tandem/contracts";
 import { ArrowLeftIcon } from "lucide-react";
 import { createContext, type ReactNode, useContext, useState } from "react";
+import { ResponsiveDialogContent as DialogContent } from "@/components/responsive-dialog.tsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FieldError } from "@/components/ui/field";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { useConnected } from "@/rpc/connection.tsx";
@@ -49,7 +43,7 @@ export function ProvidersDialogProvider({ children }: { children: ReactNode }) {
           {providerId === null ? (
             <ProviderList onSelect={setProviderId} />
           ) : (
-            <ProviderDetail providerId={providerId} onBack={() => setProviderId(null)} />
+            <ProviderDetail key={providerId} providerId={providerId} onBack={() => setProviderId(null)} />
           )}
         </DialogContent>
       </Dialog>
@@ -107,10 +101,16 @@ function ProviderDetail({ providerId, onBack }: { providerId: string; onBack: ()
   const provider = state?.providers.find((candidate) => candidate.id === providerId);
   const login = state?.login?.providerId === providerId ? state.login : undefined;
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const run = (operation: () => Promise<unknown>): void => {
+    if (pending) return;
     setError(null);
-    operation().catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)));
+    setPending(true);
+    Promise.resolve()
+      .then(operation)
+      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)))
+      .finally(() => setPending(false));
   };
   const start = (type: AuthType): void => run(() => models.login({ providerId, type }, BACKGROUND_CONTEXT));
 
@@ -124,9 +124,8 @@ function ProviderDetail({ providerId, onBack }: { providerId: string; onBack: ()
           {provider.configured === undefined ? "Not signed in." : `Ready: ${sourceLabel(provider)}.`}
         </DialogDescription>
       </DialogHeader>
-      {login !== undefined && login.status !== "cancelled" ? (
-        <LoginFlow login={login} />
-      ) : (
+      {login !== undefined && login.status !== "cancelled" && <LoginFlow login={login} />}
+      {!running && (
         <ItemGroup>
           {provider.login.map((option) => (
             <Item key={option.type} variant="outline">
@@ -137,8 +136,14 @@ function ProviderDetail({ providerId, onBack }: { providerId: string; onBack: ()
                 </ItemDescription>
               </ItemContent>
               <ItemActions>
-                <Button size="sm" onClick={() => start(option.type)}>
-                  {option.type === "oauth" ? "Sign in" : "Add key"}
+                <Button size="sm" disabled={pending} onClick={() => start(option.type)}>
+                  {login?.status === "failed"
+                    ? option.type === "oauth"
+                      ? "Retry sign-in"
+                      : "Retry adding key"
+                    : option.type === "oauth"
+                      ? "Sign in"
+                      : "Add key"}
                 </Button>
               </ItemActions>
             </Item>
@@ -161,12 +166,20 @@ function ProviderDetail({ providerId, onBack }: { providerId: string; onBack: ()
           All providers
         </Button>
         {running && (
-          <Button variant="outline" onClick={() => run(() => models.cancelLogin(BACKGROUND_CONTEXT))}>
+          <Button
+            variant="outline"
+            disabled={pending}
+            onClick={() => run(() => models.cancelLogin(BACKGROUND_CONTEXT))}
+          >
             Cancel sign-in
           </Button>
         )}
         {provider.stored && !running && (
-          <Button variant="destructive" onClick={() => run(() => models.logout(providerId, BACKGROUND_CONTEXT))}>
+          <Button
+            variant="destructive"
+            disabled={pending}
+            onClick={() => run(() => models.logout(providerId, BACKGROUND_CONTEXT))}
+          >
             Sign out
           </Button>
         )}

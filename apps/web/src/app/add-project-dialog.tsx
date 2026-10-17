@@ -2,12 +2,12 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ProjectDirectory } from "@tandem/contracts";
 import { ArrowUp, Folder, House, RefreshCw } from "lucide-react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { ResponsiveDialogContent as DialogContent } from "@/components/responsive-dialog.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,

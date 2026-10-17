@@ -1,29 +1,38 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { parsePatchFiles } from "@pierre/diffs";
-import { CodeView, type CodeViewDiffItem, type CodeViewHandle, type DiffLineAnnotation } from "@pierre/diffs/react";
+import {
+  CodeView,
+  type CodeViewDiffItem,
+  type CodeViewHandle,
+  type CodeViewProps,
+  type DiffLineAnnotation,
+} from "@pierre/diffs/react";
 import type { CommentThread, FilePatch } from "@tandem/contracts";
-import { PlusIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { anchorAt, type PlacedThread, placeThreads, relocate, revealedLine } from "@/comments/comment-anchor.ts";
-import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useWorkbench } from "@/app/workbench.tsx";
+import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
+import { indexLines, type PlacedThread, placeThreads, relocate, revealedLine } from "@/comments/comment-anchor.ts";
+import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
+import { type PlacedDraft, useCommentDrafts } from "@/comments/use-comment-drafts.ts";
 import { Button } from "@/components/ui/button";
+import { useRenderVersion } from "@/hooks/use-render-version.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useTheme } from "@/theme.tsx";
 import type { ChangeTarget } from "./change-target.ts";
-import { diffLine, diffLineCount } from "./diff-lines.ts";
-import { controlPlacement, useHoveredLine } from "./hovered-line.ts";
+import { diffLineCount, diffLines } from "./diff-lines.ts";
+import { DIFF_COMMENT_CSS } from "./diff-plain-annotations.ts";
 
 type Side = "additions" | "deletions";
 
-/** A line of the diff being commented on. */
-interface Draft {
-  side: Side;
-  line: number;
+/** Local reading intent outlives a temporarily released changes service, not its replicated file list. */
+export interface DiffReadingState {
+  positions: Map<string, number>;
+  revealed: WeakSet<ChangeTarget>;
 }
 
-/** What is written on a line of the diff: a thread, or the one being started. */
-type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; draft: Draft };
+/** What is written on a line of the diff: a thread or an independently identified pending draft. */
+type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; draft: PlacedDraft };
 
 /**
  * One file's patch, as `@pierre/diffs` renders it, with the review's comments on its lines. A comment is written the
@@ -31,6 +40,7 @@ type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; d
  * own header is off: the panel's header names the path already.
  */
 export function ChangeDiff({
+  reading,
   path,
   patch,
   style,
@@ -38,6 +48,7 @@ export function ChangeDiff({
   comments,
   reveal,
 }: {
+  reading?: DiffReadingState;
   path: string;
   patch: FilePatch;
   style: "split" | "unified";
@@ -49,24 +60,49 @@ export function ChangeDiff({
   const { choice } = useTheme();
   const box = useRef<HTMLDivElement>(null);
   const view = useRef<CodeViewHandle<Annotation, undefined>>(null);
-  const hovered = useHoveredLine(box);
+  const { openFile } = useWorkbench();
   const text = patch.kind === "patch" ? patch.patch : "";
   const threads = useCommentThreads(comments);
-  const [draft, setDraft] = useState<Draft | null>(null);
 
   const files = useMemo(() => (text.trim() === "" ? [] : parsePatchFiles(text).flatMap((file) => file.files)), [text]);
-  // Each thread on the line its text is on now, on its side of the diff; one whose line the patch does not show is
-  // looked for in the file (`useOutdatedThreads`).
+  const draftLines = useMemo(
+    () =>
+      files[0] === undefined
+        ? {}
+        : { additions: diffLines(files[0], "additions"), deletions: diffLines(files[0], "deletions") },
+    [files],
+  );
+  const drafts = useCommentDrafts(comments.workspaceId, path, "diff", draftLines);
+  const orphaned = drafts.detached.length > 0 && (
+    <div className="max-h-1/2 shrink-0 overflow-auto border-b">
+      {drafts.detached.map((draft) => (
+        <AnchoredCommentEditor
+          key={draft.record.id}
+          draft={draft}
+          store={drafts.store}
+          comments={comments}
+          view={box}
+        />
+      ))}
+    </div>
+  );
+  // Missing hunk lines are checked against the file, but their comments remain visible while that read is pending.
   const placed = useMemo<PlacedThread[]>(() => {
     const fileDiff = files[0];
     if (fileDiff === undefined) return [];
-    return (["additions", "deletions"] as const).flatMap((side) =>
-      placeThreads(threads, path, side, (line) => diffLine(fileDiff, side, line), diffLineCount(fileDiff, side)),
-    );
+    if (threads.length === 0) return [];
+    return (["additions", "deletions"] as const).flatMap((side) => {
+      const lines = diffLines(fileDiff, side);
+      return placeThreads(threads, path, side, (line) => lines.get(line), diffLineCount(fileDiff, side), lines.keys());
+    });
   }, [files, threads, path]);
-  const outdated = useOutdatedThreads(comments.workspaceId, path, text, placed);
-  // The renderer keeps the item it has until its version changes, and it cannot see a thread change by itself.
-  const version = useMemo(() => versionOf(placed, draft), [placed, draft]);
+  const {
+    threads: detached,
+    pending: verifying,
+    failure: verificationFailure,
+    retry: retryVerification,
+  } = useDetachedThreads(comments.workspaceId, path, text, placed);
+  const version = useRenderVersion([text, placed, drafts.placed]);
 
   const items = useMemo<CodeViewDiffItem<Annotation>[]>(() => {
     const annotations: DiffLineAnnotation<Annotation>[] = placed.flatMap(({ thread, line }) =>
@@ -74,25 +110,44 @@ export function ChangeDiff({
         ? []
         : [{ side: thread.anchor.side ?? "additions", lineNumber: line, metadata: { kind: "thread", thread } }],
     );
-    if (draft !== null) {
-      annotations.push({ side: draft.side, lineNumber: draft.line, metadata: { kind: "draft", draft } });
+    for (const draft of drafts.placed) {
+      if (draft.line !== undefined)
+        annotations.push({ side: draft.side, lineNumber: draft.line, metadata: { kind: "draft", draft } });
     }
-    // The patch itself is part of the item's identity: a rewritten patch is rendered, not taken for the one before it.
+    // Keep identity stable across edits so the renderer can preserve the reading position.
     return files.map((fileDiff, index) => ({
-      id: `${path}#${text.length}#${index}`,
+      id: `${path}#${index}`,
       type: "diff",
       fileDiff,
       annotations,
       version,
     }));
-  }, [path, text, version, files, placed, draft]);
+  }, [path, version, files, placed, drafts.placed]);
+
+  const initialScroll = useRef(reading?.positions.get(path) ?? 0);
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || items.length === 0) return;
+    restored.current = true;
+    if (reveal === undefined || reading?.revealed.has(reveal))
+      view.current?.scrollTo({ type: "position", position: initialScroll.current });
+  }, [items, reading, reveal]);
 
   // Scroll to the place that was asked for, once, as soon as the patch is rendered and can be scrolled.
   const revealed = useRef<ChangeTarget | null>(null);
   useEffect(() => {
     const item = items[0];
     if (reveal === undefined || reveal.path !== path || reveal.line === undefined) return;
-    if (item === undefined || revealed.current === reveal) return;
+    if (item === undefined || revealed.current === reveal || reading?.revealed.has(reveal)) return;
+    reading?.revealed.add(reveal);
+    const missing = detached.find(({ thread }) => thread.id === reveal.threadId);
+    if (missing !== undefined) {
+      box.current?.parentElement
+        ?.querySelector(`[data-detached-thread="${missing.thread.id}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+      revealed.current = reveal;
+      return;
+    }
     revealed.current = reveal;
     // A thread has moved with its line. One the patch does not show, outdated or out of its hunks, has only the line it
     // had.
@@ -103,13 +158,40 @@ export function ChangeDiff({
       side: reveal.side ?? "additions",
       align: "center",
     });
-  }, [reveal, items, path, placed]);
+  }, [reveal, items, path, placed, detached, reading]);
 
   /** Write a comment on a line. A patch holds one file. */
-  const startDraft = (side: Side, line: number): void => {
-    if (files[0] === undefined) return;
-    setDraft({ side, line });
-  };
+  const startDraft = useCallback(
+    (side: Side, line: number): void => {
+      if (files[0] === undefined) return;
+      drafts.start(side, line);
+    },
+    [files, drafts],
+  );
+
+  const options: CodeViewProps<Annotation, undefined>["options"] = useMemo(
+    () => ({
+      theme: { dark: "github-dark", light: "github-light" },
+      themeType: choice,
+      unsafeCSS: DIFF_COMMENT_CSS,
+      diffStyle: style,
+      disableFileHeader: true,
+      overflow: wrap ? "wrap" : "scroll",
+      lineHoverHighlight: "both",
+      onLineClick: (props) => {
+        if (!("annotationSide" in props) || (props.event.pointerType !== "touch" && props.event.pointerType !== "pen"))
+          return;
+        if (props.event.detail > 1 || window.getSelection()?.isCollapsed === false) return;
+        startDraft(props.annotationSide, props.lineNumber);
+      },
+      onLineNumberClick: (props) => {
+        // A file item has no sides; this view holds diff items.
+        if (!("annotationSide" in props)) return;
+        startDraft(props.annotationSide, props.lineNumber);
+      },
+    }),
+    [choice, style, wrap, startDraft],
+  );
 
   if (patch.kind !== "patch") {
     const message =
@@ -118,78 +200,74 @@ export function ChangeDiff({
         : patch.kind === "tooLarge"
           ? "This file's diff is too large to show."
           : patch.message;
-    return <p className="p-3 text-sm text-muted-foreground">{message}</p>;
+    return (
+      <div>
+        {orphaned}
+        <p className="p-3 text-sm text-muted-foreground">{message}</p>
+      </div>
+    );
   }
-  if (items.length === 0) return <p className="p-3 text-sm text-muted-foreground">No line changes.</p>;
-  // A line that is being commented on, or already carries a comment, has nothing to add: no button is shown there.
-  const taken =
-    hovered !== null &&
-    ((draft !== null && draft.line === hovered.line && draft.side === hovered.side) ||
-      placed.some(({ thread, line }) => line === hovered.line && (thread.anchor.side ?? "additions") === hovered.side));
+  if (items.length === 0)
+    return (
+      <div>
+        {orphaned}
+        <p className="p-3 text-sm text-muted-foreground">No line changes.</p>
+      </div>
+    );
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {outdated.length > 0 && (
+      {orphaned}
+      {detached.length > 0 && (
         <div className="max-h-1/2 shrink-0 overflow-auto border-b">
-          {outdated.map(({ thread }) => (
-            <CommentThreadBox key={thread.id} thread={thread} comments={comments} detached="outdated" />
+          {verifying && (
+            <p role="status" className="p-2 text-xs">
+              Checking comment locations…
+            </p>
+          )}
+          {verificationFailure !== null && (
+            <div role="alert" className="p-2 text-sm">
+              <p>Could not verify comment locations: {verificationFailure}</p>
+              <Button size="sm" variant="outline" onClick={retryVerification}>
+                Retry location check
+              </Button>
+            </div>
+          )}
+          {detached.map(({ thread, line, reason }) => (
+            <div key={thread.id} data-detached-thread={thread.id}>
+              <CommentThreadBox thread={thread} comments={comments} detached={reason} />
+              {reason !== "outdated" && thread.anchor.side !== "deletions" && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => openFile(path, { threadId: thread.id, line: line ?? thread.anchor.line })}
+                >
+                  Show comment in file
+                </Button>
+              )}
+            </div>
           ))}
         </div>
       )}
       <div ref={box} className="relative min-h-0 flex-1">
-        {/* The line the pointer is on, where a code host shows it: beside the number, half over the code. */}
-        {hovered !== null && !taken && (
-          <Button
-            type="button"
-            variant="default"
-            size="icon-xs"
-            aria-label={`Comment on line ${hovered.line}`}
-            className="absolute z-10"
-            style={controlPlacement(hovered)}
-            onClick={() => startDraft(hovered.side, hovered.line)}
-          >
-            <PlusIcon />
-          </Button>
-        )}
         <CodeView
+          onScroll={(top) => {
+            if (restored.current) reading?.positions.set(path, top);
+          }}
           ref={view}
           className="h-full overflow-auto text-xs"
           items={items}
-          options={{
-            theme: { dark: "github-dark", light: "github-light" },
-            themeType: choice,
-            diffStyle: style,
-            disableFileHeader: true,
-            overflow: wrap ? "wrap" : "scroll",
-            // Clicking a line's number writes a comment on it too. The library's own hover button is left off: its button
-            // and the row it marks belong to the item, and a comment arriving re-renders the item, which strands both on
-            // the row they were on.
-            onLineNumberClick: (props) => {
-              // A file item has no sides; this view holds diff items.
-              if (!("annotationSide" in props)) return;
-              startDraft(props.annotationSide, props.lineNumber);
-            },
-          }}
+          options={options}
           renderAnnotation={(annotation) => {
             const written = annotation.metadata;
             if (written === undefined) return null;
             if (written.kind === "draft") {
-              const { draft } = written;
               return (
-                <CommentDraft
-                  place={`${path}:${draft.line}`}
+                <AnchoredCommentEditor
+                  key={written.draft.record.id}
+                  draft={written.draft}
+                  store={drafts.store}
+                  comments={comments}
                   view={box}
-                  onSave={async (note) => {
-                    const fileDiff = files[0];
-                    if (fileDiff === undefined) return;
-                    const anchor = anchorAt({ path, line: draft.line, side: draft.side }, (line) =>
-                      diffLine(fileDiff, draft.side, line),
-                    );
-                    // The new file's lines are the file as it is; a thread on them carries no side.
-                    if (draft.side === "additions") delete anchor.side;
-                    await comments.start(anchor, note);
-                    setDraft(null);
-                  }}
-                  onCancel={() => setDraft(null)}
                 />
               );
             }
@@ -201,61 +279,68 @@ export function ChangeDiff({
   );
 }
 
-/**
- * The threads whose line is gone. A diff shows only its hunks, so a thread missing from it may only be on a line the
- * patch leaves out: the file as it is is read, and a thread on the new file is outdated only if its line is not there
- * either. A thread on a removed line has no other file to look in: missing from the diff, it is outdated.
- *
- * The file is read again when the patch changes, since the file changed with it; until it is read, a thread that may
- * still be there is not shown.
- */
-function useOutdatedThreads(
-  workspaceId: number,
-  path: string,
-  patchText: string,
-  placed: readonly PlacedThread[],
-): PlacedThread[] {
+/** Only verified file matches are outside; absent patch context alone proves nothing about an anchor. */
+function useDetachedThreads(workspaceId: number, path: string, patchText: string, placed: readonly PlacedThread[]) {
   const { files } = useConnected();
   const missing = placed.filter((entry) => entry.line === undefined);
   const needsFile = missing.some(({ thread }) => thread.anchor.side !== "deletions");
-  const [file, setFile] = useState<{ key: string; lines: string[] | null } | null>(null);
-  const key = `${workspaceId}#${path}#${patchText}`;
-
+  const key = useMemo(() => ({ files, workspaceId, path, patchText }), [files, workspaceId, path, patchText]);
+  const [attempt, setAttempt] = useState(0);
+  const [file, setFile] = useState<{
+    key: typeof key;
+    attempt: number;
+    result: { status: "ready"; lines: string[] } | { status: "error"; message: string };
+  } | null>(null);
   useEffect(() => {
     if (!needsFile) return;
     let cancelled = false;
     files.read({ workspaceId, path }, BACKGROUND_CONTEXT).then(
       (content) => {
         if (cancelled) return;
-        const text = content.kind === "text" ? content.text : null;
-        const body = text?.endsWith("\n") === true ? text.slice(0, -1) : text;
-        setFile({ key, lines: body === null || body === undefined ? null : body.split("\n") });
+        if (content.kind !== "text") {
+          setFile({
+            key,
+            attempt,
+            result: {
+              status: "error",
+              message: content.kind === "binary" ? "The file is not text." : "The file is too large to verify.",
+            },
+          });
+          return;
+        }
+        const body = content.text.endsWith("\n") ? content.text.slice(0, -1) : content.text;
+        setFile({ key, attempt, result: { status: "ready", lines: body.split("\n") } });
       },
-      // An unreadable file has no lines to find: a thread missing from the diff is outdated then.
-      () => {
-        if (!cancelled) setFile({ key, lines: null });
+      (error: unknown) => {
+        if (!cancelled)
+          setFile({
+            key,
+            attempt,
+            result: { status: "error", message: error instanceof Error ? error.message : String(error) },
+          });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [files, workspaceId, path, key, needsFile]);
-
-  const lines = file?.key === key ? file.lines : undefined;
-  return missing.filter(({ thread }) => {
-    if (thread.anchor.side === "deletions") return true;
-    if (lines === undefined) return false;
-    return lines === null || relocate(thread.anchor, (line) => lines[line - 1], lines.length) === undefined;
+  }, [files, workspaceId, path, key, needsFile, attempt]);
+  const result = file?.key === key && file.attempt === attempt ? file.result : undefined;
+  const lines = result?.status === "ready" ? result.lines : undefined;
+  const index = useMemo(
+    () => (lines === undefined ? new Map<string, number[]>() : indexLines((line) => lines[line - 1], lines.length)),
+    [lines],
+  );
+  const threads: (PlacedThread & { reason: "outdated" | "outside" | "unverified" })[] = missing.map(({ thread }) => {
+    // We have no old-file snapshot with which to verify a deletion-side anchor.
+    if (thread.anchor.side === "deletions" || lines === undefined)
+      return { thread, line: undefined, reason: "unverified" };
+    const line = relocate(thread.anchor, (line) => lines[line - 1], lines.length, index.get(thread.anchor.quote) ?? []);
+    return { thread, line, reason: line === undefined ? "outdated" : "outside" };
   });
-}
-
-/**
- * A number that changes whenever what is written on the diff does: the threads, where they are, and the one being
- * started. The renderer redraws an item only when its version changes.
- */
-function versionOf(placed: readonly PlacedThread[], draft: Draft | null): number {
-  const key = JSON.stringify([placed.map(({ thread, line }) => [line, thread]), draft]);
-  let hash = 0;
-  for (let index = 0; index < key.length; index += 1) hash = (Math.imul(hash, 31) + key.charCodeAt(index)) | 0;
-  return hash;
+  return {
+    threads,
+    pending: needsFile && result === undefined,
+    failure: needsFile && result?.status === "error" ? result.message : null,
+    retry: () => setAttempt((current) => current + 1),
+  };
 }

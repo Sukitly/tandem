@@ -31,6 +31,8 @@ const HIDE_CURSOR = "\x1b[?25l";
 export function TerminalView({ id, active, ended }: { id: string; active: boolean; ended: boolean }) {
   const { openTerminal } = useConnected();
   const isMobile = useIsMobile();
+  // Renderer choice belongs to the terminal instance, not the current viewport breakpoint.
+  const [useWebgl] = useState(() => !isMobile);
   const box = useRef<HTMLDivElement>(null);
   const [link, setLink] = useState<TerminalLink>("connecting");
   const parts = useRef<Parts | null>(null);
@@ -40,12 +42,17 @@ export function TerminalView({ id, active, ended }: { id: string; active: boolea
   useEffect(() => {
     const element = box.current;
     if (element === null) return;
-    const terminal = new Terminal({ ...TERMINAL_OPTIONS, theme: themeOf(element) });
+    const terminal = new Terminal({
+      ...TERMINAL_OPTIONS,
+      theme: themeOf(element),
+      disableStdin: endedRef.current,
+      cursorBlink: !endedRef.current,
+    });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(element);
     // Drawn on the GPU where it can be (desktop); DOM renderer on mobile or once the GPU context is lost.
-    if (!isMobile) {
+    if (useWebgl) {
       try {
         const webgl = new WebglAddon();
         webgl.onContextLoss(() => webgl.dispose());
@@ -96,7 +103,7 @@ export function TerminalView({ id, active, ended }: { id: string; active: boolea
       terminal.dispose();
       parts.current = null;
     };
-  }, [id, openTerminal, isMobile]);
+  }, [id, openTerminal, useWebgl]);
 
   useEffect(() => {
     endedRef.current = ended;

@@ -3,10 +3,10 @@ import type { ProjectChanges } from "@tandem/contracts";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useConnected } from "./connection.tsx";
 
-/** Keep a project's changes open while the calling component is mounted; `undefined` until its instance arrives. */
-export function useProjectChanges(workspaceId: number): ProjectChanges | undefined {
+/** Hold changes only while enabled. The instance may disappear when the last consumer releases its hold. */
+export function useProjectChanges(workspaceId: number, enabled = true): ProjectChanges | undefined {
   const { openChanges } = useConnected();
-  useEffect(() => openChanges.hold(workspaceId), [openChanges, workspaceId]);
+  useEffect(() => (enabled ? openChanges.hold(workspaceId) : undefined), [openChanges, workspaceId, enabled]);
   return useChangesStore((openChanges) => openChanges.get(workspaceId));
 }
 

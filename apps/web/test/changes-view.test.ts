@@ -136,18 +136,21 @@ describe("file type icons in the changed files list", () => {
   });
 
   test("stores and defaults diff style separately for inline and zoomed states", () => {
-    expect(storedDiffStyle(false)).toBe("unified");
-    expect(storedDiffStyle(true)).toBe("split");
+    expect(storedDiffStyle("inline")).toBe("unified");
+    expect(storedDiffStyle("fullscreen")).toBe("split");
+    expect(storedDiffStyle("narrow")).toBe("unified");
 
     vi.stubGlobal("localStorage", {
       getItem: (key: string) => {
         if (key === "tandem.diffStyle") return "split";
         if (key === "tandem.diffStyle.zoomed") return "unified";
+        if (key === "tandem.diffStyle.mobile") return "split";
         return null;
       },
     });
-    expect(storedDiffStyle(false)).toBe("split");
-    expect(storedDiffStyle(true)).toBe("unified");
+    expect(storedDiffStyle("inline")).toBe("split");
+    expect(storedDiffStyle("fullscreen")).toBe("unified");
+    expect(storedDiffStyle("narrow")).toBe("split");
   });
 
   test("stores diff wrap separately for inline and zoomed states", () => {

@@ -83,7 +83,7 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
 
   return (
     <Tabs value={current.id} onValueChange={(value) => setSelected(String(value))} className="h-full min-h-0 gap-0">
-      <div className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
+      <div data-panel-toolbar className="flex min-w-0 shrink-0 items-center gap-1 border-b px-2 py-1">
         <TabsList variant="line" className="min-w-0 overflow-x-auto">
           {list.map((summary) => (
             <TabsTrigger key={summary.id} value={summary.id} className="flex-none">

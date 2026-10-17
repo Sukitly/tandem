@@ -1,7 +1,8 @@
 import type { CommentMessage, CommentThread } from "@tandem/contracts";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useRef, useState, useSyncExternalStore } from "react";
+import { useDrafts, useTextDraft } from "@/app/drafts.tsx";
+import type { TextDraft } from "@/app/text-draft.ts";
 import { useWorkbench } from "@/app/workbench.tsx";
-import { plainCommentRow } from "@/changes/diff-plain-annotations.ts";
 import { Markdown } from "@/chat/markdown.tsx";
 import {
   AlertDialog,
@@ -23,6 +24,7 @@ import {
   InputGroupText,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
+import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 import { commentPlace } from "./comment-anchor.ts";
 import type { ProjectComments } from "./project-comments.ts";
 import { useCommentWidth } from "./use-comment-width.ts";
@@ -35,6 +37,9 @@ const SURFACE = "m-2 rounded-lg border border-input font-sans dark:bg-input/30";
 
 /** The box a comment is written in: a new thread, a reply, or an edit of a message that is still waiting. */
 export function CommentDraft({
+  model,
+  canSave = true,
+  draftKey,
   place,
   view,
   className,
@@ -44,6 +49,10 @@ export function CommentDraft({
   onSave,
   onCancel,
 }: {
+  model?: TextDraft;
+  canSave?: boolean;
+  /** Stable identity across closing panels, disconnects, and switching layouts. */
+  draftKey?: string;
   /** The file and line it is about, named above the box as a code host names it. */
   place?: string;
   /** The scrollable view the box sits in, whose right edge is where the box has to end. */
@@ -58,23 +67,29 @@ export function CommentDraft({
   onSave(text: string): Promise<unknown>;
   onCancel(): void;
 }) {
-  const [text, setText] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const drafts = useDrafts();
+  const localDraft = useTextDraft(draftKey, initial);
+  const draft = model ?? localDraft;
+  const { text, sending: saving, error } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
+  const composition = useCompositionGuard();
   const box = useCommentBox(embedded ? undefined : view);
   const empty = text.trim() === "";
   // A refused note stays in the box with the reason under it, so it can be changed and saved again.
   const save = (): void => {
-    if (empty || saving) return;
-    setSaving(true);
-    setError(null);
-    onSave(text.trim()).then(
-      () => setSaving(false),
-      (failure: unknown) => {
-        setSaving(false);
-        setError(failure instanceof Error ? failure.message : String(failure));
-      },
-    );
+    if (empty || saving || !canSave) return;
+    void draft
+      .send(() => onSave(text.trim()))
+      .then((saved) => {
+        if (saved && draftKey !== undefined && draft.getSnapshot().text === "") drafts?.forgetText(draftKey, draft);
+      });
+  };
+  const cancel = (): void => {
+    if (saving) return;
+    if (model === undefined) {
+      if (draftKey !== undefined && drafts !== null) drafts.forgetText(draftKey, draft);
+      else draft.reset();
+    }
+    onCancel();
   };
   const group = (
     <InputGroup ref={box.element} className={embedded ? undefined : `${SURFACE} ${className ?? ""}`} style={box.style}>
@@ -89,19 +104,30 @@ export function CommentDraft({
         value={text}
         aria-label="Comment"
         placeholder="What should change here?"
-        className="min-h-20"
-        onChange={(event) => setText(event.target.value)}
+        className="min-h-20 max-h-[35dvh] overflow-y-auto"
+        disabled={saving}
+        onChange={(event) => draft.setText(event.target.value)}
+        onCompositionStart={composition.onCompositionStart}
+        onCompositionEnd={composition.onCompositionEnd}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onCancel();
+          if (composition.owns(event)) return;
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            cancel();
+          }
           // Enter writes another line; the note is saved with the modifier, as a message box would send.
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) save();
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            save();
+          }
         }}
       />
       <InputGroupAddon align="block-end" className="justify-end border-t">
-        <InputGroupButton size="xs" variant="outline" onClick={onCancel}>
+        <InputGroupButton size="xs" variant="outline" disabled={saving} onClick={cancel}>
           Cancel
         </InputGroupButton>
-        <InputGroupButton size="xs" variant="default" disabled={empty || saving} onClick={save}>
+        <InputGroupButton size="xs" variant="default" disabled={empty || saving || !canSave} onClick={save}>
           {submitLabel}
         </InputGroupButton>
       </InputGroupAddon>
@@ -137,7 +163,7 @@ export function CommentThreadBox({
    * The box is not on a line, and shows the code it was written on: its line is not in the file any more (`outdated`),
    * or it is on a line the changes removed, shown with the file as it is (`removed`).
    */
-  detached?: "outdated" | "removed";
+  detached?: "outdated" | "removed" | "outside" | "unverified";
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const [replying, setReplying] = useState(false);
@@ -151,6 +177,7 @@ export function CommentThreadBox({
         editing === message.id ? (
           <CommentDraft
             key={message.id}
+            draftKey={`comment-edit:${thread.workspaceId}:${thread.id}:${message.id}`}
             initial={message.text}
             submitLabel="Save"
             embedded
@@ -175,6 +202,7 @@ export function CommentThreadBox({
       )}
       {replying ? (
         <CommentDraft
+          draftKey={`comment-reply:${thread.workspaceId}:${thread.id}`}
           submitLabel="Reply"
           embedded
           onSave={async (text) => {
@@ -260,14 +288,28 @@ function ThreadMessage({
 }
 
 /** The code a thread was written on, for a thread whose line is gone: the line marked, with the lines kept around it. */
-function WrittenOnCode({ thread, why }: { thread: CommentThread; why: "outdated" | "removed" }) {
+function WrittenOnCode({
+  thread,
+  why,
+}: {
+  thread: CommentThread;
+  why: "outdated" | "removed" | "outside" | "unverified";
+}) {
   const { anchor } = thread;
   const first = anchor.line - anchor.before.length;
   const lines = [...anchor.before, anchor.quote, ...anchor.after];
   return (
     <div className="flex flex-col gap-1 border-b px-2.5 py-2">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="secondary">{why === "outdated" ? "Outdated" : "On a removed line"}</Badge>
+        <Badge variant="secondary">
+          {why === "unverified"
+            ? "Location not verified"
+            : why === "outdated"
+              ? "Outdated"
+              : why === "outside"
+                ? "Outside this diff"
+                : "On a removed line"}
+        </Badge>
         <span className="font-mono">{commentPlace(anchor)}</span>
       </div>
       <pre className="overflow-x-auto font-mono text-xs leading-relaxed">
@@ -293,8 +335,5 @@ function WrittenOnCode({ thread, why }: { thread: CommentThread; why: "outdated"
 function useCommentBox(view: RefObject<HTMLDivElement | null> | undefined) {
   const element = useRef<HTMLDivElement>(null);
   const width = useCommentWidth(element, view);
-  useEffect(() => {
-    plainCommentRow(element.current);
-  }, []);
   return { element, style: width === undefined ? undefined : { width } };
 }

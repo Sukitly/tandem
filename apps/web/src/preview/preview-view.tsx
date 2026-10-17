@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { previewUrl } from "@tandem/contracts";
+import { PREVIEW_SANDBOX_TOKENS, previewUrl } from "@tandem/contracts";
 import { ExternalLinkIcon, GlobeIcon, PlusIcon, RotateCwIcon, XIcon } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -24,12 +24,25 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
   const ports = useMemo(() => state?.ports ?? [], [state?.ports]);
 
   const [selectedPort, setSelectedPort] = useState<number | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [manualPort, setManualPort] = useState("");
   const inputId = useId();
 
   const currentPort = ports.find((p) => p.port === selectedPort)?.port ?? ports[0]?.port ?? null;
+
+  // Only visited ports get a frame. Switching tabs hides it without losing its document or form state.
+  const [sessions, setSessions] = useState(
+    () => new Map<number, number>(active && currentPort !== null ? [[currentPort, 0]] : []),
+  );
+  useEffect(() => {
+    setSessions((previous) => {
+      const next = new Map([...previous].filter(([port]) => ports.some((item) => item.port === port)));
+      if (active && currentPort !== null && !next.has(currentPort)) next.set(currentPort, 0);
+      return next.size === previous.size && [...next].every(([port, revision]) => previous.get(port) === revision)
+        ? previous
+        : next;
+    });
+  }, [active, currentPort, ports]);
 
   const currentUrl = useMemo(() => {
     if (currentPort === null) return "";
@@ -38,7 +51,7 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
 
   const handleAddPort = (e: React.FormEvent) => {
     e.preventDefault();
-    const port = Number.parseInt(manualPort.trim(), 10);
+    const port = Number(manualPort.trim());
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       reportFailure("Invalid port", new Error("Please enter a valid port number between 1 and 65535"));
       return;
@@ -98,8 +111,11 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b px-2 text-xs">
-        <div className="flex items-center gap-1 overflow-x-auto">
+      <div
+        data-panel-toolbar
+        className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-1 border-b px-2 text-xs"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           <Tabs
             value={currentPort !== null ? String(currentPort) : ""}
             onValueChange={(val) => setSelectedPort(Number.parseInt(val, 10))}
@@ -131,7 +147,7 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
           </Tooltip>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {currentUrl && (
             <>
               <Tooltip>
@@ -141,7 +157,12 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
                       variant="ghost"
                       size="icon-xs"
                       aria-label="Reload preview"
-                      onClick={() => setRefreshKey((k) => k + 1)}
+                      onClick={() => {
+                        if (currentPort !== null)
+                          setSessions((previous) =>
+                            new Map(previous).set(currentPort, (previous.get(currentPort) ?? 0) + 1),
+                          );
+                      }}
                       className="size-7"
                     >
                       <RotateCwIcon className="size-3.5" />
@@ -214,15 +235,20 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
       )}
 
       <div className="relative min-h-0 flex-1 bg-background">
-        {currentUrl ? (
-          <iframe
-            key={`${currentUrl}-${refreshKey}`}
-            src={currentUrl}
-            title={`Preview port ${currentPort}`}
-            className="h-full w-full border-0"
-            sandbox="allow-scripts allow-forms allow-popups allow-modals"
-          />
-        ) : (
+        {ports
+          .filter((item) => sessions.has(item.port))
+          .map((item) => (
+            <div key={item.port} hidden={item.port !== currentPort} className="h-full">
+              <iframe
+                key={sessions.get(item.port)}
+                src={previewUrl({ port: item.port, baseUrl: window.location.origin })}
+                title={`Preview port ${item.port}`}
+                className="h-full w-full border-0"
+                sandbox={PREVIEW_SANDBOX_TOKENS.join(" ")}
+              />
+            </div>
+          ))}
+        {!currentUrl && (
           <Empty className="h-full">
             <EmptyTitle>No port selected</EmptyTitle>
           </Empty>

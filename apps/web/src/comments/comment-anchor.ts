@@ -12,6 +12,7 @@ export function relocate(
   anchor: CommentAnchor,
   lineAt: (line: number) => string | undefined,
   count: number,
+  candidates: Iterable<number> = lineNumbers(count),
 ): number | undefined {
   if (lineAt(anchor.line) === anchor.quote && surrounding(anchor, lineAt, anchor.line) === full(anchor)) {
     return anchor.line;
@@ -19,7 +20,7 @@ export function relocate(
   // A blank line says nothing about where it is.
   if (anchor.quote.trim() === "") return lineAt(anchor.line) === anchor.quote ? anchor.line : undefined;
   let best: { line: number; score: number; distance: number } | undefined;
-  for (let line = 1; line <= count; line += 1) {
+  for (const line of candidates) {
     if (lineAt(line) !== anchor.quote) continue;
     const candidate = {
       line,
@@ -29,11 +30,33 @@ export function relocate(
     if (
       best === undefined ||
       candidate.score > best.score ||
-      (candidate.score === best.score && candidate.distance < best.distance)
+      (candidate.score === best.score &&
+        (candidate.distance < best.distance || (candidate.distance === best.distance && candidate.line < best.line)))
     )
       best = candidate;
   }
   return best?.line;
+}
+
+/** Enumerate dense files lazily; sparse diffs supply only their visible line numbers. */
+function* lineNumbers(count: number): Iterable<number> {
+  for (let line = 1; line <= count; line += 1) yield line;
+}
+
+/** Index each shown line once, rather than scanning the entire file again for every comment. */
+export function indexLines(
+  lineAt: (line: number) => string | undefined,
+  numbers: Iterable<number> | number,
+): Map<string, number[]> {
+  const index = new Map<string, number[]>();
+  for (const line of typeof numbers === "number" ? lineNumbers(numbers) : numbers) {
+    const text = lineAt(line);
+    if (text === undefined) continue;
+    const matches = index.get(text);
+    if (matches === undefined) index.set(text, [line]);
+    else matches.push(line);
+  }
+  return index;
 }
 
 /** How many of the kept lines around the thread's line are still beside a line. */
@@ -95,10 +118,32 @@ export function placeThreads(
   side: "additions" | "deletions",
   lineAt: (line: number) => string | undefined,
   count: number,
+  numbers: Iterable<number> = lineNumbers(count),
 ): PlacedThread[] {
-  return threads
-    .filter((thread) => thread.anchor.path === path && (thread.anchor.side ?? "additions") === side)
-    .map((thread) => ({ thread, line: relocate(thread.anchor, lineAt, count) }));
+  const matching = threads.filter(
+    (thread) => thread.anchor.path === path && (thread.anchor.side ?? "additions") === side,
+  );
+  if (matching.length === 0) return [];
+  let index: Map<string, number[]> | undefined;
+  return matching.map((thread) => {
+    // Unchanged anchors and blank lines do not need a whole-file index.
+    const direct = relocate(thread.anchor, lineAt, count, []);
+    if (direct !== undefined || thread.anchor.quote.trim() === "") return { thread, line: direct };
+    index ??= indexLines(lineAt, numbers);
+    return { thread, line: relocate(thread.anchor, lineAt, count, index.get(thread.anchor.quote) ?? []) };
+  });
+}
+
+/** One lookup per rendered line, including all threads sharing that line. */
+export function threadsByLine(placed: readonly PlacedThread[]): Map<number, CommentThread[]> {
+  const result = new Map<number, CommentThread[]>();
+  for (const { line, thread } of placed) {
+    if (line === undefined) continue;
+    const group = result.get(line);
+    if (group === undefined) result.set(line, [thread]);
+    else group.push(thread);
+  }
+  return result;
 }
 
 /**

@@ -1,6 +1,15 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { EyeIcon, EyeOffIcon, RotateCwIcon, XIcon } from "lucide-react";
-import { useEffect } from "react";
+import {
+  EyeIcon,
+  EyeOffIcon,
+  FilesIcon,
+  GitCompareIcon,
+  GlobeIcon,
+  RotateCwIcon,
+  SquareTerminalIcon,
+  XIcon,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { panelTabOf, useWorkbench } from "@/app/workbench.tsx";
 import { ChangesView } from "@/changes/changes-view.tsx";
@@ -30,10 +39,14 @@ export function ProjectPanel({
   onClose?: () => void;
 }) {
   const workbench = useWorkbench();
+  const [refreshing, setRefreshing] = useState(false);
   const { panelTab, showTab, changeTarget, showHiddenFiles = false, setShowHiddenFiles } = workbench;
   const files = workbench.projectFiles(workspaceId);
   const comments = workbench.comments(workspaceId);
-  const changes = useProjectChanges(workspaceId);
+  // Retained projects create expensive tabs only after the user visits them.
+  const visited = useRef(new Set<string>([panelTab]));
+  visited.current.add(panelTab);
+  const changes = useProjectChanges(workspaceId, active && visited.current.has("changes"));
   const changesFailure = useProjectChangesFailure(workspaceId);
   const failure = useProjectFiles(files, (current) => current.failure);
   const opened = useProjectFiles(files, (current) => current.opened !== null);
@@ -46,17 +59,33 @@ export function ProjectPanel({
   }, [failure, files]);
 
   return (
-    <Tabs value={panelTab} onValueChange={(value) => showTab(panelTabOf(value))} className="h-full min-h-0 gap-0">
+    <Tabs
+      value={panelTab}
+      onValueChange={(value) => showTab(panelTabOf(value))}
+      className="@container/project-panel h-full min-h-0 min-w-0 gap-0"
+    >
       {/* As tall as the conversation's header beside it, so that their borders line up. */}
-      <header className="flex h-13 shrink-0 items-center gap-1 border-b px-3">
-        <TabsList variant="line">
-          <TabsTrigger value="files">Files</TabsTrigger>
-          <TabsTrigger value="changes">Changes</TabsTrigger>
-          <TabsTrigger value="terminal">Terminal</TabsTrigger>
-          <TabsTrigger value="preview">Preview</TabsTrigger>
+      <header data-panel-toolbar className="flex min-h-13 shrink-0 flex-wrap items-center gap-1 border-b px-2 py-1">
+        <TabsList variant="line" className="min-w-max flex-1">
+          <TabsTrigger value="files" aria-label="Files">
+            <FilesIcon className="hidden @max-[400px]/project-panel:block" />
+            <span className="@max-[400px]/project-panel:sr-only">Files</span>
+          </TabsTrigger>
+          <TabsTrigger value="changes" aria-label="Changes">
+            <GitCompareIcon className="hidden @max-[400px]/project-panel:block" />
+            <span className="@max-[400px]/project-panel:sr-only">Changes</span>
+          </TabsTrigger>
+          <TabsTrigger value="terminal" aria-label="Terminal">
+            <SquareTerminalIcon className="hidden @max-[400px]/project-panel:block" />
+            <span className="@max-[400px]/project-panel:sr-only">Terminal</span>
+          </TabsTrigger>
+          <TabsTrigger value="preview" aria-label="Preview">
+            <GlobeIcon className="hidden @max-[400px]/project-panel:block" />
+            <span className="@max-[400px]/project-panel:sr-only">Preview</span>
+          </TabsTrigger>
         </TabsList>
         {/* A terminal draws itself as the shell writes: there is nothing to read again. */}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {panelTab === "files" && (
             <Tooltip>
               <TooltipTrigger
@@ -84,7 +113,21 @@ export function ProjectPanel({
                     variant="ghost"
                     size="icon-xs"
                     aria-label="Refresh"
-                    onClick={() => (panelTab === "files" ? files.refresh() : changes?.refresh(BACKGROUND_CONTEXT))}
+                    disabled={refreshing || (panelTab === "changes" && changes === undefined)}
+                    onClick={async () => {
+                      if (refreshing) return;
+                      setRefreshing(true);
+                      try {
+                        if (panelTab === "files") files.refresh();
+                        else await changes?.refresh(BACKGROUND_CONTEXT);
+                      } catch (error) {
+                        toast.error("Could not refresh changes", {
+                          description: error instanceof Error ? error.message : String(error),
+                        });
+                      } finally {
+                        setRefreshing(false);
+                      }
+                    }}
                   />
                 }
               >
@@ -100,36 +143,43 @@ export function ProjectPanel({
           )}
         </div>
       </header>
-      <TabsContent value="files" className="flex min-h-0 flex-col">
-        <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
-          <ResizablePanel id="tree" minSize={80} className="overflow-auto p-2">
-            <FileTree files={files} showHidden={showHiddenFiles} />
-          </ResizablePanel>
-          {opened && (
-            <>
-              <ResizableHandle />
-              <ResizablePanel id="file" defaultSize="60" minSize={120}>
-                <FileView files={files} comments={comments} />
-              </ResizablePanel>
-            </>
-          )}
-        </ResizablePanelGroup>
+      <TabsContent value="files" keepMounted className="flex min-h-0 flex-col">
+        {visited.current.has("files") && (
+          <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
+            <ResizablePanel id="tree" minSize={80} className="overflow-auto p-2">
+              <FileTree files={files} showHidden={showHiddenFiles} />
+            </ResizablePanel>
+            {opened && (
+              <>
+                <ResizableHandle />
+                <ResizablePanel id="file" defaultSize="60" minSize={120}>
+                  <FileView files={files} comments={comments} active={active && panelTab === "files"} />
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
+        )}
       </TabsContent>
-      <TabsContent value="changes" className="flex min-h-0 flex-col">
-        <ChangesView
-          changes={changes}
-          failure={changesFailure}
-          comments={comments}
-          reveal={changeTarget?.workspaceId === workspaceId ? changeTarget : undefined}
-        />
+      <TabsContent value="changes" keepMounted className="flex min-h-0 flex-col">
+        {visited.current.has("changes") && (
+          <ChangesView
+            active={active && panelTab === "changes"}
+            changes={changes}
+            failure={changesFailure}
+            comments={comments}
+            reveal={changeTarget?.workspaceId === workspaceId ? changeTarget : undefined}
+          />
+        )}
       </TabsContent>
       {/* Kept mounted, so the terminals keep their screens and connections while another tab shows. */}
       <TabsContent value="terminal" keepMounted className="flex min-h-0 flex-col">
-        <TerminalsView workspaceId={workspaceId} active={active && panelTab === "terminal"} />
+        {visited.current.has("terminal") && (
+          <TerminalsView workspaceId={workspaceId} active={active && panelTab === "terminal"} />
+        )}
       </TabsContent>
       {/* Kept mounted, so the preview iframe keeps its page state while another tab shows. */}
       <TabsContent value="preview" keepMounted className="flex min-h-0 flex-1 flex-col">
-        <PreviewView active={active && panelTab === "preview"} />
+        {visited.current.has("preview") && <PreviewView active={active && panelTab === "preview"} />}
       </TabsContent>
     </Tabs>
   );

@@ -8,6 +8,7 @@ import {
   MessageCircleDashedIcon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useDrafts, useMessageDraft } from "@/app/drafts.tsx";
 import { SidebarToggle } from "@/app/sidebar.tsx";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
@@ -25,7 +26,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { useConnected } from "@/rpc/connection.tsx";
-import { useConversation } from "@/rpc/use-conversation.ts";
+import { useConversation, useConversationFailure } from "@/rpc/use-conversation.ts";
 import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer, imageSupportOf } from "./chat-composer.tsx";
@@ -40,6 +41,25 @@ import { UsageLine } from "./usage-line.tsx";
 /** One conversation: its header, transcript, and the message box. */
 export function ChatView({ conversationId }: { conversationId: number }) {
   const conversation = useConversation(conversationId);
+  const failure = useConversationFailure(conversationId);
+  const { open } = useConnected();
+  const { select } = useWorkbench();
+  if (conversation === undefined && failure !== undefined) {
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>Could not open the conversation</EmptyTitle>
+          <EmptyDescription role="alert">{failure.message}</EmptyDescription>
+        </EmptyHeader>
+        <div className="flex gap-2">
+          <Button onClick={() => open.retry(conversationId)}>Retry</Button>
+          <Button variant="outline" onClick={() => select(null)}>
+            Back to workspace
+          </Button>
+        </div>
+      </Empty>
+    );
+  }
   if (conversation === undefined) {
     return (
       <Empty>
@@ -65,6 +85,9 @@ export function ChatView({ conversationId }: { conversationId: number }) {
  * server with the model and thinking level chosen meanwhile, then it opens as any other.
  */
 export function NewChat({ workspaceId }: { workspaceId: number }) {
+  const drafts = useDrafts();
+  const draftKey = `new:${workspaceId}`;
+  const inputDraft = useMessageDraft(draftKey);
   const { workspaces, conversations, models } = useConnected();
   const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
   const available = useReplicatedState(models.state);
@@ -122,6 +145,7 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
       <ChatFooter>
         <PullRequestLine workspaceId={workspaceId} />
         <ChatComposer
+          draft={inputDraft}
           busy={false}
           queued={[]}
           comments={waiting}
@@ -138,7 +162,15 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
               { workspaceId, text, comments: sent, ...(images.length === 0 ? {} : { images }), ...agent },
               BACKGROUND_CONTEXT,
             );
+            const moved = drafts?.move(draftKey, `conversation:${id}`);
             select(id);
+            if (moved === "conflict")
+              reportFailure(
+                "Conversation started; both drafts were kept",
+                new Error(
+                  "The conversation already has a draft. Any newer input remains in this project’s New conversation draft.",
+                ),
+              );
           }}
           onStop={() => {}}
           statusBar={<StatusBar agent={agent} usage={{ tokens: 0, cost: 0 }} onConfigure={configure} />}
@@ -150,6 +182,8 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 }
 
 function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
+  const [stopping, setStopping] = useState(false);
+  const inputDraft = useMessageDraft(`conversation:${conversationId}`);
   const { scrollToEnd } = useMessageScroller();
   const { conversations, models } = useConnected();
   const available = useReplicatedState(models.state);
@@ -194,6 +228,7 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
         ))}
         <PullRequestLine workspaceId={summary?.workspaceId} active={transcript.busy} />
         <ChatComposer
+          draft={inputDraft}
           busy={transcript.busy}
           queued={transcript.queued}
           comments={waiting}
@@ -213,8 +248,14 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
             // Sending is an explicit return to the live conversation, even after scrolling up to read history.
             scrollToEnd({ behavior: "auto" });
           }}
+          stopping={stopping}
           onStop={() => {
-            conversation.abort(BACKGROUND_CONTEXT).catch((error: unknown) => console.error(error));
+            if (stopping) return;
+            setStopping(true);
+            Promise.resolve()
+              .then(() => conversation.abort(BACKGROUND_CONTEXT))
+              .catch((error: unknown) => reportFailure("Could not stop the agent", error))
+              .finally(() => setStopping(false));
           }}
           statusBar={
             <StatusBar

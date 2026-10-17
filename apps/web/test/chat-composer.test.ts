@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
@@ -10,7 +10,29 @@ vi.mock("../src/app/workbench.tsx", () => ({
   useWorkbench: () => ({ openChange: vi.fn() }),
 }));
 
+vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => false }));
+
 afterEach(cleanup);
+
+test("a successful send preserves edits made while waiting for the server", async () => {
+  let finish!: () => void;
+  const onSend = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(
+    createElement(ChatComposer, { busy: false, queued: [], onSend, onStop: vi.fn(), imageSupport: { kind: "none" } }),
+  );
+  const input = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+  fireEvent.change(input, { target: { value: "First" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Message box" }));
+  fireEvent.change(input, { target: { value: "Next draft" } });
+  await act(async () => finish());
+  expect(input.value).toBe("Next draft");
+  expect(onSend).toHaveBeenCalledWith("First", [], [], "steer");
+});
 
 // jsdom does not lay out text; check the wrapping utilities on the rendered components.
 describe("queued chat messages", () => {

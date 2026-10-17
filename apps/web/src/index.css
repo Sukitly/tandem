@@ -198,21 +198,44 @@
   }
 }
 
-/* Tabs keep their active underline without a focus border, ring, or outline. */
-[data-slot="tabs-trigger"]:focus-visible {
-  border-color: transparent;
-  box-shadow: none;
+/* Focus must not add gray rings/outlines. Keep ordinary shadows, borders, and invalid-field feedback. */
+:focus-visible:not([aria-invalid="true"]):not(:has([aria-invalid="true"])) {
   outline: none;
 }
+[class*="focus-visible:ring-"]:focus-visible:not([aria-invalid="true"]):not(:has([aria-invalid="true"])),
+[data-slot="input-group"]:focus-within:not(:has([aria-invalid="true"])) {
+  box-shadow: var(--tw-shadow, 0 0 #0000);
+}
 
-/*
- * Text fields show no focus ring and keep their border when focused: the caret already marks where typing goes.
- * Invalid fields keep their red ring. Unlayered, so it wins over the components' utility classes.
- */
-:is([data-slot="input"], [data-slot="sidebar-input"], [data-slot="textarea"]):focus-visible:not([aria-invalid="true"]),
-[data-slot="input-group"]:has([data-slot="input-group-control"]:focus-visible):not(:has([aria-invalid="true"])) {
+[class~="focus-visible:border-ring"]:focus-visible:not([aria-invalid="true"]) {
+  border-color: transparent;
+}
+:is([class~="border-input"], [data-slot="sidebar-input"]):focus-visible:not([aria-invalid="true"]),
+[data-slot="input-group"]:focus-within:not(:has([aria-invalid="true"])) {
   border-color: var(--input);
-  box-shadow: none;
+}
+[class~="border-border"]:focus-visible:not([aria-invalid="true"]) {
+  border-color: var(--border);
+}
+.dark [class~="dark:border-input"]:focus-visible:not([aria-invalid="true"]),
+.dark
+  [data-slot="tabs-list"][data-variant="default"]
+  [data-slot="tabs-trigger"][data-active]:focus-visible:not([aria-invalid="true"]) {
+  border-color: var(--input);
+}
+
+@media (pointer: coarse) {
+  [data-composer] button,
+  .app-dialog button,
+  [data-slot="dropdown-menu-radio-item"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  [data-composer] textarea,
+  .app-dialog input,
+  .app-dialog textarea {
+    font-size: 16px;
+  }
 }
 
 /*
@@ -307,4 +330,12 @@ html {
 }
 .dark [data-slot="code-block-line"][data-variant="removed"]::after {
   color: var(--color-red-400, #f87171);
+}
+
+/* Toolbar targets follow the actual input device, independently of viewport width. */
+@media (pointer: coarse) {
+  [data-panel-toolbar] button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

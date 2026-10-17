@@ -3,6 +3,7 @@ import type { ModelRef, ModelSummary } from "@tandem/contracts";
 import { cn } from "cn";
 import { CheckIcon, ChevronDownIcon, KeyRoundIcon } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Context } from "@/components/ai-elements/context.tsx";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,13 +55,22 @@ export function StatusBar({
   const current = state?.models.find(
     (model) => model.provider === agent?.model?.provider && model.modelId === agent?.model?.modelId,
   );
+  const [pending, setPending] = useState(false);
   const contextWindow = current?.contextWindow ?? 0;
   const percent = contextWindow > 0 ? Math.min(100, (usage.tokens / contextWindow) * 100) : 0;
-  const report = (error: unknown): void => console.error(error);
+  const report = (error: unknown): void => {
+    toast.error("Could not save thinking level", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  };
   const chooseThinking = (thinkingLevel: string): void => {
-    onConfigure({ thinkingLevel }).catch(report);
-    // The last choice is what new conversations start with.
-    models.setDefaultThinkingLevel(thinkingLevel, BACKGROUND_CONTEXT).catch(report);
+    if (pending) return;
+    setPending(true);
+    Promise.resolve()
+      .then(() => onConfigure({ thinkingLevel }))
+      .then(() => models.setDefaultThinkingLevel(thinkingLevel, BACKGROUND_CONTEXT))
+      .catch(report)
+      .finally(() => setPending(false));
   };
 
   return (
@@ -70,7 +80,7 @@ export function StatusBar({
       <ModelPicker agent={agent} current={current} onConfigure={onConfigure} />
       {current !== undefined && current.thinkingLevels.length > 1 && (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="xs" className="shrink-0" />}>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="xs" className="shrink-0" disabled={pending} />}>
             <span className="hidden sm:inline">{thinkingLabel(agent?.thinkingLevel ?? "off")}</span>
             <span className="sm:hidden">{shortThinkingLabel(agent?.thinkingLevel ?? "off")}</span>
             <ChevronDownIcon />
@@ -122,8 +132,13 @@ function ModelPicker({
   const state = useReplicatedState(models.state);
   const providers = useProvidersDialog();
   const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
   const available = state?.models ?? [];
-  const report = (error: unknown): void => console.error(error);
+  const report = (error: unknown): void => {
+    toast.error("Could not save model selection", {
+      description: error instanceof Error ? error.message : String(error),
+    });
+  };
 
   if (available.length === 0) {
     return (
@@ -135,17 +150,28 @@ function ModelPicker({
   }
 
   const choose = (model: ModelSummary): void => {
+    if (pending) return;
+    setPending(true);
     setOpen(false);
     const ref = { provider: model.provider, modelId: model.modelId };
-    onConfigure({ model: ref }).catch(report);
-    // The last choice is what new conversations start with.
-    models.setDefaultModel(ref, BACKGROUND_CONTEXT).catch(report);
+    Promise.resolve()
+      .then(() => onConfigure({ model: ref }))
+      .then(() => models.setDefaultModel(ref, BACKGROUND_CONTEXT))
+      .catch(report)
+      .finally(() => setPending(false));
   };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<Button variant="ghost" size="xs" className="shrink min-w-0 max-w-36 text-left sm:max-w-none" />}
+        render={
+          <Button
+            variant="ghost"
+            size="xs"
+            disabled={pending}
+            className="shrink min-w-0 max-w-36 text-left sm:max-w-none"
+          />
+        }
       >
         <span className="truncate">
           {current?.name ?? (agent?.model === undefined ? "Choose a model" : `${agent.model.modelId} (unavailable)`)}

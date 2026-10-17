@@ -92,4 +92,32 @@ describe("PreviewView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close port 5173" }));
     expect(mock.unregister).toHaveBeenCalledWith({ port: 5173 }, expect.anything());
   });
+
+  test("creates frames lazily and retains each visited port until it is removed", () => {
+    mock.state = {
+      ports: [
+        { port: 5173, detectedAt: 0 },
+        { port: 8080, detectedAt: 0 },
+      ],
+    };
+    const view = render(createElement(PreviewView, { active: false }));
+    expect(document.querySelectorAll("iframe")).toHaveLength(0);
+    view.rerender(createElement(PreviewView, { active: true }));
+    const first = screen.getByTitle("Preview port 5173");
+    expect(document.querySelectorAll("iframe")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("tab", { name: "8080" }));
+    const second = screen.getByTitle("Preview port 8080");
+    expect(screen.getByTitle("Preview port 5173")).toBe(first);
+    expect(first.parentElement?.hidden).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Reload preview" }));
+    expect(screen.getByTitle("Preview port 8080")).not.toBe(second);
+    expect(screen.getByTitle("Preview port 5173")).toBe(first);
+    fireEvent.click(screen.getByRole("tab", { name: "5173" }));
+    view.rerender(createElement(PreviewView, { active: false }));
+    view.rerender(createElement(PreviewView, { active: true }));
+    expect(screen.getByTitle("Preview port 5173")).toBe(first);
+    mock.state = { ports: [{ port: 8080, detectedAt: 0 }] };
+    view.rerender(createElement(PreviewView, { active: true }));
+    expect(screen.queryByTitle("Preview port 5173")).toBeNull();
+  });
 });

@@ -1,21 +1,33 @@
 /**
- * The library paints a comment's row, and the number cell beside it, with a background of their own. A reviewed line is
- * plain, as it is in a code host: the box brings its own border instead.
- *
- * What the library sets lives inside the diff's shadow root, and nothing from outside reaches in, so the rule has to be
- * written there. A comment's own element is already in that root, which is where this is called from.
+ * The only renderer-specific style compatibility layer, passed through CodeView's public unsafeCSS option.
+ * No comment component reaches into or mutates a ShadowRoot. Keep these selectors covered by browser regressions
+ * when upgrading @pierre/diffs: comments are plain, code remains selectable, and gutters permit touch scrolling.
  */
-const PLAIN_ROW = `[data-line-annotation], [data-n-buffer="annotation"] { --diffs-annotation-bg: var(--diffs-bg); }`;
-
-const MARKER = "data-tandem-plain-row";
-
-/** Make the row the given comment sits in plain. Does nothing outside a diff, where there is no such row. */
-export function plainCommentRow(node: HTMLElement | null): void {
-  const root = node?.getRootNode();
-  if (!(root instanceof ShadowRoot)) return;
-  if (root.querySelector(`[${MARKER}]`) !== null) return;
-  const style = document.createElement("style");
-  style.setAttribute(MARKER, "");
-  style.textContent = PLAIN_ROW;
-  root.append(style);
+export const DIFF_COMMENT_CSS = `
+[data-line-annotation], [data-gutter-buffer="annotation"] { --diffs-annotation-bg: var(--diffs-bg); }
+[data-interactive-lines] [data-line] { cursor: text; }
+[data-interactive-line-numbers] [data-column-number] {
+  touch-action: pan-y pinch-zoom;
+  cursor: pointer;
+  position: relative;
 }
+@media (hover: hover) {
+  [data-column-number]:hover [data-line-number-content],
+  [data-column-number][data-hovered] [data-line-number-content] {
+    visibility: hidden;
+  }
+  [data-column-number]:hover::after,
+  [data-column-number][data-hovered]::after {
+    content: "+";
+    position: absolute;
+    inset-inline-end: 1ch;
+    inset-block: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    color: var(--diffs-fg);
+    font-weight: 500;
+    pointer-events: none;
+  }
+}
+`;

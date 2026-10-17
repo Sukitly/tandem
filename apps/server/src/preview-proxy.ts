@@ -1,6 +1,10 @@
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as netConnect } from "node:net";
 import type { Duplex } from "node:stream";
+import { PREVIEW_SANDBOX_TOKENS } from "@tandem/contracts";
+
+/** Enforced on responses too: opening a preview outside its iframe must not grant it Tandem's origin. */
+export const PREVIEW_SANDBOX = `sandbox ${PREVIEW_SANDBOX_TOKENS.join(" ")}`;
 
 export const DANGEROUS_PORTS = new Set([
   22, // SSH
@@ -41,6 +45,7 @@ export interface PreviewUpgradeOptions {
  */
 export function handlePreviewHttpRequest(options: PreviewHttpOptions): void {
   const { request, response, targetPort, targetPath, isSubpath = false, onError } = options;
+  response.setHeader("Content-Security-Policy", PREVIEW_SANDBOX);
 
   const headers: Record<string, string | string[] | undefined> = { ...request.headers };
   delete headers.host;
@@ -49,6 +54,8 @@ export function handlePreviewHttpRequest(options: PreviewHttpOptions): void {
   delete headers["transfer-encoding"];
   // Strip credentials from upstream dev servers to protect Tandem session tokens
   delete headers.cookie;
+  delete headers.authorization;
+  delete headers["proxy-authorization"];
 
   headers.host = `127.0.0.1:${targetPort}`;
   headers["x-forwarded-host"] = request.headers.host ?? "";
@@ -74,22 +81,22 @@ export function handlePreviewHttpRequest(options: PreviewHttpOptions): void {
       delete responseHeaders["set-cookie"];
       responseHeaders["x-content-type-options"] = "nosniff";
 
-      if (responseHeaders["content-security-policy"]) {
-        const csp = Array.isArray(responseHeaders["content-security-policy"])
-          ? responseHeaders["content-security-policy"].join("; ")
-          : responseHeaders["content-security-policy"];
-        // Remove frame-ancestors directive
-        const cleanedCsp = csp
-          .split(";")
-          .map((part) => part.trim())
-          .filter((part) => !part.toLowerCase().startsWith("frame-ancestors"))
-          .join("; ");
-        if (cleanedCsp.length > 0) {
-          responseHeaders["content-security-policy"] = cleanedCsp;
-        } else {
-          delete responseHeaders["content-security-policy"];
-        }
-      }
+      const upstreamCsp = responseHeaders["content-security-policy"];
+      const policies = upstreamCsp === undefined ? [] : Array.isArray(upstreamCsp) ? upstreamCsp : [upstreamCsp];
+      // Separate policies intersect. Never append sandbox as another directive in an upstream policy: an existing
+      // sandbox directive (including allow-same-origin) would take precedence over a duplicate directive.
+      responseHeaders["content-security-policy"] = [
+        ...policies
+          .map((policy) =>
+            policy
+              .split(";")
+              .map((part) => part.trim())
+              .filter((part) => !/^frame-ancestors(?:\s|$)/i.test(part))
+              .join("; "),
+          )
+          .filter(Boolean),
+        PREVIEW_SANDBOX,
+      ];
 
       // Rewrite location headers on subpath mode to prevent breaking out of preview subpath
       if (isSubpath && responseHeaders.location) {
@@ -165,7 +172,7 @@ export function handlePreviewUpgrade(options: PreviewUpgradeOptions): void {
       } else if (lower === "origin") {
         // Rewrite origin to match target to satisfy Vite HMR / strict dev server origin checks
         lines.push(`Origin: http://127.0.0.1:${targetPort}`);
-      } else if (lower === "cookie") {
+      } else if (lower === "cookie" || lower === "authorization" || lower === "proxy-authorization") {
       } else if (Array.isArray(value)) {
         for (const item of value) {
           lines.push(`${key}: ${item}`);

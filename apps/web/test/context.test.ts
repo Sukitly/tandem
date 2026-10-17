@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, expect, test } from "vitest";
 import { formatCost, formatTokens } from "../src/chat/status-bar.tsx";
@@ -11,6 +11,13 @@ afterEach(cleanup);
 test("the context AI element exposes the percentage and token usage", () => {
   render(createElement(Context, { usedTokens: 59840, maxTokens: 272000, cost: 0.042 }));
   expect(screen.getByRole("button", { name: "22% context" })).toBeDefined();
+});
+
+test("context details can be opened by click instead of hover", async () => {
+  render(createElement(Context, { usedTokens: 500, maxTokens: 1000, cost: 0.05 }));
+  fireEvent.click(screen.getByRole("button", { name: "50% context" }));
+  expect(await screen.findByText("Used tokens")).toBeDefined();
+  expect(screen.getByText("Total cost")).toBeDefined();
 });
 
 test("the context AI element clamps its display to 100 percent", () => {

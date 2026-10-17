@@ -23,6 +23,8 @@ export class OpenInstances<TKey, TInstance> {
   readonly #onError: (error: Error) => void;
   readonly #instances = new Map<TKey, TInstance>();
   readonly #failures = new Map<TKey, Error>();
+  readonly #attempts = new Map<TKey, symbol>();
+  #disposed = false;
   readonly #holds = new Map<TKey, number>();
   readonly #listeners = new Set<() => void>();
   readonly #stop: (() => void)[] = [];
@@ -58,6 +60,12 @@ export class OpenInstances<TKey, TInstance> {
     return this.#failures.get(key);
   }
 
+  /** Retry a failed, still-held instance. Idempotent while an attempt is in flight. */
+  retry(key: TKey): void {
+    if (!this.#disposed && this.#holds.has(key) && this.#failures.has(key) && !this.#instances.has(key))
+      this.#open(key);
+  }
+
   /** Keep an instance open until the returned function is called. */
   hold(key: TKey): () => void {
     const holds = this.#holds.get(key) ?? 0;
@@ -73,19 +81,24 @@ export class OpenInstances<TKey, TInstance> {
         return;
       }
       this.#holds.delete(key);
+      this.#attempts.delete(key);
+      if (this.#failures.delete(key)) this.#notify();
       this.#options.close(key, BACKGROUND_CONTEXT).catch(() => {
         // Disconnected: the instance is gone already.
       });
     };
   }
 
-  /** Called when an instance arrives or leaves. */
+  /** Called when an instance or its opening failure changes. */
   subscribe(listener: () => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
 
   dispose(): void {
+    this.#disposed = true;
+    this.#holds.clear();
+    this.#attempts.clear();
     for (const stop of this.#stop.splice(0)) stop();
     this.#instances.clear();
     this.#failures.clear();
@@ -93,7 +106,12 @@ export class OpenInstances<TKey, TInstance> {
   }
 
   #open(key: TKey): void {
+    if (this.#disposed) return;
+    const attempt = Symbol();
+    this.#attempts.set(key, attempt);
+    if (this.#failures.delete(key)) this.#notify();
     this.#options.open(key, BACKGROUND_CONTEXT).catch((error: unknown) => {
+      if (this.#disposed || this.#attempts.get(key) !== attempt || this.#instances.has(key)) return;
       // While disconnected, the next connection opens it again.
       if (this.#connection.status.value?.status !== "connected") return;
       const failure = error instanceof Error ? error : new Error(String(error));
@@ -105,7 +123,7 @@ export class OpenInstances<TKey, TInstance> {
 
   async #track(instance: TInstance, context: Context): Promise<void> {
     const key = await this.#options.keyOf(instance, context);
-    if (key === undefined) return;
+    if (key === undefined || this.#disposed || context.abortSignal?.aborted) return;
     this.#failures.delete(key);
     this.#instances.set(key, instance);
     // The instance arriving is what a component waits for; without this it is in the map but never rendered.

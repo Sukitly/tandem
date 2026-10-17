@@ -28,6 +28,8 @@ export class ProjectFiles {
   readonly #files: Files;
   readonly #workspaceId: number;
   readonly #directories = new Map<string, Loaded<FileEntry[]>>();
+  readonly #listRequests = new Map<string, symbol>();
+  #readRequest = 0;
   #expanded = new Set<string>();
   #opened: OpenedFile | null = null;
   /** Of the opened file, or of the one opened before while the new one is read. */
@@ -92,6 +94,7 @@ export class ProjectFiles {
   }
 
   close(): void {
+    this.#readRequest += 1;
     this.#opened = null;
     this.#content = null;
     this.#changed();
@@ -115,21 +118,30 @@ export class ProjectFiles {
     this.#failure = null;
     for (const path of [...this.#directories.keys()]) {
       if (path === "" || this.#expanded.has(path)) this.#list(path);
-      else this.#directories.delete(path);
+      else {
+        this.#directories.delete(path);
+        this.#listRequests.delete(path);
+      }
     }
     if (this.#opened !== null) this.#read(this.#opened.path);
     this.#changed();
   }
 
   #list(path: string): void {
+    const request = Symbol();
+    this.#listRequests.set(path, request);
     if (this.#directories.get(path)?.status !== "ready") this.#directories.set(path, LOADING);
     this.#changed();
     this.#files.list({ workspaceId: this.#workspaceId, path }, BACKGROUND_CONTEXT).then(
       (entries) => {
+        if (this.#listRequests.get(path) !== request) return;
+        this.#listRequests.delete(path);
         this.#directories.set(path, { status: "ready", value: entries });
         this.#changed();
       },
       (error: unknown) => {
+        if (this.#listRequests.get(path) !== request) return;
+        this.#listRequests.delete(path);
         this.#directories.set(path, { status: "failed", message: messageOf(error) });
         this.#failure = messageOf(error);
         this.#changed();
@@ -139,16 +151,17 @@ export class ProjectFiles {
 
   /** The content shown so far stays until the new one arrives. */
   #read(path: string): void {
+    const request = ++this.#readRequest;
     this.#changed();
     this.#files.read({ workspaceId: this.#workspaceId, path }, BACKGROUND_CONTEXT).then(
-      (content) => this.#settle(path, { status: "ready", value: content }),
-      (error: unknown) => this.#settle(path, { status: "failed", message: messageOf(error) }),
+      (content) => this.#settle(path, request, { status: "ready", value: content }),
+      (error: unknown) => this.#settle(path, request, { status: "failed", message: messageOf(error) }),
     );
   }
 
-  /** A read of a file that is no longer the opened one is dropped. */
-  #settle(path: string, loaded: Loaded<FileContent>): void {
-    if (this.#opened?.path !== path) return;
+  /** Only the latest request may update the opened file, even after closing and reopening the same path. */
+  #settle(path: string, request: number, loaded: Loaded<FileContent>): void {
+    if (this.#opened?.path !== path || request !== this.#readRequest) return;
     this.#content = { path, loaded };
     this.#changed();
   }

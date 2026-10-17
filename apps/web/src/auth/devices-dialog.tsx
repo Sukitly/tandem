@@ -3,6 +3,7 @@ import { type PairingCode, SIGN_OUT_PATH } from "@tandem/contracts";
 import { MonitorSmartphoneIcon } from "lucide-react";
 import QRCode from "qrcode";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { ResponsiveDialogContent as DialogContent } from "@/components/responsive-dialog.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -16,9 +17,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 
@@ -64,6 +66,7 @@ export function DevicesDialogProvider({ children }: { children: ReactNode }) {
 type Confirmation = { title: string; description: string; action(): Promise<void> };
 function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
   const { devices, deviceId } = useConnected();
+  const ime = useCompositionGuard();
   const state = useReplicatedState(devices.state);
   const [pair, setPair] = useState<PairingCode>();
   const [recovery, setRecovery] = useState<string[]>();
@@ -90,7 +93,9 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
   };
   /** Renaming keeps the typed name and the reason it failed in the row, until it succeeds. */
   const rename = async (id: string): Promise<void> => {
+    if (busy || ime.active()) return;
     const name = draft.trim();
+    if (name === "") return;
     await run(async () => {
       await devices.rename(id, name, BACKGROUND_CONTEXT);
       setRenaming(undefined);
@@ -108,7 +113,10 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
           </DialogHeader>
           <div className="flex flex-col gap-4">
             {deviceList.map((device) => (
-              <div key={device.id} className="flex items-center justify-between gap-2">
+              <div
+                key={device.id}
+                className="flex flex-col items-stretch justify-between gap-2 sm:flex-row sm:items-center"
+              >
                 <div className="min-w-0 flex-1">
                   {renaming === device.id ? (
                     <div className="flex items-center gap-2">
@@ -118,9 +126,19 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                         value={draft}
                         disabled={busy}
                         onChange={(event) => setDraft(event.target.value)}
+                        onCompositionStart={ime.onCompositionStart}
+                        onCompositionEnd={ime.onCompositionEnd}
                         onKeyDown={(event) => {
-                          if (event.key === "Enter") void rename(device.id);
-                          if (event.key === "Escape") setRenaming(undefined);
+                          if (ime.owns(event)) return;
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void rename(device.id);
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setRenaming(undefined);
+                          }
                         }}
                       />
                       <Button size="sm" disabled={busy || draft.trim() === ""} onClick={() => void rename(device.id)}>
@@ -133,7 +151,9 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                   ) : (
                     <div className="flex items-center gap-2">
                       <MonitorSmartphoneIcon className="size-4" />
-                      <span>{device.name}</span>
+                      <span className="min-w-0 truncate" title={device.name}>
+                        {device.name}
+                      </span>
                       {device.id === deviceId && <Badge variant="secondary">This device</Badge>}
                     </div>
                   )}

@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { handlePreviewHttpRequest, handlePreviewUpgrade } from "../src/preview-proxy.ts";
+import { handlePreviewHttpRequest, handlePreviewUpgrade, PREVIEW_SANDBOX } from "../src/preview-proxy.ts";
 
 describe("preview proxy", () => {
   let devServer: Server;
@@ -19,6 +19,9 @@ describe("preview proxy", () => {
         res.setHeader("Set-Cookie", "session=upstream-secret; Path=/");
         res.writeHead(200, { "Content-Type": "text/plain" });
         res.end("hello from dev server");
+      } else if (req.url === "/permissive") {
+        res.setHeader("Content-Security-Policy", "sandbox allow-scripts allow-same-origin; frame-ancestors 'self'");
+        res.end("<script>window.preview = true</script>");
       } else if (req.url === "/redirect") {
         res.writeHead(302, { Location: "/hello" });
         res.end();
@@ -58,22 +61,50 @@ describe("preview proxy", () => {
       const res = await fetch(`http://127.0.0.1:${proxyPort}/preview/${devPort}/hello`, {
         headers: {
           Cookie: "tandem_auth=secret_token",
+          Authorization: "Bearer master-secret",
+          "Proxy-Authorization": "Basic proxy-secret",
         },
       });
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("hello from dev server");
       // Upstream dev server must not see the client's auth cookie
       expect(lastReceivedHeaders.cookie).toBeUndefined();
+      expect(lastReceivedHeaders.authorization).toBeUndefined();
+      expect(lastReceivedHeaders["proxy-authorization"]).toBeUndefined();
       // Upstream set-cookie must not leak to client on subpath
       expect(res.headers.get("set-cookie")).toBeNull();
       // Frame restrictions stripped
       expect(res.headers.get("x-frame-options")).toBeNull();
       const csp = res.headers.get("content-security-policy");
-      expect(csp).toBe("default-src 'self'");
+      expect(csp).toBe(`default-src 'self', ${PREVIEW_SANDBOX}`);
     } finally {
       await new Promise<void>((resolve) => proxyServer.close(() => resolve()));
     }
   });
+
+  test.each(["/permissive", "/missing"])(
+    "enforces a separate sandbox policy for direct navigation to %s",
+    async (path) => {
+      const proxyServer = createServer((request, response) => {
+        handlePreviewHttpRequest({ request, response, targetPort: devPort, targetPath: path });
+      });
+      await new Promise<void>((resolve) => proxyServer.listen(0, "127.0.0.1", resolve));
+      try {
+        const port = (proxyServer.address() as AddressInfo).port;
+        const response = await fetch(`http://127.0.0.1:${port}/`);
+        const policies = response.headers
+          .get("content-security-policy")
+          ?.split(",")
+          .map((policy) => policy.trim());
+        expect(policies).toContain(PREVIEW_SANDBOX);
+        expect(response.headers.get("content-security-policy")).not.toContain("frame-ancestors");
+        if (path === "/permissive") expect(policies).toContain("sandbox allow-scripts allow-same-origin");
+        await response.text();
+      } finally {
+        await new Promise<void>((resolve) => proxyServer.close(() => resolve()));
+      }
+    },
+  );
 
   test("rewrites redirect location on subpath mode", async () => {
     const proxyServer = createServer((req, res) => {
@@ -118,6 +149,7 @@ describe("preview proxy", () => {
     try {
       const res = await fetch(`http://127.0.0.1:${proxyPort}/preview/${unreachablePort}/`);
       expect(res.status).toBe(502);
+      expect(res.headers.get("content-security-policy")).toBe(PREVIEW_SANDBOX);
       const text = await res.text();
       expect(text).toContain("Development Server Not Reachable");
     } finally {
@@ -130,9 +162,11 @@ describe("preview proxy", () => {
     const wssServer = createServer();
     const wss = new WebSocketServer({ server: wssServer });
     let receivedOrigin = "";
+    let receivedCredentials: unknown[] = [];
 
     wss.on("connection", (ws, req) => {
       receivedOrigin = (req.headers.origin as string) ?? "";
+      receivedCredentials = [req.headers.cookie, req.headers.authorization, req.headers["proxy-authorization"]];
       ws.on("message", (msg) => {
         ws.send(`echo:${msg.toString()}`);
       });
@@ -160,6 +194,9 @@ describe("preview proxy", () => {
       const client = new WebSocket(`ws://127.0.0.1:${proxyPort}/preview/${wsPort}/ws`, {
         headers: {
           Origin: "https://tandem.example.com",
+          Cookie: "session=secret",
+          Authorization: "Bearer master-secret",
+          "Proxy-Authorization": "Basic proxy-secret",
         },
       });
 
@@ -173,6 +210,7 @@ describe("preview proxy", () => {
       expect(received).toBe("echo:ping");
       // Origin header must be rewritten to target host for HMR compatibility
       expect(receivedOrigin).toBe(`http://127.0.0.1:${wsPort}`);
+      expect(receivedCredentials).toEqual([undefined, undefined, undefined]);
 
       client.close();
     } finally {

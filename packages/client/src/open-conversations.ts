@@ -29,6 +29,14 @@ export class OpenConversations {
     return this.#instances.get(id);
   }
 
+  failure(id: number): Error | undefined {
+    return this.#instances.failure(id);
+  }
+
+  retry(id: number): void {
+    this.#instances.retry(id);
+  }
+
   /** Keep the conversation open until the returned function is called. */
   hold(id: number): () => void {
     return this.#instances.hold(id);
