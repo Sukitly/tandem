@@ -2,6 +2,7 @@ import { type ConversationSummary, MAX_CONVERSATION_TITLE_LENGTH } from "@tandem
 import { EllipsisIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type ReactElement, useEffect, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
+import { ResponsiveDialogContent as DialogContent } from "@/components/responsive-dialog.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 
 export interface ConversationMenuProps {
   summary: ConversationSummary;
@@ -86,6 +87,7 @@ export function RenameConversationDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { renameConversation } = useWorkbench();
+  const ime = useCompositionGuard();
   const [title, setTitle] = useState(summary.title);
   const [busy, setBusy] = useState(false);
 
@@ -94,6 +96,7 @@ export function RenameConversationDialog({
   }, [open, summary.title]);
 
   const save = async () => {
+    if (busy || ime.active()) return;
     const trimmed = title.trim();
     if (trimmed.length === 0 || trimmed.length > MAX_CONVERSATION_TITLE_LENGTH) return;
     if (trimmed === summary.title) {
@@ -132,7 +135,10 @@ export function RenameConversationDialog({
             value={title}
             disabled={busy}
             onChange={(e) => setTitle(e.target.value)}
+            onCompositionStart={ime.onCompositionStart}
+            onCompositionEnd={ime.onCompositionEnd}
             onKeyDown={(e) => {
+              if (ime.owns(e)) return;
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void save();

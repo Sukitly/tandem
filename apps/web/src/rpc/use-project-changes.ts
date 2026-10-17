@@ -4,9 +4,9 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useConnected } from "./connection.tsx";
 
 /** Keep a project's changes open while the calling component is mounted; `undefined` until its instance arrives. */
-export function useProjectChanges(workspaceId: number): ProjectChanges | undefined {
+export function useProjectChanges(workspaceId: number, enabled = true): ProjectChanges | undefined {
   const { openChanges } = useConnected();
-  useEffect(() => openChanges.hold(workspaceId), [openChanges, workspaceId]);
+  useEffect(() => (enabled ? openChanges.hold(workspaceId) : undefined), [openChanges, workspaceId, enabled]);
   return useChangesStore((openChanges) => openChanges.get(workspaceId));
 }
 

@@ -14,11 +14,11 @@ import {
   useIsCodeFenceIncomplete,
 } from "streamdown";
 import { CodeBlockWrapButton } from "@/components/ai-elements/index.ts";
+import { CodeCopyButton } from "@/components/copy-text.tsx";
 import {
   CodeBlock,
   CodeBlockActions,
   CodeBlockContent,
-  CodeBlockCopyButton,
   CodeBlockHeader,
   CodeBlockLine,
   CodeBlockTitle,
@@ -160,7 +160,7 @@ function FencedCode({ code: text, language: rawLanguage }: { code: string; langu
             onWrapChange={setWrap}
             className="[@media(hover:hover)]:opacity-0 group-hover/code-block:opacity-100 focus-visible:opacity-100 transition-opacity"
           />
-          <CodeBlockCopyButton
+          <CodeCopyButton
             value={cleanCode}
             disabled={incomplete}
             aria-label="Copy code"

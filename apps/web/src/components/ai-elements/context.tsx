@@ -1,6 +1,6 @@
 import type * as React from "react";
 import { Button } from "@/components/ui/button.tsx";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card.tsx";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.tsx";
 import { Progress } from "@/components/ui/progress.tsx";
 
 export interface ContextProps {
@@ -44,11 +44,11 @@ export function Context({ usedTokens, maxTokens, cost, label, rows, className }:
   const displayRows = rows ?? defaultRows;
 
   return (
-    <HoverCard>
-      <HoverCardTrigger delay={10} closeDelay={100} render={<Button variant="ghost" size="xs" className={className} />}>
+    <Popover>
+      <PopoverTrigger render={<Button variant="ghost" size="xs" className={className} title="Context details" />}>
         {label ?? `${percent}% context`}
-      </HoverCardTrigger>
-      <HoverCardContent className="flex w-64 flex-col gap-3 p-3">
+      </PopoverTrigger>
+      <PopoverContent aria-label="Context details" className="flex w-64 max-w-[calc(100vw-2rem)] flex-col gap-3 p-3">
         <div className="flex items-center justify-between gap-3 text-xs">
           <span className="font-medium text-foreground">Context Window</span>
           <span className="text-muted-foreground font-mono tabular-nums">
@@ -64,7 +64,7 @@ export function Context({ usedTokens, maxTokens, cost, label, rows, className }:
             </div>
           ))}
         </div>
-      </HoverCardContent>
-    </HoverCard>
+      </PopoverContent>
+    </Popover>
   );
 }

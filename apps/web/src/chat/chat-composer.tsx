@@ -11,7 +11,10 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
+import { useInputDraft } from "@/app/drafts.tsx";
+import type { InputDraft } from "@/app/input-draft.ts";
 import { CommentList } from "@/comments/comment-list.tsx";
 import type { WaitingComment } from "@/comments/project-comments.ts";
 import {
@@ -31,10 +34,23 @@ import {
   AttachmentTitle,
 } from "@/components/ui/attachment";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { FieldError } from "@/components/ui/field";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { type AttachedImage, attachImages, IMAGE_ACCEPT, imageFiles } from "./attached-images.ts";
+import { useIsMobile } from "@/hooks/use-mobile.ts";
+import { preferences } from "@/lib/preferences.ts";
+import { IMAGE_ACCEPT, imageFiles } from "./attached-images.ts";
+import {
+  ComposerOptions,
+  KEYBOARD_MODE_KEY,
+  type KeyboardMode,
+  SEND_MODE_KEY,
+  type SendMode,
+  storedKeyboardMode,
+  storedSendMode,
+} from "./composer-options.tsx";
 import { emacsColumn, emacsEdit } from "./emacs-edit.ts";
 import type { QueuedMessage } from "./transcript.ts";
 import { useComposerText } from "./use-composer-text.ts";
@@ -62,7 +78,9 @@ export function imageSupportOf(models: readonly ModelSummary[] | undefined, mode
 const IME_SETTLE_MS = 10;
 
 export interface ChatComposerProps {
+  draft?: InputDraft;
   busy: boolean;
+  stopping?: boolean;
   queued: QueuedMessage[];
   /** Comments of the project waiting to be sent; they go with the message, which the server writes them into. */
   comments?: WaitingComment[];
@@ -82,18 +100,20 @@ export interface ChatComposerProps {
 }
 
 /**
- * The message box. While the agent works, Enter steers it (the message is read at its next step) and Alt+Enter queues
- * a follow-up for when it is done, as in pi's terminal UI. Shift+Enter starts a new line.
+ * The message box. Enter uses the chosen send mode (steering by default); Alt+Enter explicitly queues a follow-up.
+ * Shift+Enter starts a new line. Platform editing is the default; Emacs shortcuts are an explicit preference.
  *
  * The box is a combobox, and its suggestion menu is Tandem's own, laid over the box rather than rendered by a popover
  * or a menu component: focus must stay in the box so that ordinary typing, spaces, and Shift+Enter keep working, and
  * such a component would take the keys for itself. It follows how pi's own input behaves: a message that begins with
  * `/` and holds no argument yet offers the project's slash commands, the arrows move through them, Tab fills the
  * highlighted one into the box so its arguments can be typed, Enter sends it, Escape puts the menu away, and
- * Emacs editing keys are handled by the box; everything else is left to the browser.
+ * optional Emacs editing keys are handled by the box; everything else is left to the browser.
  */
 export function ChatComposer({
+  draft: suppliedDraft,
   busy,
+  stopping = false,
   queued,
   comments = [],
   onWithdrawComment,
@@ -105,10 +125,33 @@ export function ChatComposer({
   status,
   imageSupport,
 }: ChatComposerProps) {
-  const [attached, setAttached] = useState<AttachedImage[]>([]);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const localDraft = useInputDraft();
+  const draft = suppliedDraft ?? localDraft;
+  const {
+    text,
+    images: attached,
+    sending,
+    error,
+  } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   const [dragging, setDragging] = useState(false);
+  const [keyboardMode, setKeyboardMode] = useState(storedKeyboardMode);
+  const [sendMode, setSendMode] = useState(storedSendMode);
+  const chooseSendMode = (mode: SendMode): void => {
+    setSendMode(mode);
+    try {
+      preferences.setItem(SEND_MODE_KEY, mode);
+    } catch {
+      /* Preferences are optional. */
+    }
+  };
+  const chooseKeyboard = (mode: KeyboardMode): void => {
+    setKeyboardMode(mode);
+    try {
+      preferences.setItem(KEYBOARD_MODE_KEY, mode);
+    } catch {
+      /* Preferences are optional. */
+    }
+  };
   const picker = useRef<HTMLInputElement>(null);
   const [highlight, setHighlight] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -118,60 +161,30 @@ export function ChatComposer({
   const verticalGoal = useRef<{ column: number; position: number } | null>(null);
   const composing = useRef(false);
   const composingUntil = useRef(0);
-  const editor = useComposerText(() => {
-    verticalGoal.current = null;
-    setHighlight(0);
-    setDismissed(false);
-  });
+  const editor = useComposerText(
+    (value) => {
+      draft.setText(value);
+      verticalGoal.current = null;
+      setHighlight(0);
+      setDismissed(false);
+    },
+    text,
+    keyboardMode === "emacs",
+  );
   const { value, textareaRef } = editor;
   const empty = value.trim() === "" && comments.length === 0 && attached.length === 0;
-
-  // The thumbnails' URLs go with the box.
-  const shown = useRef(attached);
-  shown.current = attached;
-  useEffect(
-    () => () => {
-      for (const image of shown.current) URL.revokeObjectURL(image.url);
-    },
-    [],
-  );
 
   const attach = async (files: File[]): Promise<void> => {
     if (files.length === 0) return;
     if (imageSupport.kind !== "accepted") {
-      setError(
+      draft.setError(
         imageSupport.kind === "none"
           ? "The current model does not take images. Choose one that does."
           : "Choose an available model before sending images.",
       );
       return;
     }
-    let read: Awaited<ReturnType<typeof attachImages>>;
-    try {
-      read = await attachImages(files, shown.current);
-    } catch {
-      setError("The image could not be read");
-      return;
-    }
-    const { attached: added, refused } = read;
-    const { maxPerMessage } = imageSupport;
-    const room = maxPerMessage === undefined ? added.length : maxPerMessage - shown.current.length;
-    const kept = added.slice(0, Math.max(0, room));
-    for (const image of added.slice(kept.length)) URL.revokeObjectURL(image.url);
-    setAttached((current) => [...current, ...kept]);
-    setError(
-      refused ??
-        (kept.length < added.length ? `The current model takes at most ${maxPerMessage} images in a message` : null),
-    );
-  };
-
-  const detach = (id: number): void => {
-    setAttached((current) =>
-      current.filter((image) => {
-        if (image.id === id) URL.revokeObjectURL(image.url);
-        return image.id !== id;
-      }),
-    );
+    await draft.attach(files, imageSupport.maxPerMessage);
   };
 
   const query = commandQuery(value);
@@ -208,24 +221,14 @@ export function ChatComposer({
   const send = async (text: string, whenBusy: "steer" | "followUp"): Promise<void> => {
     if (sending) return;
     if (text.trim() === "" && comments.length === 0 && attached.length === 0) return;
-    setSending(true);
-    setError(null);
-    const sent = attached;
-    try {
-      await onSend(
+    await draft.send((sent) =>
+      onSend(
         text,
         comments.map((comment) => comment.messageId),
         sent.map((image) => image.input),
         whenBusy,
-      );
-      editor.reset();
-      setAttached((current) => current.filter((image) => !sent.includes(image)));
-      for (const image of sent) URL.revokeObjectURL(image.url);
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
-    } finally {
-      setSending(false);
-    }
+      ),
+    );
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -238,7 +241,8 @@ export function ChatComposer({
       verticalGoal.current = null;
       return;
     }
-    const emacsControl = event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+    const emacsControl =
+      keyboardMode === "emacs" && event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
 
     if (menuOpen) {
       const count = matching.length;
@@ -276,7 +280,7 @@ export function ChatComposer({
         const command = matching[selected];
         const message = command === undefined ? value : completion(command);
         if (message !== value) editor.setText(message);
-        void send(message, event.altKey ? "followUp" : "steer");
+        void send(message, event.altKey ? "followUp" : sendMode);
         return;
       }
     }
@@ -291,15 +295,18 @@ export function ChatComposer({
       : undefined;
     const modifier = event.key === "Control" || event.key === "Alt" || event.key === "Meta" || event.key === "Shift";
     if (!vertical && !modifier) verticalGoal.current = null;
-    const edit = emacsEdit(
-      textarea.value,
-      textarea.selectionStart,
-      textarea.selectionEnd,
-      textarea.selectionDirection,
-      event,
-      killedText.current,
-      column,
-    );
+    const edit =
+      keyboardMode === "emacs"
+        ? emacsEdit(
+            textarea.value,
+            textarea.selectionStart,
+            textarea.selectionEnd,
+            textarea.selectionDirection,
+            event,
+            killedText.current,
+            column,
+          )
+        : null;
     if (edit !== null) {
       event.preventDefault();
       if (edit.kind === "move") {
@@ -318,12 +325,12 @@ export function ChatComposer({
     // remain the browser's.
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
-    void send(value, event.altKey ? "followUp" : "steer");
+    void send(value, event.altKey ? "followUp" : sendMode);
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    void send(value, "steer");
+    void send(value, sendMode);
   };
 
   // A pasted image is attached; pasted text goes into the box as usual.
@@ -348,26 +355,35 @@ export function ChatComposer({
   };
 
   return (
-    <div className="grid min-w-0 gap-2">
-      <CommentList comments={comments} onWithdraw={(comment) => onWithdrawComment?.(comment)} />
-      {queued.length > 0 && (
-        <ItemGroup aria-label="Queued messages" className="gap-1">
-          {queued.map((message) => (
-            <Item key={message.id} size="xs" variant="muted">
-              <Badge variant="outline">{message.mode === "steer" ? "Steering" : "Follow-up"}</Badge>
-              <ItemContent className="min-w-0">
-                <ItemDescription className="line-clamp-none whitespace-pre-wrap wrap-anywhere">
-                  {message.text}
-                </ItemDescription>
-              </ItemContent>
-              {message.imageCount > 0 && (
-                <Badge variant="secondary">
-                  {message.imageCount === 1 ? "1 image" : `${message.imageCount} images`}
-                </Badge>
-              )}
-            </Item>
-          ))}
-        </ItemGroup>
+    <div data-composer className="grid min-w-0 gap-2">
+      {(comments.length > 0 || queued.length > 0) && (
+        <ComposerDetails label={`${queued.length} queued messages · ${comments.length} review comments`}>
+          <section
+            className="grid max-h-[15dvh] gap-2 overflow-y-auto overscroll-contain"
+            aria-label="Pending message context"
+          >
+            <CommentList comments={comments} onWithdraw={(comment) => onWithdrawComment?.(comment)} />
+            {queued.length > 0 && (
+              <ItemGroup aria-label="Queued messages" className="gap-1">
+                {queued.map((message) => (
+                  <Item key={message.id} size="xs" variant="muted">
+                    <Badge variant="outline">{message.mode === "steer" ? "Steering" : "Follow-up"}</Badge>
+                    <ItemContent className="min-w-0">
+                      <ItemDescription className="line-clamp-none whitespace-pre-wrap wrap-anywhere">
+                        {message.text}
+                      </ItemDescription>
+                    </ItemContent>
+                    {message.imageCount > 0 && (
+                      <Badge variant="secondary">
+                        {message.imageCount === 1 ? "1 image" : `${message.imageCount} images`}
+                      </Badge>
+                    )}
+                  </Item>
+                ))}
+              </ItemGroup>
+            )}
+          </section>
+        </ComposerDetails>
       )}
       <div ref={boxRef} className="relative">
         {menuOpen && (
@@ -387,10 +403,12 @@ export function ChatComposer({
                     "flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden select-none",
                     index === selected && "bg-muted text-foreground",
                   )}
-                  // mousedown, not click: the box keeps focus, and the command is settled before a blur-driven teardown.
-                  onMouseDown={(event) => {
-                    event.preventDefault();
+                  // Prevent pointer focus from leaving the combobox, but activate via click for all input methods.
+                  tabIndex={-1}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
                     accept(command);
+                    textareaRef.current?.focus({ preventScroll: true });
                   }}
                   // mousemove, not mouseenter: rows moving under a resting pointer must not take the highlight back.
                   onMouseMove={() => {
@@ -422,7 +440,7 @@ export function ChatComposer({
           )}
           <PromptInput>
             {attached.length > 0 && (
-              <PromptInputAttachments>
+              <PromptInputAttachments className="max-h-[10dvh] overflow-y-auto overscroll-contain">
                 {attached.map((image) => (
                   <Attachment key={image.id} size="sm">
                     <AttachmentMedia variant="image">
@@ -432,7 +450,7 @@ export function ChatComposer({
                       <AttachmentTitle>{image.name}</AttachmentTitle>
                     </AttachmentContent>
                     <AttachmentActions>
-                      <AttachmentAction aria-label={`Remove ${image.name}`} onClick={() => detach(image.id)}>
+                      <AttachmentAction aria-label={`Remove ${image.name}`} onClick={() => draft.detach(image.id)}>
                         <XIcon />
                       </AttachmentAction>
                     </AttachmentActions>
@@ -442,7 +460,8 @@ export function ChatComposer({
             )}
             <PromptInputTextarea
               ref={textareaRef}
-              value={value}
+              className="max-h-[min(16rem,20dvh)] overflow-y-auto overscroll-contain"
+              defaultValue={editor.initialValue}
               onChange={(event) => editor.change(event.target)}
               onSelect={editor.rememberSelection}
               onPointerDown={() => {
@@ -467,10 +486,16 @@ export function ChatComposer({
               aria-expanded={menuOpen}
               aria-controls={menuOpen ? listId : undefined}
               aria-activedescendant={selected >= 0 ? optionId(selected) : undefined}
-              placeholder={busy ? "Steer the agent, or Alt+Enter to queue a follow-up" : "Ask the agent"}
+              placeholder={
+                busy
+                  ? sendMode === "followUp"
+                    ? "Queue a follow-up"
+                    : "Steer the agent, or Alt+Enter to queue a follow-up"
+                  : "Ask the agent"
+              }
               autoFocus={autoFocus}
             />
-            <PromptInputActions>
+            <PromptInputActions className="flex-wrap">
               {imageSupport.kind === "accepted" && (
                 <>
                   <input
@@ -500,25 +525,60 @@ export function ChatComposer({
                   </Tooltip>
                 </>
               )}
-              {statusBar}
-              <div className={cn("flex shrink-0 items-center gap-1.5", statusBar === undefined && "ml-auto")}>
-                {busy && empty ? (
-                  <PromptInputSubmitButton type="button" aria-label="Stop" onClick={onStop}>
+              {statusBar !== undefined && <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">{statusBar}</div>}
+              <ComposerOptions
+                keyboard={keyboardMode}
+                onKeyboard={chooseKeyboard}
+                mode={sendMode}
+                onMode={chooseSendMode}
+              />
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {busy && (
+                  <PromptInputSubmitButton type="button" aria-label="Stop" disabled={stopping} onClick={onStop}>
                     <SquareIcon />
                   </PromptInputSubmitButton>
-                ) : (
-                  <PromptInputSubmitButton type="submit" aria-label="Send" disabled={empty || sending}>
-                    <ArrowUpIcon />
-                  </PromptInputSubmitButton>
                 )}
+                <PromptInputSubmitButton
+                  type="submit"
+                  aria-label="Send"
+                  title={busy && sendMode === "followUp" ? "Queue follow-up" : "Send"}
+                  disabled={empty || sending}
+                >
+                  <ArrowUpIcon />
+                </PromptInputSubmitButton>
               </div>
             </PromptInputActions>
           </PromptInput>
         </form>
       </div>
-      {status}
+      {status !== undefined && (
+        <ComposerDetails label="Usage and run metrics">
+          <div className="max-h-[20dvh] overflow-y-auto overscroll-contain">{status}</div>
+        </ComposerDetails>
+      )}
       {error !== null && <FieldError>{error}</FieldError>}
     </div>
+  );
+}
+
+/** Small screens start with ancillary context collapsed, leaving room to read and type. */
+function ComposerDetails({ label, children }: { label: string; children: ReactNode }) {
+  const mobile = useIsMobile();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <Collapsible open={!mobile || expanded} onOpenChange={setExpanded}>
+      <CollapsibleTrigger
+        render={
+          <Button
+            variant="ghost"
+            className={cn("min-h-11 w-full justify-start text-xs text-muted-foreground", !mobile && "hidden")}
+          />
+        }
+      >
+        {label}
+      </CollapsibleTrigger>
+      <CollapsibleContent keepMounted>{children}</CollapsibleContent>
+    </Collapsible>
   );
 }
 

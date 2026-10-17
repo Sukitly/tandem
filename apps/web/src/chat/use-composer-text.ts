@@ -12,12 +12,13 @@ function snapshot(textarea: HTMLTextAreaElement): TextSnapshot {
   };
 }
 
-/** Native typing, command completion, and Emacs edits share one history and restore both text and selection. */
-export function useComposerText(onEdit: () => void) {
-  const [value, setValue] = useState("");
+/** Track text and selection without replacing native history; Emacs mode opts into a shared custom edit stack. */
+export function useComposerText(onEdit: (value: string) => void, externalValue?: string, customHistory = false) {
+  const initialValue = useRef(externalValue ?? "");
+  const [value, setValue] = useState(initialValue.current);
   const [history] = useState(() => new TextHistory());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const current = useRef(emptySnapshot());
+  const current = useRef<TextSnapshot>({ value, start: value.length, end: value.length, direction: "none" });
   const pending = useRef<TextSnapshot | null>(null);
   const composition = useRef<TextSnapshot | null>(null);
   const inputType = useRef("");
@@ -42,7 +43,7 @@ export function useComposerText(onEdit: () => void) {
     }
     pending.current = changed && restoreSelection ? next : null;
     setValue(next.value);
-    if (changed) notify.current();
+    if (changed) notify.current(next.value);
   };
 
   const restore = (redo: boolean): void => {
@@ -55,6 +56,23 @@ export function useComposerText(onEdit: () => void) {
   const rememberRef = useRef(rememberSelection);
   rememberRef.current = rememberSelection;
 
+  // A send may complete in another mounted composer, or while this view is absent. The draft owns that change.
+  useLayoutEffect(() => {
+    if (externalValue === undefined || externalValue === current.current.value) return;
+    history.clear();
+    composition.current = null;
+    inputType.current = "";
+    current.current = {
+      value: externalValue,
+      start: externalValue.length,
+      end: externalValue.length,
+      direction: "none",
+    };
+    pending.current = current.current;
+    if (textareaRef.current !== null) textareaRef.current.value = externalValue;
+    setValue(externalValue);
+  }, [externalValue, history]);
+
   useLayoutEffect(() => {
     const next = pending.current;
     if (next === null) return;
@@ -62,9 +80,14 @@ export function useComposerText(onEdit: () => void) {
     pending.current = null;
   });
 
+  useEffect(() => {
+    if (customHistory) history.clear();
+  }, [history, customHistory]);
+
   // React's beforeinput abstraction does not expose every native history event. Listen to the textarea itself so
   // browser Edit-menu undo and keyboard undo use the same stack, including after programmatic edits.
   useEffect(() => {
+    if (!customHistory) return;
     const textarea = textareaRef.current;
     if (textarea === null) return;
     const beforeInput = (event: InputEvent): void => {
@@ -77,24 +100,26 @@ export function useComposerText(onEdit: () => void) {
     };
     textarea.addEventListener("beforeinput", beforeInput);
     return () => textarea.removeEventListener("beforeinput", beforeInput);
-  }, []);
+  }, [customHistory]);
 
   const setText = (text: string, caret = text.length): void => {
     rememberSelection();
     const next: TextSnapshot = { value: text, start: caret, end: caret, direction: "none" };
-    history.record(current.current, next);
+    if (customHistory) history.record(current.current, next);
     apply(next);
   };
 
   const change = (textarea: HTMLTextAreaElement): void => {
     const next = snapshot(textarea);
-    if (composition.current === null) history.record(current.current, next, inputType.current === "insertText");
+    if (customHistory && composition.current === null)
+      history.record(current.current, next, inputType.current === "insertText");
     inputType.current = "";
     // Native input already owns the caret. Touching its selection during composition can interrupt the IME.
     apply(next, false);
   };
 
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (!customHistory) return false;
     rememberSelection();
     if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) history.breakTyping();
     if (event.key.toLowerCase() !== "z" || !(event.ctrlKey || event.metaKey) || event.altKey) return false;
@@ -104,6 +129,8 @@ export function useComposerText(onEdit: () => void) {
   };
 
   return {
+    // Keep React from rewriting defaultValue on each native keystroke, which splits Chromium's undo groups.
+    initialValue: initialValue.current,
     value,
     textareaRef,
     setText,
@@ -125,7 +152,7 @@ export function useComposerText(onEdit: () => void) {
       change(textarea);
       const before = composition.current;
       composition.current = null;
-      if (before !== null) history.record(before, current.current);
+      if (customHistory && before !== null) history.record(before, current.current);
     },
   };
 }

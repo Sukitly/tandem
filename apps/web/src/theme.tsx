@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { preferences } from "@/lib/preferences.ts";
 
 export type ThemeChoice = "system" | "light" | "dark";
 
@@ -36,7 +37,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       value={{
         choice,
         setChoice: (next) => {
-          localStorage.setItem(THEME_KEY, next);
+          preferences.setItem(THEME_KEY, next);
           setChoice(next);
         },
       }}
@@ -47,6 +48,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 }
 
 function readChoice(): ThemeChoice {
-  const stored = localStorage.getItem(THEME_KEY);
+  const stored = preferences.getItem(THEME_KEY);
   return stored === "light" || stored === "dark" ? stored : "system";
 }

@@ -7,6 +7,7 @@ import {
   DEV_PORT,
   HEALTH_PATH,
   IMAGE_PATH,
+  PREVIEW_PATH,
   PTY_PATH,
   RPC_PATH,
 } from "@tandem/contracts";
@@ -32,6 +33,7 @@ export default defineConfig({
       [IMAGE_PATH]: backend,
       [RPC_PATH]: { target: backend, ws: true },
       [PTY_PATH]: { target: backend, ws: true },
+      [PREVIEW_PATH]: { target: backend, ws: true },
     },
   },
 });

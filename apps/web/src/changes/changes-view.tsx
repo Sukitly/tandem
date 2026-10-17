@@ -1,19 +1,12 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { FileIcon } from "@react-symbols/icons/utils";
 import type { ChangedFile, FilePatch, ProjectChanges } from "@tandem/contracts";
-import {
-  AlertCircleIcon,
-  Columns2Icon,
-  Maximize2Icon,
-  Minimize2Icon,
-  Rows2Icon,
-  WrapTextIcon,
-  XIcon,
-} from "lucide-react";
+import { AlertCircleIcon, Columns2Icon, Maximize2Icon, Minimize2Icon, Rows2Icon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
 import { CopyPathButton } from "@/components/copy-path-button.tsx";
+import { ReaderSurface, ReaderWrapButton } from "@/components/reader-surface.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
@@ -21,6 +14,8 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useIsMobile } from "@/hooks/use-mobile.ts";
+import { preferences } from "@/lib/preferences.ts";
 import { cn } from "@/lib/utils";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChangeDiff } from "./change-diff.tsx";
@@ -35,6 +30,7 @@ import {
 } from "./change-status.ts";
 import type { ChangeTarget } from "./change-target.ts";
 
+const DIFF_STYLE_MOBILE_KEY = "tandem.diffStyle.mobile";
 const DIFF_STYLE_KEY = "tandem.diffStyle";
 const DIFF_STYLE_ZOOMED_KEY = "tandem.diffStyle.zoomed";
 const DIFF_WRAP_KEY = "tandem.diffWrap";
@@ -51,11 +47,13 @@ interface LoadedPatch {
  * read again whenever the files on disk change, so an agent's edits arrive without asking.
  */
 export function ChangesView({
+  active = true,
   changes,
   failure,
   comments,
   reveal,
 }: {
+  active?: boolean;
   changes: ProjectChanges | undefined;
   /** Why the project's changes are not there, if opening them failed. */
   failure: string | null;
@@ -202,6 +200,7 @@ export function ChangesView({
             <ResizableHandle />
             <ResizablePanel id="diff" defaultSize="70" minSize={120}>
               <ChangeView
+                active={active}
                 file={selectedFile}
                 reveal={revealed ?? undefined}
                 patch={loaded?.path === selectedFile.path ? loaded.patch : null}
@@ -256,6 +255,7 @@ function titleOf(status: "ready" | "notRepository" | "error"): string {
 
 /** The selected file's patch, with the controls that change how it is shown. */
 function ChangeView({
+  active,
   file,
   patch,
   failure,
@@ -271,6 +271,7 @@ function ChangeView({
   reveal,
   onClose,
 }: {
+  active: boolean;
   file: ChangedFile;
   patch: FilePatch | null;
   failure: string | null;
@@ -287,27 +288,20 @@ function ChangeView({
   onClose(): void;
 }) {
   const [zoomed, setZoomed] = useState(false);
-  const styled = zoomed ? zoomedStyled : inlineStyled;
+  useEffect(() => {
+    if (!active) setZoomed(false);
+  }, [active]);
+  const isMobile = useIsMobile();
+  const [mobileStyle, setMobileStyle] = useState(() => storedDiffStyle(false, true));
+  const styled = isMobile ? mobileStyle : zoomed ? zoomedStyled : inlineStyled;
   const wrap = zoomed ? zoomedWrap : inlineWrap;
   const next = styled === "split" ? "unified" : "split";
   const parts = countParts(file.additions, file.deletions);
 
-  useEffect(() => {
-    if (!zoomed) return;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setZoomed(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [zoomed]);
-
   const toggleWrap = (): void => {
     const nextWrap = !wrap;
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(zoomed ? DIFF_WRAP_ZOOMED_KEY : DIFF_WRAP_KEY, String(nextWrap));
+    if (typeof preferences !== "undefined") {
+      preferences.setItem(zoomed ? DIFF_WRAP_ZOOMED_KEY : DIFF_WRAP_KEY, String(nextWrap));
     }
     if (zoomed) {
       onZoomedWrap(nextWrap);
@@ -317,8 +311,17 @@ function ChangeView({
   };
 
   const toggleStyled = (): void => {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(zoomed ? DIFF_STYLE_ZOOMED_KEY : DIFF_STYLE_KEY, next);
+    if (isMobile) {
+      setMobileStyle(next);
+      try {
+        preferences.setItem(DIFF_STYLE_MOBILE_KEY, next);
+      } catch {
+        /* Storage is optional. */
+      }
+      return;
+    }
+    if (typeof preferences !== "undefined") {
+      preferences.setItem(zoomed ? DIFF_STYLE_ZOOMED_KEY : DIFF_STYLE_KEY, next);
     }
     if (zoomed) {
       onZoomedStyled(next);
@@ -328,10 +331,7 @@ function ChangeView({
   };
 
   return (
-    <section
-      className={cn("flex min-h-0 flex-col bg-background", zoomed ? "fixed inset-0 z-40 h-dvh w-dvw" : "h-full")}
-      aria-label={`Diff of ${file.path}`}
-    >
+    <ReaderSurface expanded={zoomed} onExpandedChange={setZoomed} label={`Diff of ${file.path}`}>
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <p className="min-w-0 truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
@@ -348,22 +348,7 @@ function ChangeView({
             ))}
           </span>
         )}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant={wrap ? "secondary" : "ghost"}
-                size="icon-xs"
-                aria-label={wrap ? "Do not wrap lines" : "Wrap lines"}
-                aria-pressed={wrap}
-                onClick={toggleWrap}
-              />
-            }
-          >
-            <WrapTextIcon />
-          </TooltipTrigger>
-          <TooltipContent>{wrap ? "Do not wrap lines" : "Wrap lines"}</TooltipContent>
-        </Tooltip>
+        <ReaderWrapButton wrap={wrap} onToggle={toggleWrap} />
         <Tooltip>
           <TooltipTrigger
             render={
@@ -425,26 +410,41 @@ function ChangeView({
             </EmptyHeader>
           </Empty>
         ) : (
-          <ChangeDiff path={file.path} patch={patch} style={styled} wrap={wrap} comments={comments} reveal={reveal} />
+          <ChangeDiff
+            key={file.path}
+            path={file.path}
+            patch={patch}
+            style={styled}
+            wrap={wrap}
+            comments={comments}
+            reveal={reveal}
+          />
         )}
       </div>
-    </section>
+    </ReaderSurface>
   );
 }
 
-export function storedDiffStyle(zoomed: boolean): "split" | "unified" {
-  if (typeof localStorage === "undefined") return zoomed ? "split" : "unified";
-  if (zoomed) {
-    return localStorage.getItem(DIFF_STYLE_ZOOMED_KEY) === "unified" ? "unified" : "split";
+export function storedDiffStyle(zoomed: boolean, narrow = false): "split" | "unified" {
+  if (narrow) {
+    try {
+      return preferences.getItem(DIFF_STYLE_MOBILE_KEY) === "split" ? "split" : "unified";
+    } catch {
+      return "unified";
+    }
   }
-  const stored = localStorage.getItem(DIFF_STYLE_KEY);
+  if (typeof preferences === "undefined") return zoomed ? "split" : "unified";
+  if (zoomed) {
+    return preferences.getItem(DIFF_STYLE_ZOOMED_KEY) === "unified" ? "unified" : "split";
+  }
+  const stored = preferences.getItem(DIFF_STYLE_KEY);
   return stored === "split" ? "split" : "unified";
 }
 
 export function storedDiffWrap(zoomed: boolean): boolean {
-  if (typeof localStorage === "undefined") return false;
+  if (typeof preferences === "undefined") return false;
   if (zoomed) {
-    return localStorage.getItem(DIFF_WRAP_ZOOMED_KEY) === "true";
+    return preferences.getItem(DIFF_WRAP_ZOOMED_KEY) === "true";
   }
-  return localStorage.getItem(DIFF_WRAP_KEY) === "true";
+  return preferences.getItem(DIFF_WRAP_KEY) === "true";
 }

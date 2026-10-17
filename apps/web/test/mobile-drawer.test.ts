@@ -96,13 +96,13 @@ describe("WithFiles responsive layout", () => {
     expect(markup).toContain("Chat");
   });
 
-  test("renders full-width conversation without ResizablePanelGroup on mobile", () => {
+  test("keeps the conversation in the same layout tree on mobile", () => {
     mobileState.isMobile = true;
     mobileState.filesShown = false;
     const markup = renderToStaticMarkup(
       createElement(WithFiles, { workspaceId: 1 }, createElement("div", null, "Chat")),
     );
-    expect(markup).not.toContain('id="conversation"');
+    expect(markup).toContain('id="conversation"');
     expect(markup).toContain("Chat");
   });
 });

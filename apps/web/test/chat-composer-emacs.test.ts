@@ -13,11 +13,13 @@ Element.prototype.scrollIntoView = vi.fn();
 
 afterEach(() => {
   cleanup();
+  localStorage.removeItem("tandem.keyboardMode");
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 function composer() {
+  localStorage.setItem("tandem.keyboardMode", "emacs");
   const onSend = vi.fn().mockResolvedValue(undefined);
   render(
     createElement(ChatComposer, {

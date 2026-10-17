@@ -1,0 +1,171 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
+import { createServer } from "vite";
+
+async function fixture(t, mobile = true) {
+  const services = fileURLToPath(new URL("./reader-services.ts", import.meta.url));
+  const server = await createServer({
+    root: fileURLToPath(new URL("../", import.meta.url)),
+    cacheDir: "node_modules/.vite-reader-browser",
+    resolve: {
+      alias: [
+        { find: "@/rpc/connection.tsx", replacement: services },
+        { find: "@/app/workbench.tsx", replacement: services },
+        { find: "@/comments/project-comments.ts", replacement: services },
+      ],
+    },
+    server: { port: 0, strictPort: false, host: "127.0.0.1" },
+  });
+  await server.listen();
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({
+    viewport: { width: mobile ? 390 : 1000, height: 844 },
+    isMobile: mobile,
+    hasTouch: mobile,
+  });
+  return { page, url: `http://127.0.0.1:${server.httpServer.address().port}/browser/reader.html` };
+}
+
+test("long files render a bounded window, reveal distant lines, and retain comment drafts", async (t) => {
+  const { page, url } = await fixture(t, false);
+  await page.goto(`${url}?file&long`);
+  await page.locator('[data-virtual-file] [data-line="1"]').waitFor();
+  assert.ok((await page.locator("[data-line]").count()) < 1500);
+  await page.getByRole("button", { name: "Reveal line 15000" }).click();
+  const distant = page.locator('[data-line="15000"]').filter({ hasText: "row 15000: one" });
+  await distant.waitFor();
+  assert.ok((await page.locator("[data-line]").count()) < 1500);
+  await page.getByRole("searchbox", { name: "Search file" }).fill("row 19999: one");
+  await page.getByRole("searchbox", { name: "Search file" }).press("Enter");
+  await page.locator('[data-line="19999"]').filter({ hasText: "row 19999: one" }).waitFor();
+  await page.getByRole("button", { name: "Reveal line 15000" }).click();
+  await distant.waitFor();
+  await page.getByRole("button", { name: "Update file" }).click();
+  await page.locator('[data-line="15000"]').filter({ hasText: "row 15000: two" }).waitFor();
+  const input = page.getByRole("spinbutton", { name: "Line", exact: true });
+  await input.fill("15000");
+  await page.getByRole("button", { name: "Add comment", exact: true }).click();
+  await page.getByRole("textbox", { name: "Comment", exact: true }).fill("Keep while scrolling");
+  await input.fill("1");
+  await page.getByRole("button", { name: "Go to line" }).click();
+  await page.locator('[data-line="1"]').waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Comment", exact: true }).inputValue(), "Keep while scrolling");
+  await page.getByRole("button", { name: "Full screen", exact: true }).click();
+  await page.getByRole("button", { name: "Wrap lines", exact: true }).click();
+  await input.fill("15000");
+  await page.getByRole("button", { name: "Go to line" }).click();
+  const wrapped = page.locator('[data-line="15000"]').filter({ hasText: "row 15000: two" });
+  await wrapped.waitFor();
+  assert.ok((await wrapped.boundingBox()).height > 40);
+  assert.ok((await page.locator("[data-line]").count()) < 1500);
+  assert.equal(await page.getByRole("textbox", { name: "Comment", exact: true }).inputValue(), "Keep while scrolling");
+  await page.getByRole("button", { name: "Comment", exact: true }).click();
+  await page.waitForFunction(() => document.body.dataset.savedLine === "15000");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy entire file" }).click();
+  await page.getByRole("button", { name: "Copied", exact: true }).waitFor();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  assert.equal(copied.split("\n").length, 20000);
+  assert.ok(copied.endsWith("row 20000: two"));
+});
+
+test("fullscreen escapes a mobile drawer and preserves the reader, focus, and nested Escape order", async (t) => {
+  const { page, url } = await fixture(t);
+  await page.goto(url);
+  const scroll = page.getByTestId("reader-scroll");
+  await scroll.waitFor();
+  const original = await scroll.elementHandle();
+  await scroll.evaluate((element) => {
+    element.scrollTop = 400;
+  });
+  assert.equal(await scroll.evaluate((element) => element.scrollTop), 400);
+  await page.getByRole("button", { name: "Full screen", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "File example.ts" });
+  await dialog.waitFor();
+  const bounds = await dialog.boundingBox();
+  assert.ok(bounds && Math.abs(bounds.x) < 1 && Math.abs(bounds.y) < 1);
+  assert.ok(Math.abs(bounds.width - 390) < 1 && Math.abs(bounds.height - 844) < 1);
+  assert.equal(await scroll.evaluate((element, previous) => element === previous, original), true);
+  assert.equal(await scroll.evaluate((element) => element.scrollTop), 400);
+  await page.keyboard.press("Tab");
+  assert.equal(await dialog.evaluate((element) => element.contains(document.activeElement)), true);
+  await scroll.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.getByRole("button", { name: "Write comment" }).click();
+  await page.getByRole("textbox", { name: "Comment" }).fill("Keep this comment");
+  await page.getByRole("button", { name: "Exit full screen" }).click();
+  await page.getByRole("button", { name: "Full screen", exact: true }).waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Comment" }).inputValue(), "Keep this comment");
+  await page.getByRole("button", { name: "Full screen", exact: true }).click();
+  await page.getByRole("textbox", { name: "Comment" }).focus();
+  await page.keyboard.press("Escape");
+  assert.equal(await page.getByRole("textbox", { name: "Comment" }).count(), 0);
+  assert.equal(await dialog.isVisible(), true);
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden" });
+  const toggle = page.getByRole("button", { name: "Full screen", exact: true });
+  assert.equal(await toggle.isVisible(), true);
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Full screen");
+});
+
+test("real split diff hover resolves the correct column and equal-length updates render", async (t) => {
+  const { page, url } = await fixture(t, false);
+  await page.goto(`${url}?diff`);
+  const right = page.locator('[data-additions] [data-line="1"]');
+  await right.hover();
+  const add = page.getByRole("button", { name: "Comment on line 1", exact: true });
+  await add.waitFor();
+  assert.ok((await add.boundingBox()).x > 450);
+  assert.equal(await right.evaluate((element) => getComputedStyle(element).cursor), "text");
+  await add.click();
+  await page.getByRole("textbox", { name: "Comment" }).fill("Right side");
+  await page.getByRole("button", { name: "Comment", exact: true }).click();
+  await page.waitForFunction(() => document.body.dataset.savedSide === "additions");
+  await page.locator('[data-deletions] [data-line="1"]').hover();
+  await add.waitFor();
+  assert.ok((await add.boundingBox()).x < 100);
+  await add.click();
+  await page.getByRole("textbox", { name: "Comment" }).fill("Left side");
+  await page.getByRole("button", { name: "Comment", exact: true }).click();
+  await page.waitForFunction(() => document.body.dataset.savedSide === "deletions");
+  await page.getByRole("button", { name: "Update patch" }).click();
+  await page.locator('[data-additions] [data-line="2"]').filter({ hasText: "two" }).waitFor();
+});
+
+test("Files wraps long lines using the same reader control", async (t) => {
+  const { page, url } = await fixture(t);
+  await page.goto(`${url}?file`);
+  const row = page.locator('[data-line="1"]');
+  await row.waitFor();
+  const before = await row.boundingBox();
+  await page.getByRole("button", { name: "Wrap lines", exact: true }).tap();
+  await page.waitForFunction(() => document.querySelector('[data-line="1"]')?.getBoundingClientRect().height > 40);
+  const after = await row.boundingBox();
+  assert.ok(after.height > before.height);
+  assert.ok(after.width <= 390);
+  await page.getByRole("button", { name: "Full screen", exact: true }).tap();
+  assert.equal(await page.getByRole("button", { name: "Do not wrap lines" }).getAttribute("aria-pressed"), "true");
+});
+
+test("touch can comment on code or use the explicit line control without hover", async (t) => {
+  const { page, url } = await fixture(t);
+  await page.goto(`${url}?diff`);
+  const row = page.locator('[data-additions] [data-line="1"]');
+  await row.tap();
+  await page.getByRole("textbox", { name: "Comment" }).waitFor();
+  await page.getByRole("button", { name: "Cancel", exact: true }).tap();
+  const number = page.locator('[data-additions] [data-column-number="1"]');
+  assert.equal(await number.evaluate((element) => getComputedStyle(element).touchAction), "pan-y pinch-zoom");
+  await number.tap();
+  await page.getByRole("textbox", { name: "Comment" }).waitFor();
+  await page.getByRole("button", { name: "Cancel", exact: true }).tap();
+  await page.getByText("Comment on a line", { exact: true }).tap();
+  await page.getByRole("spinbutton", { name: "Line" }).fill("2");
+  await page.getByRole("button", { name: "Add comment", exact: true }).tap();
+  await page.getByRole("textbox", { name: "Comment" }).waitFor();
+});

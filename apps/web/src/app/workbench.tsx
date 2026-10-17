@@ -5,9 +5,11 @@ import type { ChangeTarget } from "@/changes/change-target.ts";
 import { ProjectComments } from "@/comments/project-comments.ts";
 import { type OpenedFile, ProjectFiles } from "@/files/project-files.ts";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
+import { preferences } from "@/lib/preferences.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
+import { navigate, subscribeNavigation } from "./navigation.ts";
 
 const FILES_SHOWN_KEY = "tandem.filesShown";
 const PANEL_TAB_KEY = "tandem.panelTab";
@@ -87,43 +89,55 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       return false;
     }
-    return localStorage.getItem(FILES_SHOWN_KEY) !== "false";
+    return preferences.getItem(FILES_SHOWN_KEY) !== "false";
   });
   const wasMobile = useRef(isMobile);
   useEffect(() => {
     if (isMobile && !wasMobile.current) {
       setFilesShown(false);
     } else if (!isMobile && wasMobile.current) {
-      setFilesShown(localStorage.getItem(FILES_SHOWN_KEY) !== "false");
+      setFilesShown(preferences.getItem(FILES_SHOWN_KEY) !== "false");
     }
     wasMobile.current = isMobile;
   }, [isMobile]);
   const [showHiddenFiles, setShowHiddenFilesState] = useState(() => {
-    return typeof window !== "undefined" && localStorage.getItem(SHOW_HIDDEN_FILES_KEY) === "true";
+    return typeof window !== "undefined" && preferences.getItem(SHOW_HIDDEN_FILES_KEY) === "true";
   });
-  const [panelTab, setPanelTab] = useState<PanelTab>(() => panelTabOf(localStorage.getItem(PANEL_TAB_KEY)));
+  const [panelTab, setPanelTab] = useState<PanelTab>(() => panelTabOf(preferences.getItem(PANEL_TAB_KEY)));
   const [changeTarget, setChangeTarget] = useState<ChangeTarget | null>(null);
   const [projects] = useState(() => new Map<number, ProjectFiles>());
   const [comments] = useState(() => new Map<number, ProjectComments>());
   const summaries = useReplicatedState(conversations.state)?.conversations;
+  const listed = useReplicatedState(workspaces.state)?.workspaces;
+  useEffect(() => {
+    if (listed === undefined) return;
+    const existing = new Set(listed.map((workspace) => workspace.id));
+    for (const [id, project] of projects)
+      if (!existing.has(id)) {
+        project.close();
+        projects.delete(id);
+      }
+    for (const id of comments.keys()) if (!existing.has(id)) comments.delete(id);
+  }, [listed, projects, comments]);
   const workspaceId = draft ?? summaries?.find((summary) => summary.id === selected)?.workspaceId ?? null;
 
   // The state changes along with the hash, so a started conversation replaces the new one in a single render.
   const select = useCallback((id: number | null): void => {
     setSelected(id);
     setDraft(null);
-    window.location.hash = id === null ? "" : String(id);
+    navigate(id === null ? window.location.pathname + window.location.search : `#${id}`);
   }, []);
 
   useEffect(() => {
     const onChange = (): void => {
+      // Public access hides the workbench; it must not clear its conversation or new-conversation draft.
+      if (window.location.hash === "#public-access") return;
       const id = selectedInHash();
       setSelected(id);
       // Following a link to a conversation leaves the new one. Clearing the hash for a new one must not.
       if (id !== null) setDraft(null);
     };
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
+    return subscribeNavigation(onChange);
   }, []);
 
   useEffect(() => {
@@ -150,17 +164,17 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   };
   const showFiles = (shown: boolean): void => {
     if (!isMobile) {
-      localStorage.setItem(FILES_SHOWN_KEY, String(shown));
+      preferences.setItem(FILES_SHOWN_KEY, String(shown));
     }
     setFilesShown(shown);
   };
   const showTab = (tab: PanelTab): void => {
-    localStorage.setItem(PANEL_TAB_KEY, tab);
+    preferences.setItem(PANEL_TAB_KEY, tab);
     setPanelTab(tab);
   };
   const setShowHiddenFiles = (show: boolean): void => {
     if (typeof window !== "undefined") {
-      localStorage.setItem(SHOW_HIDDEN_FILES_KEY, String(show));
+      preferences.setItem(SHOW_HIDDEN_FILES_KEY, String(show));
     }
     setShowHiddenFilesState(show);
   };

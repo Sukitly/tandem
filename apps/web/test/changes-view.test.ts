@@ -138,6 +138,8 @@ describe("file type icons in the changed files list", () => {
   test("stores and defaults diff style separately for inline and zoomed states", () => {
     expect(storedDiffStyle(false)).toBe("unified");
     expect(storedDiffStyle(true)).toBe("split");
+    expect(storedDiffStyle(false, true)).toBe("unified");
+    expect(storedDiffStyle(true, true)).toBe("unified");
 
     vi.stubGlobal("localStorage", {
       getItem: (key: string) => {

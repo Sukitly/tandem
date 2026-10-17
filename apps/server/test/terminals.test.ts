@@ -162,11 +162,15 @@ describe("a terminal", () => {
     const id = await terminals.create({ workspaceId }, context);
     const { page, screens, shown } = open(id);
     await waitFor(() => screens() === 1);
-    page.input("sleep 30\r");
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // A computed prompt and child-ready marker cannot match the terminal's echo of the command itself.
+    page.input("PS1=$(printf 'prompt-%s> ' 42)\r");
+    await waitFor(() => shown().includes("prompt-42>"));
+    page.input("sh -c 'printf \"running-%s\\n\" 42; exec sleep 30'\r");
+    await waitFor(() => shown().includes("running-42"));
+    const beforeInterrupt = shown().length;
     page.input("\x03");
-    // The shell answers again long before the 30 seconds are up: the sleep was interrupted. The sum is computed, so
-    // the echoed command line does not contain it.
+    // Wait for the shell before typing again: SIGINT processing may flush immediately queued terminal input.
+    await waitFor(() => shown().slice(beforeInterrupt).includes("prompt-42>"));
     page.input("echo after-$((40+2))\r");
     await waitFor(() => shown().includes("after-42"));
   });

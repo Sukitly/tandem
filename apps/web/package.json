@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:browser": "node --test browser/*.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -55,6 +56,7 @@
     "mdast-util-from-markdown": "^2",
     "mdast-util-math": "^3",
     "micromark-util-types": "^2",
+    "playwright": "^1.64.1",
     "remark-gfm": "^4",
     "remark-math": "^6",
     "remark-parse": "^11",

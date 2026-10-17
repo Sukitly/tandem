@@ -2,8 +2,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ProviderUsage, UsageWindow } from "@tandem/contracts";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button.tsx";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.tsx";
 import { Progress } from "@/components/ui/progress.tsx";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 
@@ -89,8 +89,8 @@ function WindowText({ window }: { window: UsageWindow }) {
   const reset = formatResetTime(window.resetsAt, window.windowSeconds);
   const pace = paceOf(window);
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <Popover>
+      <PopoverTrigger
         render={<Button variant="ghost" size="xs" />}
         className="inline-flex max-w-full shrink-0 items-center gap-1.5 tabular-nums sm:gap-2"
       >
@@ -107,8 +107,8 @@ function WindowText({ window }: { window: UsageWindow }) {
             {Math.abs(pace.diff).toFixed(1)}%
           </span>
         )}
-      </TooltipTrigger>
-      <TooltipContent>
+      </PopoverTrigger>
+      <PopoverContent aria-label={`${window.label} quota details`} className="max-w-[calc(100vw-2rem)] text-xs">
         <div className="grid gap-1">
           <span>
             {window.label} quota: {window.utilization.toFixed(0)}% used
@@ -124,8 +124,8 @@ function WindowText({ window }: { window: UsageWindow }) {
             </span>
           )}
         </div>
-      </TooltipContent>
-    </Tooltip>
+      </PopoverContent>
+    </Popover>
   );
 }
 

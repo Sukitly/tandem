@@ -22,7 +22,9 @@ export function LoginFlow({ login }: { login: LoginState }) {
           <LoginEventItem key={index} event={event} />
         ))}
       </ItemGroup>
-      {login.prompt !== undefined && <LoginPromptForm key={login.prompt.id} prompt={login.prompt} />}
+      {login.status === "running" && login.prompt !== undefined && (
+        <LoginPromptForm key={login.prompt.id} prompt={login.prompt} />
+      )}
       {login.status === "running" && login.prompt === undefined && (
         <Item variant="muted" size="sm">
           <Spinner />
@@ -97,13 +99,17 @@ function LoginPromptForm({ prompt }: { prompt: LoginPrompt }) {
   const { models } = useConnected();
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
+    if (pending || value === "") return;
     setError(null);
-    models
-      .answerLogin({ promptId: prompt.id, value }, BACKGROUND_CONTEXT)
-      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)));
+    setPending(true);
+    Promise.resolve()
+      .then(() => models.answerLogin({ promptId: prompt.id, value }, BACKGROUND_CONTEXT))
+      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)))
+      .finally(() => setPending(false));
   };
 
   return (
@@ -113,6 +119,7 @@ function LoginPromptForm({ prompt }: { prompt: LoginPrompt }) {
         <div className="flex gap-2">
           {prompt.type === "select" ? (
             <Select
+              disabled={pending}
               value={value}
               onValueChange={(next) => setValue(next ?? "")}
               items={prompt.options.map((option) => ({ value: option.id, label: option.label }))}
@@ -131,6 +138,7 @@ function LoginPromptForm({ prompt }: { prompt: LoginPrompt }) {
           ) : (
             <Input
               id="login-prompt"
+              disabled={pending}
               type={prompt.type === "secret" ? "password" : "text"}
               value={value}
               onChange={(event) => setValue(event.target.value)}
@@ -139,7 +147,7 @@ function LoginPromptForm({ prompt }: { prompt: LoginPrompt }) {
               spellCheck={false}
             />
           )}
-          <Button type="submit" disabled={value === ""}>
+          <Button type="submit" disabled={pending || value === ""}>
             Continue
           </Button>
         </div>

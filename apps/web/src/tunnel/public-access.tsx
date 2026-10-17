@@ -2,6 +2,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { tunnelTokenIdentity } from "@tandem/contracts";
 import { ArrowLeftIcon } from "lucide-react";
 import { createContext, type MouseEvent, type ReactNode, useContext, useEffect, useRef, useState } from "react";
+import { navigate as navigateTo, useLocationHash } from "@/app/navigation.ts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -32,16 +33,11 @@ export function usePublicAccessPage() {
 
 export function PublicAccessPageProvider({ children }: { children: ReactNode }) {
   const workspaceUrl = useRef("/");
-  const [open, setOpen] = useState(() => window.location.hash === "#public-access");
+  const hash = useLocationHash();
+  const open = hash === "#public-access";
   useEffect(() => {
-    const update = () => setOpen(window.location.hash === "#public-access");
-    window.addEventListener("hashchange", update);
-    window.addEventListener("popstate", update);
-    return () => {
-      window.removeEventListener("hashchange", update);
-      window.removeEventListener("popstate", update);
-    };
-  }, []);
+    if (!open) workspaceUrl.current = window.location.pathname + window.location.search + hash;
+  }, [open, hash]);
   useEffect(() => {
     if (!open) return;
     const previous = document.title;
@@ -63,8 +59,7 @@ export function PublicAccessPageProvider({ children }: { children: ReactNode }) 
       return;
     event.preventDefault();
     if (show) workspaceUrl.current = window.location.pathname + window.location.search + window.location.hash;
-    window.history.pushState(null, "", event.currentTarget.href);
-    setOpen(show);
+    navigateTo(event.currentTarget.href);
   };
   return (
     <PublicAccessPageContext.Provider value={{ href: "/#public-access", onClick: (event) => navigate(event, true) }}>

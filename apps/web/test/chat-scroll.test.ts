@@ -25,6 +25,7 @@ vi.mock("../src/rpc/connection.tsx", () => ({
 }));
 vi.mock("../src/rpc/use-conversation.ts", () => ({
   useConversation: () => ({ view: mock.view, submit: mock.submit }),
+  useConversationFailure: () => undefined,
 }));
 vi.mock("../src/rpc/use-replicated-state.ts", () => ({ useReplicatedState: (state: unknown) => state }));
 vi.mock("../src/rpc/use-prompts.ts", () => ({ usePrompts: () => ({ commands: [] }) }));

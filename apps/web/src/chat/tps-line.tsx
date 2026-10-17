@@ -1,5 +1,6 @@
 import type { RunTps } from "@tandem/contracts";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.tsx";
 import { formatCacheHitPercent } from "./cache-hit.ts";
 
 /**
@@ -26,20 +27,39 @@ export function TpsLine({ tps }: { tps: RunTps }) {
       : [{ label: `cache hit ${cacheHit}%`, detail: "Cache-read tokens / (input + cache-read + cache-write tokens)" }]),
   ];
   return (
-    <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-2 text-xs font-normal text-muted-foreground tabular-nums">
-      {metrics.map((metric, index) => (
-        <span key={metric.detail} className="inline-flex items-baseline gap-2 whitespace-nowrap">
-          {index > 0 && (
-            <span aria-hidden="true" className="text-muted-foreground/50">
-              ·
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            aria-label="Run metrics details"
+            className="h-auto max-w-full justify-start whitespace-normal px-2 py-1 text-xs font-normal text-muted-foreground"
+          />
+        }
+      >
+        <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1 tabular-nums">
+          {metrics.map((metric, index) => (
+            <span key={metric.detail} className="inline-flex items-baseline gap-2 whitespace-nowrap">
+              {index > 0 && (
+                <span aria-hidden="true" className="text-muted-foreground/50">
+                  ·
+                </span>
+              )}
+              <span>{metric.label}</span>
             </span>
-          )}
-          <Tooltip>
-            <TooltipTrigger render={<span />}>{metric.label}</TooltipTrigger>
-            <TooltipContent>{metric.detail}</TooltipContent>
-          </Tooltip>
+          ))}
         </span>
-      ))}
-    </p>
+      </PopoverTrigger>
+      <PopoverContent aria-label="Run metrics details" className="max-w-[calc(100vw-2rem)] text-xs">
+        <dl className="grid gap-2">
+          {metrics.map((metric) => (
+            <div key={metric.detail}>
+              <dt className="font-medium">{metric.label}</dt>
+              <dd className="text-muted-foreground">{metric.detail}</dd>
+            </div>
+          ))}
+        </dl>
+      </PopoverContent>
+    </Popover>
   );
 }

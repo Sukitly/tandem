@@ -1,6 +1,6 @@
 import { AlertCircleIcon, CheckIcon, CopyIcon } from "lucide-react";
-import { useState } from "react";
 import { MessageAction, Reasoning, Terminal, Tool } from "@/components/ai-elements/index.ts";
+import { useCopyText } from "@/components/copy-text.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Bubble, BubbleContent } from "@/components/ui/bubble.tsx";
 import { CodeBlock, CodeBlockContent, CodeBlockLine } from "@/components/ui/code-block.tsx";
@@ -252,17 +252,13 @@ export function ChatError({
 }
 
 function CopyAction({ text, className }: { text: string; className?: string }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, pending, copy } = useCopyText(text);
   return (
     <MessageAction
       label={copied ? "Copied" : "Copy"}
       className={className}
-      onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        });
-      }}
+      disabled={pending}
+      onClick={() => void copy()}
     >
       {copied ? (
         <CheckIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />

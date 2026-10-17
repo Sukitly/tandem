@@ -114,6 +114,27 @@ test("renames a device, and takes the new name from the subscription state", asy
   // The name comes from the subscription state, so the row leaves editing on its own.
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 });
+test("device renaming ignores IME Enter and Escape only leaves the editor", async () => {
+  const time = vi.spyOn(Date, "now").mockReturnValue(1000);
+  try {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const input = screen.getByLabelText("Name of Laptop");
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: "手机" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(mock.rename).not.toHaveBeenCalled();
+    time.mockReturnValue(1020);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByLabelText("Name of Laptop")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Devices" })).toBeDefined();
+  } finally {
+    time.mockRestore();
+  }
+});
+
 test("a failed rename keeps the typed name and says why", async () => {
   mock.rename.mockRejectedValue(new Error("Device does not exist"));
   setup();

@@ -198,21 +198,24 @@
   }
 }
 
-/* Tabs keep their active underline without a focus border, ring, or outline. */
+/* Keyboard focus is distinct from the selected tab's underline. Text fields retain the library's focus styles. */
 [data-slot="tabs-trigger"]:focus-visible {
-  border-color: transparent;
-  box-shadow: none;
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
-/*
- * Text fields show no focus ring and keep their border when focused: the caret already marks where typing goes.
- * Invalid fields keep their red ring. Unlayered, so it wins over the components' utility classes.
- */
-:is([data-slot="input"], [data-slot="sidebar-input"], [data-slot="textarea"]):focus-visible:not([aria-invalid="true"]),
-[data-slot="input-group"]:has([data-slot="input-group-control"]:focus-visible):not(:has([aria-invalid="true"])) {
-  border-color: var(--input);
-  box-shadow: none;
+@media (pointer: coarse) {
+  [data-composer] button,
+  .app-dialog button,
+  [data-slot="dropdown-menu-radio-item"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  [data-composer] textarea,
+  .app-dialog input,
+  .app-dialog textarea {
+    font-size: 16px;
+  }
 }
 
 /*
@@ -307,4 +310,12 @@ html {
 }
 .dark [data-slot="code-block-line"][data-variant="removed"]::after {
   color: var(--color-red-400, #f87171);
+}
+
+/* Toolbar targets follow the actual input device, independently of viewport width. */
+@media (pointer: coarse) {
+  [data-panel-toolbar] button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

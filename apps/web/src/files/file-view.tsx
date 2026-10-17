@@ -1,45 +1,63 @@
 import { AlertCircleIcon, FileIcon, Maximize2Icon, Minimize2Icon, XIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { HighlightedLine, languageOfFile, useHighlighted } from "@/chat/highlight.tsx";
-import { anchorAt, placeThreads, revealedLine } from "@/comments/comment-anchor.ts";
+import { anchorAt, placeThreads, revealedLine, threadsByLine } from "@/comments/comment-anchor.ts";
 import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { CopyPathButton } from "@/components/copy-path-button.tsx";
+import { ReaderSurface, ReaderWrapButton } from "@/components/reader-surface.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { preferences } from "@/lib/preferences.ts";
 import { cn } from "@/lib/utils";
 import { type OpenedFile, type ProjectFiles, useProjectFiles } from "./project-files.ts";
+import { VirtualFile } from "./virtual-file.tsx";
 
 /** Highlighting a longer file would hold up the page for a second or more; it shows as plain text instead. */
 const MAX_HIGHLIGHTED_LINES = 3000;
 
 /** The opened file of the files panel, shown at its line if one was asked for. */
-export function FileView({ files, comments }: { files: ProjectFiles; comments: ProjectComments }) {
+export function FileView({
+  files,
+  comments,
+  active = true,
+}: {
+  files: ProjectFiles;
+  comments: ProjectComments;
+  active?: boolean;
+}) {
   const opened = useProjectFiles(files, (current) => current.opened);
   const content = useProjectFiles(files, (current) => current.content);
+  const lineCount = useMemo(
+    () => (content?.status === "ready" && content.value.kind === "text" ? countLines(content.value.text) : 0),
+    [content],
+  );
   const [zoomed, setZoomed] = useState(false);
-
+  const [wrap, setWrap] = useState(() => {
+    try {
+      return preferences.getItem("tandem.fileWrap") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const toggleWrap = (): void => {
+    setWrap(!wrap);
+    try {
+      preferences.setItem("tandem.fileWrap", String(!wrap));
+    } catch {
+      /* Storage is optional. */
+    }
+  };
   useEffect(() => {
-    if (!zoomed) return;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setZoomed(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [zoomed]);
+    if (!active) setZoomed(false);
+  }, [active]);
 
   if (opened === null) return null;
   return (
-    <section
-      className={cn("flex min-h-0 flex-col bg-background", zoomed ? "fixed inset-0 z-40 h-dvh w-dvw" : "h-full")}
-      aria-label={`File ${opened.path}`}
-    >
+    <ReaderSurface expanded={zoomed} onExpandedChange={setZoomed} label={`File ${opened.path}`}>
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <p className="min-w-0 truncate font-mono text-xs" title={opened.path}>
@@ -48,10 +66,9 @@ export function FileView({ files, comments }: { files: ProjectFiles; comments: P
           <CopyPathButton key={opened.path} path={opened.path} />
         </div>
         {content?.status === "ready" && content.value.kind === "text" && (
-          <span className="shrink-0 font-mono text-xs text-muted-foreground">
-            {formatLines(countLines(content.value.text))}
-          </span>
+          <span className="shrink-0 font-mono text-xs text-muted-foreground">{formatLines(lineCount)}</span>
         )}
+        <ReaderWrapButton wrap={wrap} onToggle={toggleWrap} />
         <Tooltip>
           <TooltipTrigger
             render={
@@ -98,7 +115,7 @@ export function FileView({ files, comments }: { files: ProjectFiles; comments: P
             </Alert>
           </div>
         ) : content.value.kind === "text" ? (
-          <FileText text={content.value.text} opened={opened} comments={comments} />
+          <FileText key={opened.path} text={content.value.text} opened={opened} comments={comments} wrap={wrap} />
         ) : (
           <Empty>
             <EmptyHeader>
@@ -115,7 +132,7 @@ export function FileView({ files, comments }: { files: ProjectFiles; comments: P
           </Empty>
         )}
       </div>
-    </section>
+    </ReaderSurface>
   );
 }
 
@@ -123,10 +140,22 @@ export function FileView({ files, comments }: { files: ProjectFiles; comments: P
  * The text with line numbers, highlighted unless it is long; the asked-for line is marked and scrolled to. A comment
  * is written by clicking a line's number, and shown under the line it is about.
  */
-function FileText({ text, opened, comments }: { text: string; opened: OpenedFile; comments: ProjectComments }) {
+function FileText({
+  text,
+  opened,
+  comments,
+  wrap,
+}: {
+  text: string;
+  opened: OpenedFile;
+  comments: ProjectComments;
+  wrap: boolean;
+}) {
   const { path } = opened;
   const body = text.endsWith("\n") ? text.slice(0, -1) : text;
   const lines = useMemo(() => body.split("\n"), [body]);
+  const [virtual, setVirtual] = useState(lines.length > MAX_HIGHLIGHTED_LINES);
+  if (!virtual && lines.length > MAX_HIGHLIGHTED_LINES) setVirtual(true);
   const language =
     lines.length <= MAX_HIGHLIGHTED_LINES ? languageOfFile(path.slice(path.lastIndexOf("/") + 1)) : undefined;
   const tokens = useHighlighted(body, language, false);
@@ -137,6 +166,8 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
     () => placeThreads(threads, path, "additions", (number) => lines[number - 1], lines.length),
     [threads, path, lines],
   );
+  const byLine = useMemo(() => threadsByLine(placed), [placed]);
+  const [focusedLine, setFocusedLine] = useState(1);
   // Threads on lines the changes removed: the file has no such line, so they are shown above it with the code they
   // were written on, as the diff shows them on its removed side.
   const removed = useMemo(
@@ -164,6 +195,23 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
     scroller.current?.querySelector(target)?.scrollIntoView({ block: "center" });
   }, [opened, line, isAbove]);
 
+  if (virtual || lines.length > MAX_HIGHLIGHTED_LINES) {
+    return (
+      <VirtualFile
+        text={text}
+        lines={lines}
+        opened={opened}
+        comments={comments}
+        placed={placed}
+        above={above}
+        line={line}
+        wrap={wrap}
+        draft={draft}
+        setDraft={setDraft}
+      />
+    );
+  }
+
   return (
     <div ref={scroller} className="h-full overflow-auto">
       {above.map(({ thread, why }) => (
@@ -171,7 +219,7 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
           <CommentThreadBox thread={thread} comments={comments} view={scroller} detached={why} />
         </div>
       ))}
-      <pre className="w-max min-w-full py-2 font-mono text-xs leading-relaxed">
+      <pre className={cn("py-2 font-mono text-xs leading-relaxed", wrap ? "w-full" : "w-max min-w-full")}>
         <code>
           {lines.map((content, index) => {
             const number = index + 1;
@@ -181,7 +229,27 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
                   <button
                     type="button"
                     aria-label={`Comment on line ${number}`}
-                    title="Comment on this line"
+                    title="Comment on this line (arrow keys move between lines)"
+                    tabIndex={number === Math.min(focusedLine, lines.length) ? 0 : -1}
+                    onFocus={() => setFocusedLine(number)}
+                    onKeyDown={(event) => {
+                      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                      const next =
+                        event.key === "ArrowDown"
+                          ? number + 1
+                          : event.key === "ArrowUp"
+                            ? number - 1
+                            : event.key === "Home"
+                              ? 1
+                              : event.key === "End"
+                                ? lines.length
+                                : undefined;
+                      if (next === undefined) return;
+                      event.preventDefault();
+                      const target = Math.max(1, Math.min(lines.length, next));
+                      setFocusedLine(target);
+                      scroller.current?.querySelector<HTMLButtonElement>(`[data-line="${target}"] button`)?.focus();
+                    }}
                     className="sticky left-0 w-12 shrink-0 cursor-pointer bg-background pr-4 text-right text-muted-foreground select-none"
                     onClick={() => setDraft(number)}
                   >
@@ -189,24 +257,28 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
                     <span className="hidden group-hover/line:inline">+</span>
                   </button>
                   {tokens?.[index] === undefined ? (
-                    <span className="pr-4">{content}</span>
+                    <span className={cn("min-h-[1lh] pr-4", wrap && "min-w-0 flex-1 whitespace-pre-wrap break-all")}>
+                      {content}
+                    </span>
                   ) : (
-                    <HighlightedLine tokens={tokens[index]} className="pr-4" />
+                    <HighlightedLine
+                      tokens={tokens[index]}
+                      className={cn("min-h-[1lh] pr-4", wrap && "min-w-0 flex-1 whitespace-pre-wrap break-all")}
+                    />
                   )}
                 </div>
-                {placed
-                  .filter((entry) => entry.line === number)
-                  .map(({ thread }) => (
-                    <CommentThreadBox
-                      key={thread.id}
-                      thread={thread}
-                      comments={comments}
-                      view={scroller}
-                      className="ml-14"
-                    />
-                  ))}
+                {byLine.get(number)?.map((thread) => (
+                  <CommentThreadBox
+                    key={thread.id}
+                    thread={thread}
+                    comments={comments}
+                    view={scroller}
+                    className="ml-14"
+                  />
+                ))}
                 {draft === number && (
                   <CommentDraft
+                    draftKey={JSON.stringify(["comment", comments.workspaceId, path, "additions", number])}
                     place={`${path}:${number}`}
                     view={scroller}
                     className="ml-14"
@@ -231,8 +303,9 @@ function FileText({ text, opened, comments }: { text: string; opened: OpenedFile
 
 export function countLines(text: string): number {
   if (text.length === 0) return 0;
-  const body = text.endsWith("\n") ? text.slice(0, -1) : text;
-  return body.split("\n").length;
+  let count = text.endsWith("\n") ? 0 : 1;
+  for (let index = 0; index < text.length; index += 1) if (text.charCodeAt(index) === 10) count += 1;
+  return count;
 }
 
 export function formatLines(count: number): string {
