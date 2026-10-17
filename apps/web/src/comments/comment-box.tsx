@@ -23,6 +23,7 @@ import {
   InputGroupText,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
+import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 import { commentPlace } from "./comment-anchor.ts";
 import type { ProjectComments } from "./project-comments.ts";
 import { useCommentWidth } from "./use-comment-width.ts";
@@ -64,7 +65,7 @@ export function CommentDraft({
   const drafts = useDrafts();
   const draft = useTextDraft(draftKey, initial);
   const { text, sending: saving, error } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
-  const composingUntil = useRef(0);
+  const composition = useCompositionGuard();
   const box = useCommentBox(embedded ? undefined : view);
   const empty = text.trim() === "";
   // A refused note stays in the box with the reason under it, so it can be changed and saved again.
@@ -98,15 +99,10 @@ export function CommentDraft({
         className="min-h-20 max-h-[35dvh] overflow-y-auto"
         disabled={saving}
         onChange={(event) => draft.setText(event.target.value)}
-        onCompositionStart={() => {
-          composingUntil.current = Number.POSITIVE_INFINITY;
-        }}
-        onCompositionEnd={() => {
-          composingUntil.current = Date.now() + 10;
-        }}
+        onCompositionStart={composition.onCompositionStart}
+        onCompositionEnd={composition.onCompositionEnd}
         onKeyDown={(event) => {
-          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229 || Date.now() < composingUntil.current)
-            return;
+          if (composition.owns(event)) return;
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();

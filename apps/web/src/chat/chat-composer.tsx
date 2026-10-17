@@ -39,6 +39,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { FieldError } from "@/components/ui/field";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { preferences } from "@/lib/preferences.ts";
 import { IMAGE_ACCEPT, imageFiles } from "./attached-images.ts";
@@ -70,12 +71,6 @@ export function imageSupportOf(models: readonly ModelSummary[] | undefined, mode
   if (summary.images === undefined) return { kind: "none" };
   return { kind: "accepted", ...summary.images };
 }
-
-/**
- * How long after a composition ends a keydown still counts as the IME's. Safari delivers the closing keydown after
- * `compositionend`, so `isComposing` alone would let an IME's Enter submit or pick a command.
- */
-const IME_SETTLE_MS = 10;
 
 export interface ChatComposerProps {
   draft?: MessageDraft;
@@ -162,8 +157,7 @@ export function ChatComposer({
   const boxRef = useRef<HTMLDivElement>(null);
   const killedText = useRef("");
   const verticalGoal = useRef<{ column: number; position: number } | null>(null);
-  const composing = useRef(false);
-  const composingUntil = useRef(0);
+  const composition = useCompositionGuard();
   const editor = useComposerText(
     (value) => {
       draft.setText(value);
@@ -235,10 +229,7 @@ export function ChatComposer({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-    const native = event.nativeEvent;
-    // A key the input method owns, picking one of its candidates, is never ours: acting on it would fight the IME.
-    if (native.isComposing || native.keyCode === 229 || composing.current || Date.now() < composingUntil.current)
-      return;
+    if (composition.owns(event)) return;
     if (event.getModifierState("AltGraph")) return;
     if (editor.keyDown(event)) {
       verticalGoal.current = null;
@@ -473,13 +464,12 @@ export function ChatComposer({
               onKeyDown={onKeyDown}
               onPaste={onPaste}
               onCompositionStart={() => {
-                composing.current = true;
+                composition.onCompositionStart();
                 editor.compositionStart();
               }}
               onCompositionEnd={(event) => {
                 editor.compositionEnd(event.currentTarget);
-                composing.current = false;
-                composingUntil.current = Date.now() + IME_SETTLE_MS;
+                composition.onCompositionEnd();
               }}
               rows={1}
               aria-label="Message"
