@@ -30,6 +30,47 @@ async function fixture(t, mobile = true) {
   return { page, url: `http://127.0.0.1:${server.httpServer.address().port}/browser/reader.html` };
 }
 
+test("comment drafts keep identity across readers and never follow an unverified line", async (t) => {
+  const { page, url } = await fixture(t, false);
+  await page.goto(`${url}?drafts`);
+  const editor = page.getByRole("textbox", { name: "Comment", exact: true });
+  await page.getByText("Comment on a line", { exact: true }).click();
+  await page.getByRole("spinbutton", { name: "Line", exact: true }).fill("2");
+  await page.getByRole("button", { name: "Add comment", exact: true }).click();
+  await editor.fill("Keep on target");
+  await page.getByRole("button", { name: "Switch reader" }).click();
+  await editor.waitFor();
+  assert.equal(await editor.inputValue(), "Keep on target");
+  await page.getByRole("button", { name: "Insert line" }).click();
+  await page.getByText("a.ts:3", { exact: true }).waitFor();
+  assert.equal(await editor.inputValue(), "Keep on target");
+  await page.getByRole("button", { name: "Switch reader" }).click();
+  await editor.waitFor();
+  await page.getByRole("button", { name: "Comment", exact: true }).click();
+  await page.waitForFunction(() => document.body.dataset.savedAnchor !== undefined);
+  const anchor = await page.evaluate(() => JSON.parse(document.body.dataset.savedAnchor));
+  assert.equal(anchor.line, 3);
+  assert.equal(anchor.quote, "target");
+  await editor.waitFor({ state: "hidden" });
+  await page.getByText("Comment on a line", { exact: true }).click();
+  await page.getByRole("spinbutton", { name: "Line", exact: true }).fill("3");
+  await page.getByRole("button", { name: "Add comment", exact: true }).click();
+  await editor.fill("Ambiguous but retained");
+  await page.getByRole("button", { name: "Duplicate context" }).click();
+  await page.getByText("Location not verified. Copy this draft to a new line or cancel it.").waitFor();
+  assert.equal(await editor.inputValue(), "Ambiguous but retained");
+  assert.equal(await page.getByRole("button", { name: "Comment", exact: true }).isDisabled(), true);
+  await page.getByRole("button", { name: "Switch reader" }).click();
+  await editor.waitFor();
+  assert.equal(await editor.inputValue(), "Ambiguous but retained");
+  await page.getByRole("button", { name: "Replace target" }).click();
+  await editor.waitFor();
+  assert.equal(await editor.inputValue(), "Ambiguous but retained");
+  assert.equal(await page.getByRole("button", { name: "Comment", exact: true }).isDisabled(), true);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await editor.waitFor({ state: "hidden" });
+});
+
 test("reader focus targets survive changes to toggle labels", async (t) => {
   const { page, url } = await fixture(t);
   await page.goto(`${url}?renamed`);

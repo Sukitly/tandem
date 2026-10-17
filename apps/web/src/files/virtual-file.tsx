@@ -1,10 +1,12 @@
 import { CodeView, type CodeViewFileItem, type CodeViewHandle } from "@pierre/diffs/react";
 import type { CommentThread } from "@tandem/contracts";
-import { type Dispatch, type SetStateAction, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { DIFF_COMMENT_CSS } from "@/changes/diff-plain-annotations.ts";
-import { anchorAt, type PlacedThread } from "@/comments/comment-anchor.ts";
-import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
+import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
+import type { PlacedThread } from "@/comments/comment-anchor.ts";
+import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
+import type { useCommentDrafts } from "@/comments/use-comment-drafts.ts";
 import { CodeCopyButton } from "@/components/copy-text.tsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +25,7 @@ export function VirtualFile({
   above,
   line,
   wrap,
-  draft,
-  setDraft,
+  drafts,
 }: {
   text: string;
   lines: readonly string[];
@@ -34,8 +35,7 @@ export function VirtualFile({
   above: readonly { thread: CommentThread; why: "outdated" | "removed" }[];
   line: number | undefined;
   wrap: boolean;
-  draft: number | null;
-  setDraft: Dispatch<SetStateAction<number | null>>;
+  drafts: ReturnType<typeof useCommentDrafts>;
 }) {
   const { path } = opened;
   const { choice } = useTheme();
@@ -126,7 +126,7 @@ export function VirtualFile({
           disabled={!valid}
           onClick={() => {
             go(target);
-            setDraft(target);
+            drafts.start("additions", target);
           }}
         >
           Add comment
@@ -181,30 +181,24 @@ export function VirtualFile({
           unsafeCSS: DIFF_COMMENT_CSS,
           onLineNumberClick: ({ lineNumber }) => {
             setInput(String(lineNumber));
-            setDraft(lineNumber);
+            drafts.start("additions", lineNumber);
           },
         }}
         renderAnnotation={(annotation) => (
           <CommentThreadBox thread={annotation.metadata} comments={comments} view={box} />
         )}
       />
-      {draft !== null && (
+      {drafts.placed.length > 0 && (
         <div className="max-h-[40%] shrink-0 overflow-auto border-t">
-          <CommentDraft
-            key={draft}
-            draftKey={JSON.stringify(["comment", comments.workspaceId, path, "additions", draft])}
-            place={`${path}:${draft}`}
-            view={box}
-            onCancel={() => setDraft(null)}
-            onSave={async (note) => {
-              if (lines[draft - 1] === undefined) throw new Error("This line no longer exists. Choose another line.");
-              await comments.start(
-                anchorAt({ path, line: draft }, (at) => lines[at - 1]),
-                note,
-              );
-              setDraft((current) => (current === draft ? null : current));
-            }}
-          />
+          {drafts.placed.map((draft) => (
+            <AnchoredCommentEditor
+              key={draft.record.id}
+              draft={draft}
+              store={drafts.store}
+              comments={comments}
+              view={box}
+            />
+          ))}
         </div>
       )}
     </div>

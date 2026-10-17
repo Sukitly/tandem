@@ -1,6 +1,7 @@
 import type { CommentMessage, CommentThread } from "@tandem/contracts";
 import { type RefObject, useRef, useState, useSyncExternalStore } from "react";
 import { useDrafts, useTextDraft } from "@/app/drafts.tsx";
+import type { TextDraft } from "@/app/text-draft.ts";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { Markdown } from "@/chat/markdown.tsx";
 import {
@@ -36,6 +37,8 @@ const SURFACE = "m-2 rounded-lg border border-input font-sans dark:bg-input/30";
 
 /** The box a comment is written in: a new thread, a reply, or an edit of a message that is still waiting. */
 export function CommentDraft({
+  model,
+  canSave = true,
   draftKey,
   place,
   view,
@@ -46,6 +49,8 @@ export function CommentDraft({
   onSave,
   onCancel,
 }: {
+  model?: TextDraft;
+  canSave?: boolean;
   /** Stable identity across closing panels, disconnects, and switching layouts. */
   draftKey?: string;
   /** The file and line it is about, named above the box as a code host names it. */
@@ -63,14 +68,15 @@ export function CommentDraft({
   onCancel(): void;
 }) {
   const drafts = useDrafts();
-  const draft = useTextDraft(draftKey, initial);
+  const localDraft = useTextDraft(draftKey, initial);
+  const draft = model ?? localDraft;
   const { text, sending: saving, error } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   const composition = useCompositionGuard();
   const box = useCommentBox(embedded ? undefined : view);
   const empty = text.trim() === "";
   // A refused note stays in the box with the reason under it, so it can be changed and saved again.
   const save = (): void => {
-    if (empty || saving) return;
+    if (empty || saving || !canSave) return;
     void draft
       .send(() => onSave(text.trim()))
       .then((saved) => {
@@ -79,8 +85,10 @@ export function CommentDraft({
   };
   const cancel = (): void => {
     if (saving) return;
-    if (draftKey !== undefined && drafts !== null) drafts.forgetText(draftKey, draft);
-    else draft.reset();
+    if (model === undefined) {
+      if (draftKey !== undefined && drafts !== null) drafts.forgetText(draftKey, draft);
+      else draft.reset();
+    }
     onCancel();
   };
   const group = (
@@ -119,7 +127,7 @@ export function CommentDraft({
         <InputGroupButton size="xs" variant="outline" disabled={saving} onClick={cancel}>
           Cancel
         </InputGroupButton>
-        <InputGroupButton size="xs" variant="default" disabled={empty || saving} onClick={save}>
+        <InputGroupButton size="xs" variant="default" disabled={empty || saving || !canSave} onClick={save}>
           {submitLabel}
         </InputGroupButton>
       </InputGroupAddon>

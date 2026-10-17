@@ -1,9 +1,11 @@
 import { AlertCircleIcon, FileIcon, Maximize2Icon, Minimize2Icon, XIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { HighlightedLine, languageOfFile, useHighlighted } from "@/chat/highlight.tsx";
-import { anchorAt, placeThreads, revealedLine, threadsByLine } from "@/comments/comment-anchor.ts";
-import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
+import { AnchoredCommentEditor, UnverifiedCommentDrafts } from "@/comments/anchored-comment-editor.tsx";
+import { placeThreads, revealedLine, threadsByLine } from "@/comments/comment-anchor.ts";
+import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
+import { useCommentDrafts } from "@/comments/use-comment-drafts.ts";
 import { CopyPathButton } from "@/components/copy-path-button.tsx";
 import { ReaderSurface, ReaderWrapButton } from "@/components/reader-surface.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -90,6 +92,9 @@ export function FileView({
         </Button>
       </header>
       <div className="min-h-0 flex-1">
+        {(content?.status !== "ready" || content.value.kind !== "text") && (
+          <UnverifiedCommentDrafts path={opened.path} comments={comments} />
+        )}
         {content === null || content.status === "loading" ? (
           <Empty>
             <EmptyHeader>
@@ -175,7 +180,8 @@ function FileText({
   // A thread above the file has no line of it to show; a thread on a line is shown on the line it moved to.
   const isAbove = opened.threadId !== undefined && above.some(({ thread }) => thread.id === opened.threadId);
   const line = isAbove ? undefined : revealedLine(placed, opened.threadId, opened.line);
-  const [draft, setDraft] = useState<number | null>(null);
+  const draftLines = useMemo(() => ({ additions: new Map(lines.map((text, index) => [index + 1, text])) }), [lines]);
+  const drafts = useCommentDrafts(comments.workspaceId, path, "file", draftLines);
 
   // Each request to show a place is a new `opened`, so asking again for the same place shows it again. Shown once: as
   // threads come and go, the view stays where the user scrolled it.
@@ -198,14 +204,22 @@ function FileText({
         above={above}
         line={line}
         wrap={wrap}
-        draft={draft}
-        setDraft={setDraft}
+        drafts={drafts}
       />
     );
   }
 
   return (
     <div ref={scroller} className="h-full overflow-auto">
+      {drafts.detached.map((draft) => (
+        <AnchoredCommentEditor
+          key={draft.record.id}
+          draft={draft}
+          store={drafts.store}
+          comments={comments}
+          view={scroller}
+        />
+      ))}
       {above.map(({ thread, why }) => (
         <div key={thread.id} data-thread={thread.id}>
           <CommentThreadBox thread={thread} comments={comments} view={scroller} detached={why} />
@@ -243,7 +257,7 @@ function FileText({
                       scroller.current?.querySelector<HTMLButtonElement>(`[data-line="${target}"] button`)?.focus();
                     }}
                     className="sticky left-0 w-12 shrink-0 cursor-pointer bg-background pr-4 text-right text-muted-foreground select-none"
-                    onClick={() => setDraft(number)}
+                    onClick={() => drafts.start("additions", number)}
                   >
                     <span className="group-hover/line:hidden">{number}</span>
                     <span className="hidden group-hover/line:inline">+</span>
@@ -268,22 +282,16 @@ function FileText({
                     className="ml-14"
                   />
                 ))}
-                {draft === number && (
-                  <CommentDraft
-                    draftKey={JSON.stringify(["comment", comments.workspaceId, path, "additions", number])}
-                    place={`${path}:${number}`}
+                {drafts.byLine.get(`additions:${number}`)?.map((draft) => (
+                  <AnchoredCommentEditor
+                    key={draft.record.id}
+                    draft={draft}
+                    store={drafts.store}
+                    comments={comments}
                     view={scroller}
                     className="ml-14"
-                    onSave={async (note) => {
-                      await comments.start(
-                        anchorAt({ path, line: number }, (at) => lines[at - 1]),
-                        note,
-                      );
-                      setDraft(null);
-                    }}
-                    onCancel={() => setDraft(null)}
                   />
-                )}
+                ))}
               </Fragment>
             );
           })}

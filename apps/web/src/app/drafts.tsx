@@ -1,9 +1,11 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { CommentDrafts } from "@/comments/comment-drafts.ts";
 import { MessageDraft } from "./message-draft.ts";
 import { TextDraft } from "./text-draft.ts";
 
 /** Page-owned drafts. Moving a message never replaces an object held by a subscriber. */
 export class Drafts {
+  readonly comments = new CommentDrafts();
   readonly #messages = new Map<string, MessageDraft>();
   readonly #texts = new Map<string, TextDraft>();
   #disposed = false;
@@ -43,6 +45,7 @@ export class Drafts {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.comments.dispose();
     for (const draft of this.#messages.values()) draft.dispose();
     for (const draft of this.#texts.values()) draft.dispose();
     this.#messages.clear();
@@ -78,6 +81,13 @@ export function useTextDraft(key?: string, initial = ""): TextDraft {
   );
   useDispose(draft, key === undefined || drafts === null);
   return draft;
+}
+
+export function useCommentDraftStore(): CommentDrafts {
+  const drafts = useDrafts();
+  const [local] = useState(() => new CommentDrafts());
+  useDispose(local);
+  return drafts?.comments ?? local;
 }
 
 /** Defer disposal one microtask so StrictMode's cleanup/setup replay does not erase live input. */

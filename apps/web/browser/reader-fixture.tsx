@@ -1,6 +1,7 @@
 import type { Files } from "@tandem/contracts";
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { DraftsProvider } from "../src/app/drafts.tsx";
 import { ChangeDiff } from "../src/changes/change-diff.tsx";
 import { CommentDraft } from "../src/comments/comment-box.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
@@ -136,14 +137,72 @@ function FileFixture() {
     </div>
   );
 }
+function CommentIdentityFixture() {
+  const current = useRef("before\ntarget\nafter\n");
+  const [text, setText] = useState(current.current);
+  const [view, setView] = useState("diff");
+  const [files] = useState(() => {
+    const model = new ProjectFiles(
+      {
+        list: async () => [],
+        read: async () => ({ kind: "text", text: current.current, size: current.current.length }),
+      } as unknown as Files,
+      1,
+    );
+    model.open("a.ts");
+    return model;
+  });
+  const update = (next: string) => {
+    current.current = next;
+    setText(next);
+    files.refresh();
+  };
+  const comments = {
+    workspaceId: 1,
+    start: async (anchor: { line: number; quote: string }) => {
+      document.body.dataset.savedAnchor = JSON.stringify(anchor);
+      return 1;
+    },
+  } as ProjectComments;
+  const lines = text.trimEnd().split("\n");
+  return (
+    <div className="flex h-dvh flex-col">
+      <div className="flex shrink-0 gap-2">
+        <Button onClick={() => setView(view === "diff" ? "file" : "diff")}>Switch reader</Button>
+        <Button onClick={() => update(`inserted\n${current.current}`)}>Insert line</Button>
+        <Button onClick={() => update(current.current + current.current)}>Duplicate context</Button>
+        <Button onClick={() => update(current.current.replaceAll("target", "replacement"))}>Replace target</Button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {view === "diff" ? (
+          <ChangeDiff
+            path="a.ts"
+            style="unified"
+            comments={comments}
+            patch={{
+              kind: "patch",
+              patch: `diff --git a/a.ts b/a.ts\n--- /dev/null\n+++ b/a.ts\n@@ -0,0 +1,${lines.length} @@\n${lines.map((line) => `+${line}`).join("\n")}\n`,
+            }}
+          />
+        ) : (
+          <FileView files={files} comments={comments} />
+        )}
+      </div>
+    </div>
+  );
+}
 const root = document.getElementById("root");
 if (root)
   createRoot(root).render(
-    location.search.includes("diff") ? (
-      <DiffFixture />
-    ) : location.search.includes("file") ? (
-      <FileFixture />
-    ) : (
-      <Fixture />
-    ),
+    <DraftsProvider>
+      {location.search.includes("drafts") ? (
+        <CommentIdentityFixture />
+      ) : location.search.includes("diff") ? (
+        <DiffFixture />
+      ) : location.search.includes("file") ? (
+        <FileFixture />
+      ) : (
+        <Fixture />
+      )}
+    </DraftsProvider>,
   );

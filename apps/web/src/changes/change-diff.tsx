@@ -5,16 +5,11 @@ import type { CommentThread, FilePatch } from "@tandem/contracts";
 import { PlusIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
-import {
-  anchorAt,
-  indexLines,
-  type PlacedThread,
-  placeThreads,
-  relocate,
-  revealedLine,
-} from "@/comments/comment-anchor.ts";
-import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
+import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
+import { indexLines, type PlacedThread, placeThreads, relocate, revealedLine } from "@/comments/comment-anchor.ts";
+import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
+import { type PlacedDraft, useCommentDrafts } from "@/comments/use-comment-drafts.ts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRenderVersion } from "@/hooks/use-render-version.ts";
@@ -27,14 +22,8 @@ import { controlPlacement, useHoveredLine } from "./hovered-line.ts";
 
 type Side = "additions" | "deletions";
 
-/** A line of the diff being commented on. */
-interface Draft {
-  side: Side;
-  line: number;
-}
-
-/** What is written on a line of the diff: a thread, or the one being started. */
-type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; draft: Draft };
+/** What is written on a line of the diff: a thread or an independently identified pending draft. */
+type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; draft: PlacedDraft };
 
 /**
  * One file's patch, as `@pierre/diffs` renders it, with the review's comments on its lines. A comment is written the
@@ -64,13 +53,33 @@ export function ChangeDiff({
   const { openFile } = useWorkbench();
   const text = patch.kind === "patch" ? patch.patch : "";
   const threads = useCommentThreads(comments);
-  const [draft, setDraft] = useState<Draft | null>(null);
   const lineInputId = useId();
   const [lineInput, setLineInput] = useState("1");
   const [sideInput, setSideInput] = useState<Side>("additions");
   const [lineError, setLineError] = useState<string | null>(null);
 
   const files = useMemo(() => (text.trim() === "" ? [] : parsePatchFiles(text).flatMap((file) => file.files)), [text]);
+  const draftLines = useMemo(
+    () =>
+      files[0] === undefined
+        ? {}
+        : { additions: diffLines(files[0], "additions"), deletions: diffLines(files[0], "deletions") },
+    [files],
+  );
+  const drafts = useCommentDrafts(comments.workspaceId, path, "diff", draftLines);
+  const orphaned = drafts.detached.length > 0 && (
+    <div className="max-h-1/2 shrink-0 overflow-auto border-b">
+      {drafts.detached.map((draft) => (
+        <AnchoredCommentEditor
+          key={draft.record.id}
+          draft={draft}
+          store={drafts.store}
+          comments={comments}
+          view={box}
+        />
+      ))}
+    </div>
+  );
   // Missing hunk lines are checked against the file, but their comments remain visible while that read is pending.
   const placed = useMemo<PlacedThread[]>(() => {
     const fileDiff = files[0];
@@ -87,7 +96,7 @@ export function ChangeDiff({
     failure: verificationFailure,
     retry: retryVerification,
   } = useDetachedThreads(comments.workspaceId, path, text, placed);
-  const version = useRenderVersion([text, placed, draft]);
+  const version = useRenderVersion([text, placed, drafts.placed]);
 
   const items = useMemo<CodeViewDiffItem<Annotation>[]>(() => {
     const annotations: DiffLineAnnotation<Annotation>[] = placed.flatMap(({ thread, line }) =>
@@ -95,8 +104,9 @@ export function ChangeDiff({
         ? []
         : [{ side: thread.anchor.side ?? "additions", lineNumber: line, metadata: { kind: "thread", thread } }],
     );
-    if (draft !== null) {
-      annotations.push({ side: draft.side, lineNumber: draft.line, metadata: { kind: "draft", draft } });
+    for (const draft of drafts.placed) {
+      if (draft.line !== undefined)
+        annotations.push({ side: draft.side, lineNumber: draft.line, metadata: { kind: "draft", draft } });
     }
     // Keep identity stable across edits so the renderer can preserve the reading position.
     return files.map((fileDiff, index) => ({
@@ -106,7 +116,7 @@ export function ChangeDiff({
       annotations,
       version,
     }));
-  }, [path, version, files, placed, draft]);
+  }, [path, version, files, placed, drafts.placed]);
 
   // Scroll to the place that was asked for, once, as soon as the patch is rendered and can be scrolled.
   const revealed = useRef<ChangeTarget | null>(null);
@@ -137,7 +147,7 @@ export function ChangeDiff({
   /** Write a comment on a line. A patch holds one file. */
   const startDraft = (side: Side, line: number): void => {
     if (files[0] === undefined) return;
-    setDraft({ side, line });
+    drafts.start(side, line);
   };
 
   if (patch.kind !== "patch") {
@@ -147,16 +157,28 @@ export function ChangeDiff({
         : patch.kind === "tooLarge"
           ? "This file's diff is too large to show."
           : patch.message;
-    return <p className="p-3 text-sm text-muted-foreground">{message}</p>;
+    return (
+      <div>
+        {orphaned}
+        <p className="p-3 text-sm text-muted-foreground">{message}</p>
+      </div>
+    );
   }
-  if (items.length === 0) return <p className="p-3 text-sm text-muted-foreground">No line changes.</p>;
+  if (items.length === 0)
+    return (
+      <div>
+        {orphaned}
+        <p className="p-3 text-sm text-muted-foreground">No line changes.</p>
+      </div>
+    );
   // A line that is being commented on, or already carries a comment, has nothing to add: no button is shown there.
   const taken =
     hovered !== null &&
-    ((draft !== null && draft.line === hovered.line && draft.side === hovered.side) ||
+    (drafts.placed.some((draft) => draft.line === hovered.line && draft.side === hovered.side) ||
       placed.some(({ thread, line }) => line === hovered.line && (thread.anchor.side ?? "additions") === hovered.side));
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {orphaned}
       {detached.length > 0 && (
         <div className="max-h-1/2 shrink-0 overflow-auto border-b">
           {verifying && (
@@ -294,24 +316,13 @@ export function ChangeDiff({
             const written = annotation.metadata;
             if (written === undefined) return null;
             if (written.kind === "draft") {
-              const { draft } = written;
               return (
-                <CommentDraft
-                  draftKey={JSON.stringify(["comment", comments.workspaceId, path, draft.side, draft.line])}
-                  place={`${path}:${draft.line}`}
+                <AnchoredCommentEditor
+                  key={written.draft.record.id}
+                  draft={written.draft}
+                  store={drafts.store}
+                  comments={comments}
                   view={box}
-                  onSave={async (note) => {
-                    const fileDiff = files[0];
-                    if (fileDiff === undefined) return;
-                    const anchor = anchorAt({ path, line: draft.line, side: draft.side }, (line) =>
-                      diffLine(fileDiff, draft.side, line),
-                    );
-                    // The new file's lines are the file as it is; a thread on them carries no side.
-                    if (draft.side === "additions") delete anchor.side;
-                    await comments.start(anchor, note);
-                    setDraft(null);
-                  }}
-                  onCancel={() => setDraft(null)}
                 />
               );
             }
