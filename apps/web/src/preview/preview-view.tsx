@@ -1,5 +1,5 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { previewUrl } from "@tandem/contracts";
+import { PREVIEW_SANDBOX_TOKENS, previewUrl } from "@tandem/contracts";
 import { ExternalLinkIcon, GlobeIcon, PlusIcon, RotateCwIcon, XIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
@@ -244,7 +244,7 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
                 src={previewUrl({ port: item.port, baseUrl: window.location.origin })}
                 title={`Preview port ${item.port}`}
                 className="h-full w-full border-0"
-                sandbox="allow-scripts allow-forms allow-popups allow-modals"
+                sandbox={PREVIEW_SANDBOX_TOKENS.join(" ")}
               />
             </div>
           ))}

@@ -1,9 +1,10 @@
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect as netConnect } from "node:net";
 import type { Duplex } from "node:stream";
+import { PREVIEW_SANDBOX_TOKENS } from "@tandem/contracts";
 
 /** Enforced on responses too: opening a preview outside its iframe must not grant it Tandem's origin. */
-export const PREVIEW_SANDBOX = "sandbox allow-scripts allow-forms allow-popups allow-modals";
+export const PREVIEW_SANDBOX = `sandbox ${PREVIEW_SANDBOX_TOKENS.join(" ")}`;
 
 export const DANGEROUS_PORTS = new Set([
   22, // SSH
