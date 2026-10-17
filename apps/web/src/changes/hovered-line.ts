@@ -26,8 +26,10 @@ type LineEvent = (DiffLineEventBaseProps | LineEventBaseProps) & { event: Pointe
 export function useHoveredLine(container: RefObject<HTMLElement | null>) {
   const [hovered, setHovered] = useState<HoveredLine | null>(null);
   const current = useRef<DiffLineEventBaseProps | null>(null);
+  const lastRect = useRef<DOMRect | null>(null);
   const hide = useCallback(() => {
     current.current = null;
+    lastRect.current = null;
     setHovered(null);
   }, []);
   const measure = useCallback(() => {
@@ -39,6 +41,7 @@ export function useHoveredLine(container: RefObject<HTMLElement | null>) {
     }
     const box = element.getBoundingClientRect();
     const rect = line.numberElement.getBoundingClientRect();
+    lastRect.current = rect;
     const next: HoveredLine = {
       line: line.lineNumber,
       side: line.annotationSide,
@@ -68,7 +71,9 @@ export function useHoveredLine(container: RefObject<HTMLElement | null>) {
   );
   const onLineLeave = useCallback(
     ({ event }: LineEvent) => {
-      const rect = current.current?.numberElement.getBoundingClientRect();
+      const rect = current.current?.numberElement.isConnected
+        ? current.current.numberElement.getBoundingClientRect()
+        : lastRect.current;
       // The overlay is outside the renderer. Moving onto it must not remove the button before it can be clicked.
       if (
         rect &&

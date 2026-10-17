@@ -1,9 +1,15 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { parsePatchFiles } from "@pierre/diffs";
-import { CodeView, type CodeViewDiffItem, type CodeViewHandle, type DiffLineAnnotation } from "@pierre/diffs/react";
+import {
+  CodeView,
+  type CodeViewDiffItem,
+  type CodeViewHandle,
+  type CodeViewProps,
+  type DiffLineAnnotation,
+} from "@pierre/diffs/react";
 import type { CommentThread, FilePatch } from "@tandem/contracts";
 import { PlusIcon } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
 import { indexLines, type PlacedThread, placeThreads, relocate, revealedLine } from "@/comments/comment-anchor.ts";
@@ -163,10 +169,41 @@ export function ChangeDiff({
   }, [reveal, items, path, placed, detached, reading]);
 
   /** Write a comment on a line. A patch holds one file. */
-  const startDraft = (side: Side, line: number): void => {
-    if (files[0] === undefined) return;
-    drafts.start(side, line);
-  };
+  const startDraft = useCallback(
+    (side: Side, line: number): void => {
+      if (files[0] === undefined) return;
+      drafts.start(side, line);
+    },
+    [files, drafts],
+  );
+
+  const options: CodeViewProps<Annotation, undefined>["options"] = useMemo(
+    () => ({
+      theme: { dark: "github-dark", light: "github-light" },
+      themeType: choice,
+      unsafeCSS: DIFF_COMMENT_CSS,
+      diffStyle: style,
+      disableFileHeader: true,
+      overflow: wrap ? "wrap" : "scroll",
+      // Clicking a line's number writes a comment on it too. The library's own hover button is left off: its button
+      // and the row it marks belong to the item, and a comment arriving re-renders the item, which strands both on
+      // the row they were on.
+      onLineEnter,
+      onLineLeave,
+      onLineClick: (props) => {
+        if (!("annotationSide" in props) || (props.event.pointerType !== "touch" && props.event.pointerType !== "pen"))
+          return;
+        if (props.event.detail > 1 || window.getSelection()?.isCollapsed === false) return;
+        startDraft(props.annotationSide, props.lineNumber);
+      },
+      onLineNumberClick: (props) => {
+        // A file item has no sides; this view holds diff items.
+        if (!("annotationSide" in props)) return;
+        startDraft(props.annotationSide, props.lineNumber);
+      },
+    }),
+    [choice, style, wrap, onLineEnter, onLineLeave, startDraft],
+  );
 
   if (patch.kind !== "patch") {
     const message =
@@ -306,33 +343,7 @@ export function ChangeDiff({
           ref={view}
           className="h-full overflow-auto text-xs"
           items={items}
-          options={{
-            theme: { dark: "github-dark", light: "github-light" },
-            themeType: choice,
-            unsafeCSS: DIFF_COMMENT_CSS,
-            diffStyle: style,
-            disableFileHeader: true,
-            overflow: wrap ? "wrap" : "scroll",
-            // Clicking a line's number writes a comment on it too. The library's own hover button is left off: its button
-            // and the row it marks belong to the item, and a comment arriving re-renders the item, which strands both on
-            // the row they were on.
-            onLineEnter,
-            onLineLeave,
-            onLineClick: (props) => {
-              if (
-                !("annotationSide" in props) ||
-                (props.event.pointerType !== "touch" && props.event.pointerType !== "pen")
-              )
-                return;
-              if (props.event.detail > 1 || window.getSelection()?.isCollapsed === false) return;
-              startDraft(props.annotationSide, props.lineNumber);
-            },
-            onLineNumberClick: (props) => {
-              // A file item has no sides; this view holds diff items.
-              if (!("annotationSide" in props)) return;
-              startDraft(props.annotationSide, props.lineNumber);
-            },
-          }}
+          options={options}
           renderAnnotation={(annotation) => {
             const written = annotation.metadata;
             if (written === undefined) return null;

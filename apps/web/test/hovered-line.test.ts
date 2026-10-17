@@ -69,3 +69,27 @@ test("touch does not create hover UI", () => {
   act(() => result.current.onLineEnter({ ...props, event: { ...props.event, pointerType: "touch" } as PointerEvent }));
   expect(result.current.hovered).toBeNull();
 });
+test("moving onto the comment control preserves hover even if the line element is temporarily disconnected", () => {
+  const { result, line, scroller } = setup();
+  const additions = line("additions");
+  act(() => result.current.onLineEnter(additions));
+  expect(result.current.hovered).not.toBeNull();
+  // Simulate DOM element teardown during re-render
+  scroller.replaceChildren();
+  // Leaving towards the button bounds (right = 400, CONTROL_WIDTH = 24, CONTROL_OVERHANG = 6, range: 378 to 410)
+  act(() =>
+    result.current.onLineLeave({
+      ...additions,
+      event: { pointerType: "mouse", clientX: 390, clientY: 15 } as PointerEvent,
+    }),
+  );
+  expect(result.current.hovered).toMatchObject({ side: "additions", line: 10 });
+  // Leaving outside the control bounds clears hover
+  act(() =>
+    result.current.onLineLeave({
+      ...additions,
+      event: { pointerType: "mouse", clientX: 100, clientY: 15 } as PointerEvent,
+    }),
+  );
+  expect(result.current.hovered).toBeNull();
+});
