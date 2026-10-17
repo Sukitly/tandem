@@ -9,6 +9,7 @@ import { CodeCopyButton } from "@/components/copy-text.tsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
+import { useRenderVersion } from "@/hooks/use-render-version.ts";
 import { useTheme } from "@/theme.tsx";
 import type { OpenedFile } from "./project-files.ts";
 
@@ -49,11 +50,7 @@ export function VirtualFile({
   const [searchStatus, setSearchStatus] = useState<string | null>(null);
   const target = Number(input);
   const valid = Number.isSafeInteger(target) && target >= 1 && target <= lines.length;
-  // Same-length edits must invalidate Pierre's item cache too. Keep the stable item id and compare full inputs.
-  const [revision, setRevision] = useState({ text, placed, version: 0 });
-  const changed = revision.text !== text || revision.placed !== placed;
-  const version = changed ? revision.version + 1 : revision.version;
-  if (changed) setRevision({ text, placed, version });
+  const version = useRenderVersion([text, placed]);
   const items = useMemo<CodeViewFileItem<CommentThread>[]>(
     () => [
       {

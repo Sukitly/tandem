@@ -17,6 +17,7 @@ import { CommentDraft, CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useRenderVersion } from "@/hooks/use-render-version.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useTheme } from "@/theme.tsx";
 import type { ChangeTarget } from "./change-target.ts";
@@ -81,12 +82,7 @@ export function ChangeDiff({
     });
   }, [files, threads, path]);
   const detached = useDetachedThreads(comments.workspaceId, path, text, placed);
-  // CodeView only accepts updates when the numeric version changes. Compare the complete payload rather than a
-  // length or hash: equal-length patches and hash collisions must never leave stale code or comments on screen.
-  const key = JSON.stringify([text, placed, draft]);
-  const [revision, setRevision] = useState({ key, version: 0 });
-  const version = revision.key === key ? revision.version : revision.version + 1;
-  if (revision.key !== key) setRevision({ key, version });
+  const version = useRenderVersion([text, placed, draft]);
 
   const items = useMemo<CodeViewDiffItem<Annotation>[]>(() => {
     const annotations: DiffLineAnnotation<Annotation>[] = placed.flatMap(({ thread, line }) =>
