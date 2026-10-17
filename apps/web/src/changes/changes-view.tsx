@@ -288,6 +288,7 @@ function ChangeView({
   onClose(): void;
 }) {
   const [zoomed, setZoomed] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!active) setZoomed(false);
   }, [active]);
@@ -323,7 +324,7 @@ function ChangeView({
   };
 
   return (
-    <ReaderSurface expanded={zoomed} onExpandedChange={setZoomed} label={`Diff of ${file.path}`}>
+    <ReaderSurface toggleRef={toggleRef} expanded={zoomed} onExpandedChange={setZoomed} label={`Diff of ${file.path}`}>
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <p className="min-w-0 truncate font-mono text-xs" title={statusLabel(file.status, file.from)}>
@@ -360,6 +361,7 @@ function ChangeView({
           <TooltipTrigger
             render={
               <Button
+                ref={toggleRef}
                 variant={zoomed ? "secondary" : "ghost"}
                 size="icon-xs"
                 aria-label={zoomed ? "Exit full screen" : "Full screen"}

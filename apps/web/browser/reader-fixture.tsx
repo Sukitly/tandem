@@ -1,5 +1,5 @@
 import type { Files } from "@tandem/contracts";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChangeDiff } from "../src/changes/change-diff.tsx";
 import { CommentDraft } from "../src/comments/comment-box.tsx";
@@ -12,6 +12,8 @@ import { ProjectFiles } from "../src/files/project-files.ts";
 import "../src/index.css";
 
 function Fixture() {
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const renamed = location.search.includes("renamed");
   const [drawer, setDrawer] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -21,8 +23,25 @@ function Fixture() {
       <Drawer open={drawer} onOpenChange={setDrawer}>
         <DrawerContent className="h-[70dvh]">
           <DrawerTitle>Project panel</DrawerTitle>
-          <ReaderSurface label="File example.ts" expanded={expanded} onExpandedChange={setExpanded}>
-            <Button aria-label={expanded ? "Exit full screen" : "Full screen"} onClick={() => setExpanded(!expanded)}>
+          <ReaderSurface
+            toggleRef={toggleRef}
+            label="File example.ts"
+            expanded={expanded}
+            onExpandedChange={setExpanded}
+          >
+            <Button
+              ref={toggleRef}
+              aria-label={
+                renamed
+                  ? expanded
+                    ? "Restore reader"
+                    : "Expand reader"
+                  : expanded
+                    ? "Exit full screen"
+                    : "Full screen"
+              }
+              onClick={() => setExpanded(!expanded)}
+            >
               Toggle full screen
             </Button>
             <div data-testid="reader-scroll" className="min-h-0 flex-1 overflow-auto">

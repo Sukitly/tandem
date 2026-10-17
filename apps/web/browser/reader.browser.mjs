@@ -30,6 +30,16 @@ async function fixture(t, mobile = true) {
   return { page, url: `http://127.0.0.1:${server.httpServer.address().port}/browser/reader.html` };
 }
 
+test("reader focus targets survive changes to toggle labels", async (t) => {
+  const { page, url } = await fixture(t);
+  await page.goto(`${url}?renamed`);
+  await page.getByRole("button", { name: "Expand reader", exact: true }).click();
+  const restore = page.getByRole("button", { name: "Restore reader", exact: true });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Restore reader");
+  await restore.click();
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Expand reader");
+});
+
 test("long files render a bounded window, reveal distant lines, and retain comment drafts", async (t) => {
   const { page, url } = await fixture(t, false);
   await page.goto(`${url}?file&long`);

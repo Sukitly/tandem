@@ -36,6 +36,7 @@ export function FileView({
     [content],
   );
   const [zoomed, setZoomed] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const [wrap, setWrap] = useState(() => preferences.getItem("tandem.fileWrap") === "true");
   const toggleWrap = (): void => {
     setWrap(!wrap);
@@ -47,7 +48,7 @@ export function FileView({
 
   if (opened === null) return null;
   return (
-    <ReaderSurface expanded={zoomed} onExpandedChange={setZoomed} label={`File ${opened.path}`}>
+    <ReaderSurface toggleRef={toggleRef} expanded={zoomed} onExpandedChange={setZoomed} label={`File ${opened.path}`}>
       <header className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <p className="min-w-0 truncate font-mono text-xs" title={opened.path}>
@@ -63,6 +64,7 @@ export function FileView({
           <TooltipTrigger
             render={
               <Button
+                ref={toggleRef}
                 variant={zoomed ? "secondary" : "ghost"}
                 size="icon-xs"
                 aria-label={zoomed ? "Exit full screen" : "Full screen"}

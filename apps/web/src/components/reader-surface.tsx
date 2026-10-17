@@ -1,5 +1,5 @@
 import { WrapTextIcon } from "lucide-react";
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -41,11 +41,14 @@ function moveReader(host: HTMLElement, target: HTMLElement): void {
 /** One reader subtree, moved into a modal portal without remounting its editor, renderer, or scroll position. */
 export function ReaderSurface({
   label,
+  toggleRef,
   expanded,
   onExpandedChange,
   children,
 }: {
   label: string;
+  /** The caller owns the toggle; its accessible name is not part of the focus contract. */
+  toggleRef: RefObject<HTMLButtonElement | null>;
   expanded: boolean;
   onExpandedChange(expanded: boolean): void;
   children: ReactNode;
@@ -68,9 +71,7 @@ export function ReaderSurface({
     },
     [host, expanded],
   );
-  const toggle = () =>
-    host?.querySelector<HTMLButtonElement>('button[aria-label="Full screen"], button[aria-label="Exit full screen"]') ??
-    false;
+  const toggle = () => toggleRef.current ?? false;
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background" aria-label={label}>
