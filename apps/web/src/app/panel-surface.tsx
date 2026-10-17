@@ -45,11 +45,16 @@ export function PanelSurface({
 
   return (
     <Drawer
-      open={overlay && visible}
+      open={visible}
       modal={overlay}
       disablePointerDismissal={!overlay}
-      onOpenChange={(open) => {
-        if (overlay && !open) onClose();
+      onOpenChange={(open, details) => {
+        if (
+          !overlay &&
+          (details.reason === "swipe" || details.reason === "escape-key" || details.reason === "outside-press")
+        )
+          return;
+        if (!open) onClose();
       }}
       showSwipeHandle={overlay}
     >
@@ -59,7 +64,7 @@ export function PanelSurface({
           hidden={!visible}
           data-slot="drawer-viewport"
           data-modal={overlay}
-          className="pointer-events-none fixed inset-0 z-50"
+          className={overlay ? "pointer-events-none fixed inset-0 z-50" : undefined}
         >
           <DrawerPrimitive.Popup
             ref={popup}

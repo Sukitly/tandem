@@ -44,8 +44,8 @@ export function ProjectPanel({
   const files = workbench.projectFiles(workspaceId);
   const comments = workbench.comments(workspaceId);
   // Retained projects create expensive tabs only after the user visits them.
-  const [visited, setVisited] = useState(() => new Set(active ? [panelTab] : []));
-  if (active && !visited.has(panelTab)) setVisited(new Set(visited).add(panelTab));
+  const [visited, setVisited] = useState(() => new Set([panelTab]));
+  if (!visited.has(panelTab)) setVisited(new Set(visited).add(panelTab));
   const changes = useProjectChanges(workspaceId, active && visited.has("changes"));
   const changesFailure = useProjectChangesFailure(workspaceId);
   const failure = useProjectFiles(files, (current) => current.failure);
