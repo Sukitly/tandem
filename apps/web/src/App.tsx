@@ -20,8 +20,6 @@ import { useReplicatedState } from "./rpc/use-replicated-state.ts";
 import { ThemeProvider, useTheme } from "./theme.tsx";
 import { PublicAccessPageProvider } from "./tunnel/public-access.tsx";
 
-export { WithFiles };
-
 function AppToaster() {
   const { choice } = useTheme();
   return <Toaster theme={choice} closeButton />;

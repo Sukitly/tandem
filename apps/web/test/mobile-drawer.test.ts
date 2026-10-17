@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { WithFiles } from "../src/App.tsx";
 import { ProjectPanel } from "../src/app/project-panel.tsx";
+import { WithFiles } from "../src/app/workspace-layout.tsx";
 
 const mobileState = vi.hoisted(() => ({
   isMobile: false,
