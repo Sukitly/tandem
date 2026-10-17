@@ -155,7 +155,7 @@ export function CommentThreadBox({
    * The box is not on a line, and shows the code it was written on: its line is not in the file any more (`outdated`),
    * or it is on a line the changes removed, shown with the file as it is (`removed`).
    */
-  detached?: "outdated" | "removed" | "outside";
+  detached?: "outdated" | "removed" | "outside" | "unverified";
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const [replying, setReplying] = useState(false);
@@ -280,7 +280,13 @@ function ThreadMessage({
 }
 
 /** The code a thread was written on, for a thread whose line is gone: the line marked, with the lines kept around it. */
-function WrittenOnCode({ thread, why }: { thread: CommentThread; why: "outdated" | "removed" | "outside" }) {
+function WrittenOnCode({
+  thread,
+  why,
+}: {
+  thread: CommentThread;
+  why: "outdated" | "removed" | "outside" | "unverified";
+}) {
   const { anchor } = thread;
   const first = anchor.line - anchor.before.length;
   const lines = [...anchor.before, anchor.quote, ...anchor.after];
@@ -288,7 +294,13 @@ function WrittenOnCode({ thread, why }: { thread: CommentThread; why: "outdated"
     <div className="flex flex-col gap-1 border-b px-2.5 py-2">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="secondary">
-          {why === "outdated" ? "Outdated" : why === "outside" ? "Outside this diff" : "On a removed line"}
+          {why === "unverified"
+            ? "Location not verified"
+            : why === "outdated"
+              ? "Outdated"
+              : why === "outside"
+                ? "Outside this diff"
+                : "On a removed line"}
         </Badge>
         <span className="font-mono">{commentPlace(anchor)}</span>
       </div>

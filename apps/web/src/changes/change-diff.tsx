@@ -81,7 +81,12 @@ export function ChangeDiff({
       return placeThreads(threads, path, side, (line) => lines.get(line), diffLineCount(fileDiff, side), lines.keys());
     });
   }, [files, threads, path]);
-  const detached = useDetachedThreads(comments.workspaceId, path, text, placed);
+  const {
+    threads: detached,
+    pending: verifying,
+    failure: verificationFailure,
+    retry: retryVerification,
+  } = useDetachedThreads(comments.workspaceId, path, text, placed);
   const version = useRenderVersion([text, placed, draft]);
 
   const items = useMemo<CodeViewDiffItem<Annotation>[]>(() => {
@@ -154,10 +159,23 @@ export function ChangeDiff({
     <div className="flex h-full min-h-0 flex-col">
       {detached.length > 0 && (
         <div className="max-h-1/2 shrink-0 overflow-auto border-b">
+          {verifying && (
+            <p role="status" className="p-2 text-xs">
+              Checking comment locations…
+            </p>
+          )}
+          {verificationFailure !== null && (
+            <div role="alert" className="p-2 text-sm">
+              <p>Could not verify comment locations: {verificationFailure}</p>
+              <Button size="sm" variant="outline" onClick={retryVerification}>
+                Retry location check
+              </Button>
+            </div>
+          )}
           {detached.map(({ thread, line, reason }) => (
             <div key={thread.id} data-detached-thread={thread.id}>
               <CommentThreadBox thread={thread} comments={comments} detached={reason} />
-              {reason === "outside" && (
+              {reason !== "outdated" && thread.anchor.side !== "deletions" && (
                 <Button
                   variant="link"
                   size="sm"
@@ -305,52 +323,68 @@ export function ChangeDiff({
   );
 }
 
-/**
- * Threads outside the displayed hunks stay visible. Read the file to distinguish an unchanged context line from
- * a deleted line; while loading or on failure, offer Files instead of claiming the comment is outdated.
- * Missing deletion-side threads have no current file to search.
- */
-function useDetachedThreads(
-  workspaceId: number,
-  path: string,
-  patchText: string,
-  placed: readonly PlacedThread[],
-): (PlacedThread & { reason: "outdated" | "outside" })[] {
+/** Only verified file matches are outside; absent patch context alone proves nothing about an anchor. */
+function useDetachedThreads(workspaceId: number, path: string, patchText: string, placed: readonly PlacedThread[]) {
   const { files } = useConnected();
   const missing = placed.filter((entry) => entry.line === undefined);
   const needsFile = missing.some(({ thread }) => thread.anchor.side !== "deletions");
-  const [file, setFile] = useState<{ key: string; lines: string[] | null } | null>(null);
-  const key = `${workspaceId}#${path}#${patchText}`;
-
+  const key = useMemo(() => ({ files, workspaceId, path, patchText }), [files, workspaceId, path, patchText]);
+  const [attempt, setAttempt] = useState(0);
+  const [file, setFile] = useState<{
+    key: typeof key;
+    attempt: number;
+    result: { status: "ready"; lines: string[] } | { status: "error"; message: string };
+  } | null>(null);
   useEffect(() => {
     if (!needsFile) return;
     let cancelled = false;
     files.read({ workspaceId, path }, BACKGROUND_CONTEXT).then(
       (content) => {
         if (cancelled) return;
-        const text = content.kind === "text" ? content.text : null;
-        const body = text?.endsWith("\n") === true ? text.slice(0, -1) : text;
-        setFile({ key, lines: body === null || body === undefined ? null : body.split("\n") });
+        if (content.kind !== "text") {
+          setFile({
+            key,
+            attempt,
+            result: {
+              status: "error",
+              message: content.kind === "binary" ? "The file is not text." : "The file is too large to verify.",
+            },
+          });
+          return;
+        }
+        const body = content.text.endsWith("\n") ? content.text.slice(0, -1) : content.text;
+        setFile({ key, attempt, result: { status: "ready", lines: body.split("\n") } });
       },
-      // A failed read cannot prove a line was removed. Keep the comment available with a link to Files.
-      () => {
-        if (!cancelled) setFile({ key, lines: null });
+      (error: unknown) => {
+        if (!cancelled)
+          setFile({
+            key,
+            attempt,
+            result: { status: "error", message: error instanceof Error ? error.message : String(error) },
+          });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [files, workspaceId, path, key, needsFile]);
-
-  const lines = file?.key === key ? file.lines : undefined;
+  }, [files, workspaceId, path, key, needsFile, attempt]);
+  const result = file?.key === key && file.attempt === attempt ? file.result : undefined;
+  const lines = result?.status === "ready" ? result.lines : undefined;
   const index = useMemo(
-    () => (lines == null ? new Map<string, number[]>() : indexLines((line) => lines[line - 1], lines.length)),
+    () => (lines === undefined ? new Map<string, number[]>() : indexLines((line) => lines[line - 1], lines.length)),
     [lines],
   );
-  return missing.map(({ thread }) => {
-    if (thread.anchor.side === "deletions") return { thread, reason: "outdated" };
-    if (lines === undefined || lines === null) return { thread, reason: "outside" };
+  const threads: (PlacedThread & { reason: "outdated" | "outside" | "unverified" })[] = missing.map(({ thread }) => {
+    // We have no old-file snapshot with which to verify a deletion-side anchor.
+    if (thread.anchor.side === "deletions" || lines === undefined)
+      return { thread, line: undefined, reason: "unverified" };
     const line = relocate(thread.anchor, (line) => lines[line - 1], lines.length, index.get(thread.anchor.quote) ?? []);
     return { thread, line, reason: line === undefined ? "outdated" : "outside" };
   });
+  return {
+    threads,
+    pending: needsFile && result === undefined,
+    failure: needsFile && result?.status === "error" ? result.message : null,
+    retry: () => setAttempt((current) => current + 1),
+  };
 }
