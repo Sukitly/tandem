@@ -34,9 +34,7 @@ test("comment drafts keep identity across readers and never follow an unverified
   const { page, url } = await fixture(t, false);
   await page.goto(`${url}?drafts`);
   const editor = page.getByRole("textbox", { name: "Comment", exact: true });
-  await page.getByText("Comment on a line", { exact: true }).click();
-  await page.getByRole("spinbutton", { name: "Line", exact: true }).fill("2");
-  await page.getByRole("button", { name: "Add comment", exact: true }).click();
+  await page.locator('[data-additions] [data-column-number="2"]').first().click();
   await editor.fill("Keep on target");
   await page.getByRole("button", { name: "Switch reader" }).click();
   await editor.waitFor();
@@ -52,9 +50,7 @@ test("comment drafts keep identity across readers and never follow an unverified
   assert.equal(anchor.line, 3);
   assert.equal(anchor.quote, "target");
   await editor.waitFor({ state: "hidden" });
-  await page.getByText("Comment on a line", { exact: true }).click();
-  await page.getByRole("spinbutton", { name: "Line", exact: true }).fill("3");
-  await page.getByRole("button", { name: "Add comment", exact: true }).click();
+  await page.locator('[data-additions] [data-column-number="3"]').first().click();
   await editor.fill("Ambiguous but retained");
   await page.getByRole("button", { name: "Duplicate context" }).click();
   await page.getByText("Location not verified. Copy this draft to a new line or cancel it.").waitFor();
@@ -239,8 +235,7 @@ test("touch can comment on code or use the explicit line control without hover",
   await number.tap();
   await page.getByRole("textbox", { name: "Comment" }).waitFor();
   await page.getByRole("button", { name: "Cancel", exact: true }).tap();
-  await page.getByText("Comment on a line", { exact: true }).tap();
-  await page.getByRole("spinbutton", { name: "Line" }).fill("2");
-  await page.getByRole("button", { name: "Add comment", exact: true }).tap();
+  const number2 = page.locator('[data-additions] [data-column-number="2"]');
+  await number2.tap();
   await page.getByRole("textbox", { name: "Comment" }).waitFor();
 });

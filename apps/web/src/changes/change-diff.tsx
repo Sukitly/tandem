@@ -9,7 +9,7 @@ import {
 } from "@pierre/diffs/react";
 import type { CommentThread, FilePatch } from "@tandem/contracts";
 import { PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
 import { indexLines, type PlacedThread, placeThreads, relocate, revealedLine } from "@/comments/comment-anchor.ts";
@@ -17,12 +17,11 @@ import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { type PlacedDraft, useCommentDrafts } from "@/comments/use-comment-drafts.ts";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useRenderVersion } from "@/hooks/use-render-version.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useTheme } from "@/theme.tsx";
 import type { ChangeTarget } from "./change-target.ts";
-import { diffLine, diffLineCount, diffLines } from "./diff-lines.ts";
+import { diffLineCount, diffLines } from "./diff-lines.ts";
 import { DIFF_COMMENT_CSS } from "./diff-plain-annotations.ts";
 import { controlPlacement, useHoveredLine } from "./hovered-line.ts";
 
@@ -67,10 +66,6 @@ export function ChangeDiff({
   const { openFile } = useWorkbench();
   const text = patch.kind === "patch" ? patch.patch : "";
   const threads = useCommentThreads(comments);
-  const lineInputId = useId();
-  const [lineInput, setLineInput] = useState("1");
-  const [sideInput, setSideInput] = useState<Side>("additions");
-  const [lineError, setLineError] = useState<string | null>(null);
 
   const files = useMemo(() => (text.trim() === "" ? [] : parsePatchFiles(text).flatMap((file) => file.files)), [text]);
   const draftLines = useMemo(
@@ -265,62 +260,6 @@ export function ChangeDiff({
           ))}
         </div>
       )}
-      <details className="shrink-0 border-b px-3 py-1 text-xs">
-        <summary className="cursor-pointer py-1">Comment on a line</summary>
-        <form
-          className="flex flex-wrap items-center gap-2 py-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const line = Number(lineInput);
-            if (
-              !Number.isSafeInteger(line) ||
-              line < 1 ||
-              files[0] === undefined ||
-              diffLine(files[0], sideInput, line) === undefined
-            ) {
-              setLineError("Choose a line shown in this diff.");
-              return;
-            }
-            setLineError(null);
-            startDraft(sideInput, line);
-          }}
-        >
-          <label htmlFor={lineInputId}>
-            Line{" "}
-            <Input
-              id={lineInputId}
-              className="w-20"
-              type="number"
-              min={1}
-              required
-              value={lineInput}
-              onChange={(event) => setLineInput(event.target.value)}
-            />
-          </label>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            aria-pressed={sideInput === "additions"}
-            onClick={() => setSideInput("additions")}
-          >
-            New file
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            aria-pressed={sideInput === "deletions"}
-            onClick={() => setSideInput("deletions")}
-          >
-            Old file
-          </Button>
-          <Button type="submit" size="sm">
-            Add comment
-          </Button>
-          {lineError !== null && <p role="alert">{lineError}</p>}
-        </form>
-      </details>
       <div ref={box} className="relative min-h-0 flex-1">
         {/* The line the pointer is on, where a code host shows it: beside the number, half over the code. */}
         {hovered !== null && !taken && (
