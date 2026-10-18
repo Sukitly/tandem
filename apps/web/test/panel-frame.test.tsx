@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { usePanelFrame } from "../src/app/use-panel-frame.ts";
+import { usePanelFrame } from "../src/hooks/use-panel-frame.ts";
 
 afterEach(() => {
   cleanup();

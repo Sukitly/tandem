@@ -27,6 +27,12 @@ async function fixture(t, mobile = true) {
     isMobile: mobile,
     hasTouch: mobile,
   });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  t.after(() => assert.deepEqual(errors, [], "reader must not hide renderer or React errors"));
   return { page, url: `http://127.0.0.1:${server.httpServer.address().port}/browser/reader.html` };
 }
 
@@ -34,7 +40,7 @@ test("comment drafts keep identity across readers and never follow an unverified
   const { page, url } = await fixture(t, false);
   await page.goto(`${url}?drafts`);
   const editor = page.getByRole("textbox", { name: "Comment", exact: true });
-  await page.locator('[data-additions] [data-column-number="2"]').first().click();
+  await page.locator('[data-column-number="2"]').first().click();
   await editor.fill("Keep on target");
   await page.getByRole("button", { name: "Switch reader" }).click();
   await editor.waitFor();
@@ -50,7 +56,7 @@ test("comment drafts keep identity across readers and never follow an unverified
   assert.equal(anchor.line, 3);
   assert.equal(anchor.quote, "target");
   await editor.waitFor({ state: "hidden" });
-  await page.locator('[data-additions] [data-column-number="3"]').first().click();
+  await page.locator('[data-column-number="3"]').first().click();
   await editor.fill("Ambiguous but retained");
   await page.getByRole("button", { name: "Duplicate context" }).click();
   await page.getByText("Location not verified. Copy this draft to a new line or cancel it.").waitFor();
@@ -192,8 +198,9 @@ test("real split diff hover resolves the correct column and equal-length updates
   await page.goto(`${url}?diff`);
   const right = page.locator('[data-additions] [data-line="1"]');
   await right.hover();
-  const add = page.getByRole("button", { name: "Comment on line 1", exact: true });
+  const add = page.locator('[data-additions] [data-column-number="1"]');
   await add.waitFor();
+  assert.equal(await add.evaluate((element) => getComputedStyle(element, "::after").content), '"+"');
   assert.ok((await add.boundingBox()).x > 450);
   assert.equal(await right.evaluate((element) => getComputedStyle(element).cursor), "text");
   await add.click();
@@ -201,9 +208,11 @@ test("real split diff hover resolves the correct column and equal-length updates
   await page.getByRole("button", { name: "Comment", exact: true }).click();
   await page.waitForFunction(() => document.body.dataset.savedSide === "additions");
   await page.locator('[data-deletions] [data-line="1"]').hover();
-  await add.waitFor();
-  assert.ok((await add.boundingBox()).x < 100);
-  await add.click();
+  const remove = page.locator('[data-deletions] [data-column-number="1"]');
+  await remove.waitFor();
+  assert.equal(await remove.evaluate((element) => getComputedStyle(element, "::after").content), '"+"');
+  assert.ok((await remove.boundingBox()).x < 100);
+  await remove.click();
   await page.getByRole("textbox", { name: "Comment" }).fill("Left side");
   await page.getByRole("button", { name: "Comment", exact: true }).click();
   await page.waitForFunction(() => document.body.dataset.savedSide === "deletions");

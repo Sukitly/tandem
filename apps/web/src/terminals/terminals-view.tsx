@@ -3,23 +3,14 @@ import { exitLabel, MAX_TERMINALS_PER_PROJECT, type TerminalSummary } from "@tan
 import { PlusIcon, SquareTerminalIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { IconAction } from "@/components/icon-action.tsx";
+import { Badge } from "@/components/ui/badge.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
+import { CloseTerminalDialog } from "./close-terminal-dialog.tsx";
 import { TerminalView } from "./terminal-view.tsx";
 
 /**
@@ -28,14 +19,12 @@ import { TerminalView } from "./terminal-view.tsx";
  */
 export function TerminalsView({ workspaceId, active }: { workspaceId: number; active: boolean }) {
   const { terminals } = useConnected();
-  const { reportFailure } = useWorkbench();
+  const { reportFailure } = useWorkbench((state) => ({ reportFailure: state.reportFailure }));
   const all = useReplicatedState(terminals.state)?.terminals;
   const list = (all ?? []).filter((summary) => summary.workspaceId === workspaceId);
   const [selected, setSelected] = useState<string | null>(null);
   const [closing, setClosing] = useState<TerminalSummary | null>(null);
   const [creating, setCreating] = useState(false);
-  // The one chosen, once the list has it: a terminal just opened may reach the list after `create` returns. Until
-  // then, or once it is closed, the newest one.
   const current = list.find((summary) => summary.id === selected) ?? list.at(-1);
 
   const create = (): void => {
@@ -52,6 +41,7 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
       },
     );
   };
+
   const close = (summary: TerminalSummary): void => {
     terminals.close(summary.id, BACKGROUND_CONTEXT).catch((error: unknown) => {
       reportFailure("Could not close the terminal", error);
@@ -92,42 +82,27 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
             </TabsTrigger>
           ))}
         </TabsList>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="New terminal"
-                disabled={creating || list.length >= MAX_TERMINALS_PER_PROJECT}
-                onClick={create}
-              />
-            }
-          >
-            <PlusIcon />
-          </TooltipTrigger>
-          <TooltipContent>New terminal</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Close ${current.title}`}
-                className="ml-auto"
-                // A running shell is ended by closing: that is asked first. One that ended has nothing left to lose.
-                onClick={() => (current.exit === undefined ? setClosing(current) : close(current))}
-              />
-            }
-          >
-            <XIcon />
-          </TooltipTrigger>
-          <TooltipContent>Close {current.title}</TooltipContent>
-        </Tooltip>
+        <IconAction
+          variant="ghost"
+          size="icon-xs"
+          label="New terminal"
+          disabled={creating || list.length >= MAX_TERMINALS_PER_PROJECT}
+          onClick={create}
+        >
+          <PlusIcon />
+        </IconAction>
+        <IconAction
+          variant="ghost"
+          size="icon-xs"
+          label={`Close ${current.title}`}
+          className="ml-auto"
+          onClick={() => (current.exit === undefined ? setClosing(current) : close(current))}
+          tooltip={<> Close {current.title} </>}
+        >
+          <XIcon />
+        </IconAction>
       </div>
       {list.map((summary) => (
-        // Kept mounted: a hidden terminal keeps its screen and its connection, as a terminal app's tabs do.
         <TabsContent key={summary.id} value={summary.id} keepMounted className="min-h-0">
           <TerminalView
             id={summary.id}
@@ -136,28 +111,14 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
           />
         </TabsContent>
       ))}
-      <AlertDialog open={closing !== null} onOpenChange={(open) => !open && setClosing(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Close {closing?.title}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Its shell is still running. Closing the terminal ends the shell and what runs in it, for every page.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (closing !== null) close(closing);
-                setClosing(null);
-              }}
-            >
-              Close
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <CloseTerminalDialog
+        terminal={closing}
+        onClose={(summary) => {
+          close(summary);
+          setClosing(null);
+        }}
+        onCancel={() => setClosing(null)}
+      />
     </Tabs>
   );
 }

@@ -1,4 +1,5 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { createBrowserHistory, type RouterHistory } from "@tanstack/react-router";
+import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 
 export type Route =
   | { kind: "conversation"; id: number }
@@ -28,36 +29,52 @@ export function routeHash(route: Route): string {
   }
 }
 
+export const RouteContext = createContext<Route | null>(null);
+
 export function useRoute(): Route {
-  const hash = useLocationHash();
-  return useMemo(() => parseRoute(hash), [hash]);
+  const matched = useContext(RouteContext);
+  const hash = useLocationHash(matched === null);
+  return useMemo(() => matched ?? parseRoute(hash), [matched, hash]);
 }
 
-const NAVIGATED = "tandem:navigated";
+let history: RouterHistory | undefined;
 
-/** All application navigation, native history traversal, and ordinary hash links use the same notification path. */
+/** TanStack owns history. This adapter preserves existing #42 and #public-access bookmarks. */
+export function navigationHistory(): RouterHistory {
+  history ??= createBrowserHistory({
+    parseLocation: () => {
+      const pathname = `/${window.location.hash.slice(1)}`;
+      return { href: pathname, pathname, search: "", hash: "", state: window.history.state ?? { __TSR_index: 0 } };
+    },
+    createHref: (path) =>
+      `${window.location.pathname}${window.location.search}${path === "/" ? "" : `#${path.slice(1)}`}`,
+  });
+  return history;
+}
+
 export function subscribeNavigation(listener: () => void): () => void {
-  window.addEventListener("hashchange", listener);
-  window.addEventListener("popstate", listener);
-  window.addEventListener(NAVIGATED, listener);
-  return () => {
-    window.removeEventListener("hashchange", listener);
-    window.removeEventListener("popstate", listener);
-    window.removeEventListener(NAVIGATED, listener);
-  };
+  return navigationHistory().subscribe(listener);
 }
 
 export function navigate(href: string): void {
   const target = new URL(href, window.location.href);
   if (target.origin !== window.location.origin) throw new Error("Application navigation must stay on this origin");
-  if (target.href !== window.location.href) window.history.pushState(null, "", target);
-  window.dispatchEvent(new Event(NAVIGATED));
+  const history = navigationHistory();
+  const path = `/${target.hash.slice(1)}`;
+  if (history.location.pathname !== path) history.push(path);
+  history.flush();
 }
 
-export function useLocationHash(): string {
+const noSubscription = () => () => {};
+
+export function useLocationHash(enabled = true): string {
   return useSyncExternalStore(
-    subscribeNavigation,
-    () => window.location.hash,
+    enabled ? subscribeNavigation : noSubscription,
+    () => {
+      if (!enabled) return "";
+      const path = navigationHistory().location.pathname;
+      return path === "/" ? "" : `#${path.slice(1)}`;
+    },
     () => "",
   );
 }

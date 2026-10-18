@@ -3,30 +3,21 @@ import { tunnelTokenIdentity } from "@tandem/contracts";
 import { ArrowLeftIcon } from "lucide-react";
 import { createContext, type MouseEvent, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { navigate as navigateTo, routeHash, useRoute } from "@/app/navigation.ts";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { FieldError } from "@/components/ui/field";
-import { Spinner } from "@/components/ui/spinner";
+import { Button } from "@/components/ui/button.tsx";
+import { FieldError } from "@/components/ui/field.tsx";
+import { Spinner } from "@/components/ui/spinner.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { cloudflareLinks, pastedToken } from "./cloudflare.ts";
+import { pastedToken } from "./cloudflare.ts";
+import { PublicAccessStatus } from "./public-access-status.tsx";
 import { PublicAccessFlow } from "./setup-guide.tsx";
-import { OpenLink } from "./step.tsx";
+import { UnpublishDialog } from "./unpublish-dialog.tsx";
 
 const PublicAccessPageContext = createContext<{ href: string; onClick(event: MouseEvent<HTMLAnchorElement>): void }>({
   href: `/${routeHash({ kind: "publicAccess" })}`,
   onClick: () => {},
 });
+
 export function usePublicAccessPage() {
   return useContext(PublicAccessPageContext);
 }
@@ -35,10 +26,13 @@ export function PublicAccessPageProvider({ children }: { children: ReactNode }) 
   const workspaceUrl = useRef("/");
   const route = useRoute();
   const open = route.kind === "publicAccess";
+
   useEffect(() => {
-    if (route.kind !== "publicAccess")
+    if (route.kind !== "publicAccess") {
       workspaceUrl.current = window.location.pathname + window.location.search + window.location.hash;
+    }
   }, [route]);
+
   useEffect(() => {
     if (!open) return;
     const previous = document.title;
@@ -47,6 +41,7 @@ export function PublicAccessPageProvider({ children }: { children: ReactNode }) 
       document.title = previous;
     };
   }, [open]);
+
   const navigate = (event: MouseEvent<HTMLAnchorElement>, show: boolean) => {
     if (
       event.defaultPrevented ||
@@ -62,6 +57,7 @@ export function PublicAccessPageProvider({ children }: { children: ReactNode }) 
     if (show) workspaceUrl.current = window.location.pathname + window.location.search + window.location.hash;
     navigateTo(event.currentTarget.href);
   };
+
   return (
     <PublicAccessPageContext.Provider
       value={{ href: `/${routeHash({ kind: "publicAccess" })}`, onClick: (event) => navigate(event, true) }}
@@ -97,7 +93,21 @@ function PublicAccessPage({
       setPublishing(false);
     }
   }, [status]);
+
   const activeTunnel = state?.tunnel ?? (token ? tunnelTokenIdentity(pastedToken(token) ?? token) : undefined);
+
+  const stopPublishing = async () => {
+    setStopping(true);
+    setError(null);
+    try {
+      await publicAccess.unpublish(BACKGROUND_CONTEXT);
+      setConfirmStop(false);
+    } catch (failure: unknown) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setStopping(false);
+    }
+  };
 
   return (
     <main className="h-dvh overflow-y-auto" aria-label="Public access">
@@ -121,45 +131,7 @@ function PublicAccessPage({
           </p>
         </header>
 
-        {installed && status === "authorizing" && (
-          <div className="flex flex-col gap-2 text-sm">
-            <p className="flex items-center gap-2">
-              <Spinner /> Waiting for you to approve this machine in the browser.
-            </p>
-            {state?.authorizationUrl !== undefined && (
-              <a className="underline" href={state.authorizationUrl} target="_blank" rel="noreferrer">
-                Open the Cloudflare approval page
-              </a>
-            )}
-          </div>
-        )}
-
-        {installed && status === "starting" && (
-          <p className="flex items-center gap-2 text-sm">
-            <Spinner /> Starting the tunnel…
-          </p>
-        )}
-
-        {installed && status === "connected" && (
-          <Alert>
-            <AlertTitle>
-              Tunnel connected for <span className="font-medium">{state?.publicUrl}</span>
-            </AlertTitle>
-            <AlertDescription className="space-y-3 pt-1">
-              <p>The connector is running. The address only reaches it once you finish the route and Access steps.</p>
-              <div>
-                <OpenLink href={cloudflareLinks.tunnelRoutes(activeTunnel)}>Open Tunnel in Cloudflare</OpenLink>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {installed && (status === "failed" || status === "unavailable") && (
-          <Alert variant="destructive">
-            <AlertTitle>Tandem is not reachable from outside</AlertTitle>
-            <AlertDescription>{state?.message ?? "The tunnel stopped."}</AlertDescription>
-          </Alert>
-        )}
+        <PublicAccessStatus state={state} activeTunnel={activeTunnel} />
 
         <PublicAccessFlow
           installed={installed}
@@ -194,47 +166,14 @@ function PublicAccessPage({
         {error !== null && <FieldError>{error}</FieldError>}
       </div>
 
-      {confirmStop && (
-        <AlertDialog
-          open
-          onOpenChange={(open) => {
-            if (!stopping) setConfirmStop(open);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Stop publishing?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This machine stops answering at that address. The tunnel and its DNS record stay in Cloudflare, so
-                publishing again takes one step.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={stopping}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                disabled={stopping}
-                onClick={async (event) => {
-                  event.preventDefault();
-                  setStopping(true);
-                  setError(null);
-                  try {
-                    await publicAccess.unpublish(BACKGROUND_CONTEXT);
-                    setConfirmStop(false);
-                  } catch (failure: unknown) {
-                    setError(failure instanceof Error ? failure.message : String(failure));
-                  } finally {
-                    setStopping(false);
-                  }
-                }}
-              >
-                {stopping && <Spinner />}
-                {stopping ? "Stopping…" : "Stop publishing"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
+      <UnpublishDialog
+        open={confirmStop}
+        stopping={stopping}
+        onOpenChange={(open) => {
+          if (!stopping) setConfirmStop(open);
+        }}
+        onConfirm={stopPublishing}
+      />
     </main>
   );
 }

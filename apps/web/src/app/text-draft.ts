@@ -1,3 +1,5 @@
+import { createStore, type StoreApi } from "zustand/vanilla";
+
 export interface TextDraftSnapshot {
   text: string;
   sending: boolean;
@@ -6,28 +8,22 @@ export interface TextDraftSnapshot {
 
 /** Page-memory text input. reset is reusable; dispose is terminal and makes mutations no-ops. */
 export class TextDraft {
-  #snapshot: TextDraftSnapshot;
+  readonly #store: StoreApi<TextDraftSnapshot>;
   #revision = 0;
   #generation = 0;
   #disposed = false;
-  readonly #listeners = new Set<() => void>();
 
   constructor(text = "") {
-    this.#snapshot = { text, sending: false, error: null };
+    this.#store = createStore(() => ({ text, sending: false, error: null }));
   }
-  readonly getSnapshot = (): TextDraftSnapshot => this.#snapshot;
-  readonly subscribe = (listener: () => void): (() => void) => {
-    if (this.#disposed) return () => {};
-    this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
-  };
+  readonly getSnapshot = (): TextDraftSnapshot => this.#store.getState();
+  readonly subscribe = (listener: () => void): (() => void) =>
+    this.#disposed ? () => {} : this.#store.subscribe(listener);
   #update(change: Partial<TextDraftSnapshot>): void {
-    if (this.#disposed) return;
-    this.#snapshot = { ...this.#snapshot, ...change };
-    for (const listener of this.#listeners) listener();
+    if (!this.#disposed) this.#store.setState(change);
   }
   setText(text: string): void {
-    if (this.#disposed || text === this.#snapshot.text) return;
+    if (this.#disposed || text === this.#store.getState().text) return;
     this.#revision += 1;
     this.#update({ text });
   }
@@ -35,7 +31,7 @@ export class TextDraft {
     this.#update({ error });
   }
   async send(submit: () => Promise<unknown>): Promise<boolean> {
-    if (this.#disposed || this.#snapshot.sending) return false;
+    if (this.#disposed || this.#store.getState().sending) return false;
     const revision = this.#revision;
     const generation = this.#generation;
     this.#update({ sending: true, error: null });
@@ -63,8 +59,6 @@ export class TextDraft {
     this.#generation += 1;
     this.#revision += 1;
     this.#disposed = true;
-    this.#snapshot = { text: "", sending: false, error: null };
-    for (const listener of this.#listeners) listener();
-    this.#listeners.clear();
+    this.#store.setState({ text: "", sending: false, error: null });
   }
 }

@@ -1,3 +1,4 @@
+import { createStore, type StoreApi } from "zustand/vanilla";
 import { type AttachedImage, attachImages } from "@/chat/attached-images.ts";
 import { TextDraft, type TextDraftSnapshot } from "./text-draft.ts";
 
@@ -10,27 +11,20 @@ export class MessageDraft {
   readonly #text: TextDraft;
   readonly #stopText: () => void;
   #images: readonly AttachedImage[] = [];
-  #snapshot: MessageDraftSnapshot;
+  readonly #store: StoreApi<MessageDraftSnapshot>;
   #generation = 0;
   #disposed = false;
   #attachments: Promise<void> = Promise.resolve();
-  readonly #listeners = new Set<() => void>();
-
   constructor(text = "") {
     this.#text = new TextDraft(text);
-    this.#snapshot = { ...this.#text.getSnapshot(), images: this.#images };
+    this.#store = createStore(() => ({ ...this.#text.getSnapshot(), images: this.#images }));
     this.#stopText = this.#text.subscribe(() => this.#publish());
   }
-  readonly getSnapshot = (): MessageDraftSnapshot => this.#snapshot;
-  readonly subscribe = (listener: () => void): (() => void) => {
-    if (this.#disposed) return () => {};
-    this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
-  };
+  readonly getSnapshot = (): MessageDraftSnapshot => this.#store.getState();
+  readonly subscribe = (listener: () => void): (() => void) =>
+    this.#disposed ? () => {} : this.#store.subscribe(listener);
   #publish(): void {
-    if (this.#disposed) return;
-    this.#snapshot = { ...this.#text.getSnapshot(), images: this.#images };
-    for (const listener of this.#listeners) listener();
+    if (!this.#disposed) this.#store.setState({ ...this.#text.getSnapshot(), images: this.#images });
   }
   setText(text: string): void {
     this.#text.setText(text);
@@ -105,8 +99,6 @@ export class MessageDraft {
     this.#images = [];
     this.#stopText();
     this.#text.dispose();
-    this.#snapshot = { ...this.#text.getSnapshot(), images: this.#images };
-    for (const listener of this.#listeners) listener();
-    this.#listeners.clear();
+    this.#store.setState({ ...this.#text.getSnapshot(), images: this.#images });
   }
 }

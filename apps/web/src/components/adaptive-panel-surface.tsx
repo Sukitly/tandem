@@ -9,7 +9,7 @@ import {
   DrawerSwipeHandle,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import type { usePanelFrame } from "./use-panel-frame.ts";
+import type { usePanelFrame } from "@/hooks/use-panel-frame.ts";
 
 /**
  * One persistent portal host. The Drawer is active only as an overlay; its kept-mounted
@@ -20,12 +20,16 @@ export function PanelSurface({
   overlay,
   frame,
   onClose,
+  label,
+  description,
   children,
 }: {
   visible: boolean;
   overlay: boolean;
   frame: ReturnType<typeof usePanelFrame>;
   onClose(): void;
+  label: string;
+  description: string;
   children: ReactNode;
 }) {
   const popup = useRef<HTMLDivElement>(null);
@@ -110,8 +114,8 @@ export function PanelSurface({
             {overlay && <DrawerSwipeHandle />}
             <DrawerPrimitive.Content className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <DrawerHeader className="sr-only">
-                <DrawerTitle>Project panel</DrawerTitle>
-                <DrawerDescription>Project files, changes, terminals, and preview</DrawerDescription>
+                <DrawerTitle>{label}</DrawerTitle>
+                <DrawerDescription>{description}</DrawerDescription>
               </DrawerHeader>
               {children}
             </DrawerPrimitive.Content>

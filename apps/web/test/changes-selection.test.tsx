@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import type { ChangesState, ProjectChanges } from "@tandem/contracts";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChangesView } from "../src/changes/changes-view.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
 import { SidebarProvider } from "../src/components/ui/sidebar.tsx";
+import { cleanup, fireEvent, render, screen, waitFor } from "./render.tsx";
 
 const mock = vi.hoisted(() => ({ state: undefined as ChangesState | undefined }));
 vi.mock("../src/rpc/use-replicated-state.ts", () => ({ useReplicatedState: () => mock.state }));

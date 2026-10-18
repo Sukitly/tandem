@@ -36,4 +36,20 @@ export default defineConfig({
       [PREVIEW_PATH]: { target: backend, ws: true },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes("node_modules/@xterm/")) return "vendor-xterm";
+          if (id.includes("node_modules/katex/")) return "vendor-katex";
+          if (id.includes("node_modules/@pierre/diffs/")) return "vendor-diffs";
+          if (id.includes("node_modules/mermaid/") || id.includes("node_modules/@streamdown/mermaid/"))
+            return "vendor-mermaid";
+          if (id.includes("node_modules/streamdown/") || id.includes("node_modules/@streamdown/"))
+            return "vendor-streamdown";
+          if (id.includes("node_modules/@tanstack/")) return "vendor-tanstack";
+        },
+      },
+    },
+  },
 });

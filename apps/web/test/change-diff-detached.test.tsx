@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import type { CommentThread } from "@tandem/contracts";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChangeDiff } from "../src/changes/change-diff.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "./render.tsx";
 
 const state = vi.hoisted(() => ({ files: { read: vi.fn() }, openFile: vi.fn(), threads: [] as CommentThread[] }));
 vi.mock("@pierre/diffs/react", () => ({ CodeView: () => null }));
@@ -61,7 +61,7 @@ test("loading is unverified until a file read proves the location", async () => 
   expect(screen.queryByText("Outside this diff")).toBeNull();
   expect(screen.getByRole("status").textContent).toContain("Checking");
   await act(async () => finish({ kind: "text", text: "new\noutside\n" }));
-  expect(screen.getByText("Outside this diff")).toBeDefined();
+  expect(await screen.findByText("Outside this diff")).toBeDefined();
 });
 
 test("missing old-side context cannot prove that a comment is outdated", () => {

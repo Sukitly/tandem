@@ -1,4 +1,5 @@
 import type { CommentAnchor } from "@tandem/contracts";
+import { createStore } from "zustand/vanilla";
 import { TextDraft } from "@/app/text-draft.ts";
 
 export type CommentSide = "additions" | "deletions";
@@ -14,14 +15,10 @@ export interface AnchoredDraft {
 /** Unsaved comments have identities independent of changing line numbers and renderer mount cycles. */
 export class CommentDrafts {
   #next = 0;
-  #records: readonly AnchoredDraft[] = [];
-  #listeners = new Set<() => void>();
+  readonly #store = createStore<readonly AnchoredDraft[]>(() => []);
   #disposed = false;
-  getSnapshot = (): readonly AnchoredDraft[] => this.#records;
-  subscribe = (listener: () => void): (() => void) => {
-    if (!this.#disposed) this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
-  };
+  getSnapshot = (): readonly AnchoredDraft[] => this.#store.getState();
+  subscribe = (listener: () => void): (() => void) => (this.#disposed ? () => {} : this.#store.subscribe(listener));
   create(
     workspaceId: number,
     anchor: CommentAnchor,
@@ -35,26 +32,22 @@ export class CommentDrafts {
       source: { kind: source.kind, snapshot: identity(source.snapshot) },
       text: new TextDraft(),
     };
-    this.#records = [...this.#records, record];
-    this.#notify();
+    this.#store.setState([...this.#store.getState(), record], true);
     return record;
   }
   forget(record: AnchoredDraft): void {
-    if (!this.#records.includes(record)) return;
-    this.#records = this.#records.filter((entry) => entry !== record);
+    if (!this.#store.getState().includes(record)) return;
+    this.#store.setState(
+      this.#store.getState().filter((entry) => entry !== record),
+      true,
+    );
     record.text.dispose();
-    this.#notify();
   }
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    for (const record of this.#records) record.text.dispose();
-    this.#records = [];
-    this.#notify();
-    this.#listeners.clear();
-  }
-  #notify(): void {
-    for (const listener of this.#listeners) listener();
+    for (const record of this.#store.getState()) record.text.dispose();
+    this.#store.setState([], true);
   }
 }
 

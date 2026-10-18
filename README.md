@@ -234,6 +234,17 @@ Tandem stores all state in `$TANDEM_HOME` (default: `~/.tandem` for native runs;
 | `packages/contracts` | `@tandem/contracts` | Shared types, RPC interfaces, and constants (runtime-neutral) |
 | `packages/client` | `@tandem/client` | Client library for WebSocket RPC, service bindings, and terminal connections |
 
+### Frontend state and composition
+
+- **Navigation:** TanStack Router matches destinations while keeping the session shell mounted. The history adapter preserves existing `#42` and `#public-access` links.
+- **Client intent:** Scoped Zustand stores own workbench controls, visited views, and in-memory drafts. Components subscribe through selectors; server catalogs are never copied into these stores.
+- **Snapshots:** TanStack Query owns directory listings, file contents, patches, prompt suggestions, and comment-location checks. Keys isolate service identity and workspace. Session disposal clears the cache; project removal releases its file resources.
+- **Authoritative state:** Conversation, project, terminal, and other live state still render directly from RPC subscriptions. Mutations do not overwrite replicated state.
+- **Composition:** `AdaptivePanel` owns layout, `Reader` owns expansion/focus, and their callers compose feature-specific content and actions. Comment presentation is shared across renderers. Composer completion, keyboard precedence, attachment handling, and context presentation have separate owners.
+- **Lifetimes:** Drafts live above connection/layout boundaries and never enter browser storage. Hidden visited views retain terminal and iframe identity; hidden projects release changes subscriptions. Virtual-file draft editors live outside the virtualized line window.
+
+Unit tests exercise these ownership boundaries; the [browser regressions](apps/web/browser/README.md) exercise actual renderers, focus, and retained DOM resources.
+
 For contributing guidelines and architectural rules, see [AGENTS.md](AGENTS.md) and [SECURITY.md](SECURITY.md).
 
 ---

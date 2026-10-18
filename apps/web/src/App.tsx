@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner.tsx";
 import { Spinner } from "@/components/ui/spinner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DraftsProvider } from "./app/drafts.tsx";
+import { ApplicationRouter } from "./app/router.tsx";
 import { AppSidebar, SidebarToggle } from "./app/sidebar.tsx";
 import { AppSidebarProvider } from "./app/sidebar-provider.tsx";
 import { useWorkbench, WorkbenchProvider } from "./app/workbench.tsx";
@@ -35,13 +36,15 @@ export function App({ initialPairCode }: { initialPairCode?: string } = {}) {
         ) : (
           <DraftsProvider>
             <ConnectionProvider fallback={(state) => <ConnectionScreen state={state} />}>
-              <DevicesDialogProvider>
-                <ProvidersDialogProvider>
-                  <PublicAccessPageProvider>
-                    <Workbench />
-                  </PublicAccessPageProvider>
-                </ProvidersDialogProvider>
-              </DevicesDialogProvider>
+              <ApplicationRouter>
+                <DevicesDialogProvider>
+                  <ProvidersDialogProvider>
+                    <PublicAccessPageProvider>
+                      <Workbench />
+                    </PublicAccessPageProvider>
+                  </ProvidersDialogProvider>
+                </DevicesDialogProvider>
+              </ApplicationRouter>
             </ConnectionProvider>
           </DraftsProvider>
         )}
@@ -67,7 +70,12 @@ function Workbench() {
 function Main() {
   const { workspaces } = useConnected();
   const listed = useReplicatedState(workspaces.state)?.workspaces;
-  const { selected, draft, workspaceId, addProject } = useWorkbench();
+  const { selected, draft, workspaceId, addProject } = useWorkbench((state) => ({
+    selected: state.selected,
+    draft: state.draft,
+    workspaceId: state.workspaceId,
+    addProject: state.addProject,
+  }));
   return (
     <WithFiles workspaceId={workspaceId} availableWorkspaceIds={listed?.map((workspace) => workspace.id)}>
       {draft !== null ? (

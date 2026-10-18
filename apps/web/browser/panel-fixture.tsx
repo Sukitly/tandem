@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ProjectPanel } from "../src/app/project-panel.tsx";
+import { SnapshotProvider } from "../src/app/query-client.tsx";
 import { WithFiles } from "../src/app/workspace-layout.tsx";
 import { Button } from "../src/components/ui/button.tsx";
 import { TooltipProvider } from "../src/components/ui/tooltip.tsx";
@@ -50,14 +51,16 @@ const root = document.getElementById("root");
 if (root)
   createRoot(root).render(
     <TooltipProvider>
-      <WorkbenchFixtureProvider>
-        {location.search.includes("layout") ? (
-          <LayoutFixture />
-        ) : (
-          <div data-testid="panel" style={{ width: 240, height: "100dvh" }}>
-            <ProjectPanel workspaceId={1} onClose={() => {}} />
-          </div>
-        )}
-      </WorkbenchFixtureProvider>
+      <SnapshotProvider>
+        <WorkbenchFixtureProvider>
+          {location.search.includes("layout") ? (
+            <LayoutFixture />
+          ) : (
+            <div data-testid="panel" style={{ width: 240, height: "100dvh" }}>
+              <ProjectPanel workspaceId={1} onClose={() => {}} />
+            </div>
+          )}
+        </WorkbenchFixtureProvider>
+      </SnapshotProvider>
     </TooltipProvider>,
   );

@@ -1,10 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type PairingCode, SIGN_OUT_PATH } from "@tandem/contracts";
-import { MonitorSmartphoneIcon } from "lucide-react";
-import QRCode from "qrcode";
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useState } from "react";
 import { ResponsiveDialogContent as DialogContent } from "@/components/responsive-dialog.tsx";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,15 +11,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FieldError } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
+} from "@/components/ui/alert-dialog.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
+import { FieldError } from "@/components/ui/field.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
+import { DevicePairing } from "./device-pairing.tsx";
+import { DeviceRow } from "./device-row.tsx";
+import { RecoveryCodesSection } from "./recovery-codes-section.tsx";
 
 const DevicesDialogContext = createContext<{ open(): void }>({ open: () => {} });
 export function useDevicesDialog(): { open(): void } {
@@ -64,43 +61,41 @@ export function DevicesDialogProvider({ children }: { children: ReactNode }) {
 }
 
 type Confirmation = { title: string; description: string; action(): Promise<void> };
+
 function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
   const { devices, deviceId } = useConnected();
-  const ime = useCompositionGuard();
   const state = useReplicatedState(devices.state);
   const [pair, setPair] = useState<PairingCode>();
   const [recovery, setRecovery] = useState<string[]>();
   const remaining = state?.recoveryCodesRemaining ?? 0;
   const deviceList = state?.devices ?? [];
-  const [renaming, setRenaming] = useState<string>();
-  const [draft, setDraft] = useState("");
   const [failure, setFailure] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>();
-  const run = async (action: () => Promise<void>): Promise<void> => {
+
+  const run = async (action: () => Promise<void>): Promise<boolean> => {
     setBusy(true);
     setFailure(undefined);
     try {
       await action();
+      return true;
     } catch (error) {
       setFailure(error instanceof Error ? error.message : String(error));
+      return false;
     } finally {
       setBusy(false);
     }
   };
+
   const regenerate = async (): Promise<void> => {
-    setRecovery(await devices.regenerateRecoveryCodes(BACKGROUND_CONTEXT));
+    const codes = await devices.regenerateRecoveryCodes(BACKGROUND_CONTEXT);
+    setRecovery(codes);
   };
-  /** Renaming keeps the typed name and the reason it failed in the row, until it succeeds. */
-  const rename = async (id: string): Promise<void> => {
-    if (busy || ime.active()) return;
-    const name = draft.trim();
-    if (name === "") return;
-    await run(async () => {
-      await devices.rename(id, name, BACKGROUND_CONTEXT);
-      setRenaming(undefined);
-    });
+
+  const onRenameDevice = async (id: string, name: string): Promise<boolean> => {
+    return run(() => devices.rename(id, name, BACKGROUND_CONTEXT));
   };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -113,86 +108,20 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
           </DialogHeader>
           <div className="flex flex-col gap-4">
             {deviceList.map((device) => (
-              <div
+              <DeviceRow
                 key={device.id}
-                className="flex flex-col items-stretch justify-between gap-2 sm:flex-row sm:items-center"
-              >
-                <div className="min-w-0 flex-1">
-                  {renaming === device.id ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        aria-label={`Name of ${device.name}`}
-                        autoFocus
-                        value={draft}
-                        disabled={busy}
-                        onChange={(event) => setDraft(event.target.value)}
-                        onCompositionStart={ime.onCompositionStart}
-                        onCompositionEnd={ime.onCompositionEnd}
-                        onKeyDown={(event) => {
-                          if (ime.owns(event)) return;
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void rename(device.id);
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            setRenaming(undefined);
-                          }
-                        }}
-                      />
-                      <Button size="sm" disabled={busy || draft.trim() === ""} onClick={() => void rename(device.id)}>
-                        Save
-                      </Button>
-                      <Button variant="outline" size="sm" disabled={busy} onClick={() => setRenaming(undefined)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <MonitorSmartphoneIcon className="size-4" />
-                      <span className="min-w-0 truncate" title={device.name}>
-                        {device.name}
-                      </span>
-                      {device.id === deviceId && <Badge variant="secondary">This device</Badge>}
-                    </div>
-                  )}
-                  <p className="text-sm text-muted-foreground">
-                    Last active {new Date(device.lastSeenAt).toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => {
-                      setFailure(undefined);
-                      setDraft(device.name);
-                      setRenaming(device.id);
-                    }}
-                  >
-                    Rename
-                  </Button>
-                  {/* Removing this device is signing out: it also clears the cookie this browser holds. */}
-                  {device.id !== deviceId && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        setConfirmation({
-                          title: "Revoke this device?",
-                          description: "Its active connections will be closed immediately. It will need to pair again.",
-                          action: () => devices.revoke(device.id, BACKGROUND_CONTEXT),
-                        })
-                      }
-                    >
-                      Revoke
-                    </Button>
-                  )}
-                </div>
-              </div>
+                device={device}
+                isCurrentDevice={device.id === deviceId}
+                busy={busy}
+                onRename={(name) => onRenameDevice(device.id, name)}
+                onRevoke={() =>
+                  setConfirmation({
+                    title: "Revoke this device?",
+                    description: "Its active connections will be closed immediately. It will need to pair again.",
+                    action: () => devices.revoke(device.id, BACKGROUND_CONTEXT),
+                  })
+                }
+              />
             ))}
             <div className="flex flex-wrap gap-2">
               <Button
@@ -240,50 +169,26 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                 </>
               )}
             </div>
-            {pair !== undefined && <PairingLink pair={pair} />}
-            <div className="flex flex-col gap-2">
-              <h3 className="font-medium">Recovery codes</h3>
-              <p className="text-sm text-muted-foreground">
-                {remaining} codes remaining. Each code pairs one device once.
-              </p>
-              {remaining > 0 && (
-                <p className="text-sm text-muted-foreground">
-                  Replacing them makes every code you have saved stop working.
-                </p>
-              )}
-              <Button
-                variant={remaining === 0 ? "default" : "destructive"}
-                disabled={busy}
-                onClick={() => {
-                  if (remaining === 0) void run(regenerate);
-                  else
-                    setConfirmation({
-                      title: "Replace recovery codes?",
-                      description: "All existing recovery codes will stop working.",
-                      action: regenerate,
-                    });
-                }}
-              >
-                {remaining === 0 ? "Generate recovery codes" : "Replace recovery codes"}
-              </Button>
-              {recovery !== undefined && (
-                <>
-                  <Alert>
-                    <AlertTitle>Save these codes now</AlertTitle>
-                    <AlertDescription>They are shown only once. Store them in your password manager.</AlertDescription>
-                  </Alert>
-                  <pre className="overflow-x-auto text-sm">{recovery.join("\n")}</pre>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      void run(() => navigator.clipboard.writeText(recovery.join("\n")));
-                    }}
-                  >
-                    Copy recovery codes
-                  </Button>
-                </>
-              )}
-            </div>
+            {pair !== undefined && <DevicePairing pair={pair} />}
+            <RecoveryCodesSection
+              remaining={remaining}
+              busy={busy}
+              recovery={recovery}
+              onGenerate={() => {
+                if (remaining === 0) void run(regenerate);
+                else
+                  setConfirmation({
+                    title: "Replace recovery codes?",
+                    description: "All existing recovery codes will stop working.",
+                    action: regenerate,
+                  });
+              }}
+              onCopy={() => {
+                if (recovery !== undefined) {
+                  void run(() => navigator.clipboard.writeText(recovery.join("\n")));
+                }
+              }}
+            />
             {failure !== undefined && <FieldError>{failure}</FieldError>}
           </div>
         </DialogContent>
@@ -316,46 +221,5 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
-}
-
-function PairingLink({ pair }: { pair: PairingCode }) {
-  const [qr, setQr] = useState<string>();
-  const [failure, setFailure] = useState<string>();
-  const connected = useConnected() as { publicAccess?: { state: Parameters<typeof useReplicatedState>[0] } };
-  const publicAccessState = useReplicatedState(connected.publicAccess?.state) as { publicUrl?: string } | undefined;
-  const activeOrigin = pair.publicUrl ?? publicAccessState?.publicUrl ?? window.location.origin;
-  const url = new URL("/pair", activeOrigin);
-  url.hash = pair.code;
-  const href = url.href;
-  useEffect(() => {
-    let cancelled = false;
-    setQr(undefined);
-    void QRCode.toDataURL(href, { width: 240, margin: 2 }).then(
-      (value) => {
-        if (!cancelled) setQr(value);
-      },
-      (error: unknown) => {
-        if (!cancelled) setFailure(error instanceof Error ? error.message : String(error));
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [href]);
-  return (
-    <div className="flex flex-col gap-2">
-      {qr !== undefined && <img src={qr} alt="Scan to pair another device" className="size-60 self-center" />}
-      <Input aria-label="Pairing link" readOnly value={href} />
-      <p className="text-sm text-muted-foreground">
-        Expires {new Date(pair.expiresAt).toLocaleTimeString()}. Anyone with this link can control Tandem.
-      </p>
-      {pair.publicUrl === undefined && publicAccessState?.publicUrl === undefined && (
-        <p className="text-sm text-muted-foreground">
-          This address is local. Configure public access before pairing a remote device.
-        </p>
-      )}
-      {failure !== undefined && <FieldError>{failure}</FieldError>}
-    </div>
   );
 }

@@ -1,5 +1,6 @@
-import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import { CommentDrafts } from "@/comments/comment-drafts.ts";
+import { useDisposable as useDispose } from "@/hooks/use-disposable.ts";
 import { MessageDraft } from "./message-draft.ts";
 import { TextDraft } from "./text-draft.ts";
 
@@ -91,18 +92,4 @@ export function useCommentDraftStore(): CommentDrafts {
   const [local] = useState(() => (drafts === null ? new CommentDrafts() : null));
   useDispose(local ?? DUMMY_DISPOSABLE, local !== null);
   return drafts?.comments ?? local ?? FALLBACK_DRAFTS;
-}
-
-/** Defer disposal one microtask so StrictMode's cleanup/setup replay does not erase live input. */
-function useDispose(resource: { dispose(): void }, enabled = true): void {
-  const lifetime = useRef<{ resource: typeof resource } | null>(null);
-  useEffect(() => {
-    const lease = { resource };
-    lifetime.current = lease;
-    if (!enabled) return;
-    return () =>
-      queueMicrotask(() => {
-        if (lifetime.current === lease || lifetime.current?.resource !== resource) resource.dispose();
-      });
-  }, [resource, enabled]);
 }

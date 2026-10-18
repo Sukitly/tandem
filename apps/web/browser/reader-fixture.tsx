@@ -2,6 +2,7 @@ import type { Files } from "@tandem/contracts";
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DraftsProvider } from "../src/app/drafts.tsx";
+import { SnapshotProvider } from "../src/app/query-client.tsx";
 import { ChangeDiff, type DiffReadingState } from "../src/changes/change-diff.tsx";
 import { CommentDraft } from "../src/comments/comment-box.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
@@ -208,15 +209,17 @@ function CommentIdentityFixture() {
 const root = document.getElementById("root");
 if (root)
   createRoot(root).render(
-    <DraftsProvider>
-      {location.search.includes("drafts") ? (
-        <CommentIdentityFixture />
-      ) : location.search.includes("diff") ? (
-        <DiffFixture />
-      ) : location.search.includes("file") ? (
-        <FileFixture />
-      ) : (
-        <Fixture />
-      )}
-    </DraftsProvider>,
+    <SnapshotProvider>
+      <DraftsProvider>
+        {location.search.includes("drafts") ? (
+          <CommentIdentityFixture />
+        ) : location.search.includes("diff") ? (
+          <DiffFixture />
+        ) : location.search.includes("file") ? (
+          <FileFixture />
+        ) : (
+          <Fixture />
+        )}
+      </DraftsProvider>
+    </SnapshotProvider>,
   );

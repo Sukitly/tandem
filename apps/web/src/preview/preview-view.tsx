@@ -1,15 +1,14 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { PREVIEW_SANDBOX_TOKENS, previewUrl } from "@tandem/contracts";
 import { ExternalLinkIcon, GlobeIcon, PlusIcon, RotateCwIcon, XIcon } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
-import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { IconAction } from "@/components/icon-action.tsx";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { type Connected, useOptionalConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
+import { AddPortForm } from "./add-port-form.tsx";
 
 export function PreviewView({ active = true }: { active?: boolean }) {
   const connected = useOptionalConnected();
@@ -19,14 +18,12 @@ export function PreviewView({ active = true }: { active?: boolean }) {
 
 function PreviewPanel({ connected, active = true }: { connected: Connected; active?: boolean }) {
   const { preview } = connected;
-  const { reportFailure } = useWorkbench();
+  const { reportFailure } = useWorkbench((state) => ({ reportFailure: state.reportFailure }));
   const state = useReplicatedState(preview.state);
   const ports = useMemo(() => state?.ports ?? [], [state?.ports]);
 
   const [selectedPort, setSelectedPort] = useState<number | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [manualPort, setManualPort] = useState("");
-  const inputId = useId();
 
   const currentPort = ports.find((p) => p.port === selectedPort)?.port ?? ports[0]?.port ?? null;
 
@@ -49,17 +46,10 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
     return previewUrl({ port: currentPort, baseUrl: window.location.origin });
   }, [currentPort]);
 
-  const handleAddPort = (e: React.FormEvent) => {
-    e.preventDefault();
-    const port = Number(manualPort.trim());
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      reportFailure("Invalid port", new Error("Please enter a valid port number between 1 and 65535"));
-      return;
-    }
+  const handleAddPort = (port: number) => {
     preview.register({ port }, BACKGROUND_CONTEXT).then(
       () => {
         setSelectedPort(port);
-        setManualPort("");
         setShowAdd(false);
       },
       (err: unknown) => reportFailure("Could not register port", err),
@@ -72,9 +62,7 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
     });
   };
 
-  if (!active && ports.length === 0) {
-    return null;
-  }
+  if (!active && ports.length === 0) return null;
 
   if (ports.length === 0 && !showAdd) {
     return (
@@ -89,21 +77,7 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <form onSubmit={handleAddPort} className="flex w-full max-w-xs items-center gap-2">
-            <Input
-              id={inputId}
-              type="number"
-              min="1"
-              max="65535"
-              placeholder="e.g. 3000, 5173"
-              value={manualPort}
-              onChange={(e) => setManualPort(e.target.value)}
-              className="h-8 text-xs"
-            />
-            <Button type="submit" size="sm" className="h-8 px-3 text-xs">
-              Add port
-            </Button>
-          </form>
+          <AddPortForm onSubmit={handleAddPort} />
         </EmptyContent>
       </Empty>
     );
@@ -129,110 +103,50 @@ function PreviewPanel({ connected, active = true }: { connected: Connected; acti
             </TabsList>
           </Tabs>
 
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label="Add port"
-                  onClick={() => setShowAdd(!showAdd)}
-                  className="size-7"
-                >
-                  <PlusIcon className="size-3.5" />
-                </Button>
-              }
-            />
-            <TooltipContent>Add port</TooltipContent>
-          </Tooltip>
+          <IconAction label="Add port" className="size-7" onClick={() => setShowAdd(!showAdd)}>
+            <PlusIcon className="size-3.5" />
+          </IconAction>
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
           {currentUrl && (
             <>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Reload preview"
-                      onClick={() => {
-                        if (currentPort !== null)
-                          setSessions((previous) =>
-                            new Map(previous).set(currentPort, (previous.get(currentPort) ?? 0) + 1),
-                          );
-                      }}
-                      className="size-7"
-                    >
-                      <RotateCwIcon className="size-3.5" />
-                    </Button>
+              <IconAction
+                label="Reload preview"
+                className="size-7"
+                onClick={() => {
+                  if (currentPort !== null) {
+                    setSessions((previous) => new Map(previous).set(currentPort, (previous.get(currentPort) ?? 0) + 1));
                   }
-                />
-                <TooltipContent>Reload</TooltipContent>
-              </Tooltip>
+                }}
+              >
+                <RotateCwIcon className="size-3.5" />
+              </IconAction>
 
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Open in new tab"
-                      onClick={() => window.open(currentUrl, "_blank", "noopener,noreferrer")}
-                      className="size-7"
-                    >
-                      <ExternalLinkIcon className="size-3.5" />
-                    </Button>
-                  }
-                />
-                <TooltipContent>Open in new tab</TooltipContent>
-              </Tooltip>
+              <IconAction
+                label="Open in new tab"
+                className="size-7"
+                onClick={() => window.open(currentUrl, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLinkIcon className="size-3.5" />
+              </IconAction>
 
               {currentPort !== null && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={`Close port ${currentPort}`}
-                        onClick={() => handleClosePort(currentPort)}
-                        className="size-7"
-                      >
-                        <XIcon className="size-3.5" />
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>Close preview</TooltipContent>
-                </Tooltip>
+                <IconAction
+                  label={`Close port ${currentPort}`}
+                  className="size-7"
+                  onClick={() => handleClosePort(currentPort)}
+                  tooltip="Close preview"
+                >
+                  <XIcon className="size-3.5" />
+                </IconAction>
               )}
             </>
           )}
         </div>
       </div>
 
-      {showAdd && (
-        <form onSubmit={handleAddPort} className="flex items-center gap-2 border-b bg-muted/40 p-2 text-xs">
-          <Input
-            id={inputId}
-            type="number"
-            min="1"
-            max="65535"
-            placeholder="Port (e.g. 5173)"
-            value={manualPort}
-            onChange={(e) => setManualPort(e.target.value)}
-            className="h-7 w-32 text-xs"
-            autoFocus
-          />
-          <Button type="submit" size="xs" className="h-7 px-2">
-            Add
-          </Button>
-          <Button type="button" variant="ghost" size="xs" onClick={() => setShowAdd(false)} className="h-7 px-2">
-            Cancel
-          </Button>
-        </form>
-      )}
+      {showAdd && <AddPortForm compact onSubmit={handleAddPort} onCancel={() => setShowAdd(false)} />}
 
       <div className="relative min-h-0 flex-1 bg-background">
         {ports

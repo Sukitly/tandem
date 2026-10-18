@@ -3,6 +3,7 @@ import type { ChangedFile, ChangesState } from "@tandem/contracts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { SnapshotProvider } from "../src/app/query-client.tsx";
 import { ChangesView, storedDiffStyle, storedDiffWrap } from "../src/changes/changes-view.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
 import { SidebarProvider } from "../src/components/ui/sidebar.tsx";
@@ -33,13 +34,17 @@ afterEach(() => vi.unstubAllGlobals());
 function changes(): string {
   return renderToStaticMarkup(
     createElement(
-      SidebarProvider,
+      SnapshotProvider,
       null,
-      createElement(ChangesView, {
-        changes: undefined,
-        failure: null,
-        comments: {} as ProjectComments,
-      }),
+      createElement(
+        SidebarProvider,
+        null,
+        createElement(ChangesView, {
+          changes: undefined,
+          failure: null,
+          comments: {} as ProjectComments,
+        }),
+      ),
     ),
   );
 }

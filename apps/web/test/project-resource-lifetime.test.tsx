@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 test("removed projects release file snapshots and cached comment wrappers", async () => {
-  const hook = renderHook(useWorkbench, { wrapper: WorkbenchProvider });
+  const hook = renderHook(() => useWorkbench(), { wrapper: WorkbenchProvider });
   const file = hook.result.current.projectFiles(1);
   const comments = hook.result.current.comments(1);
   const close = vi.spyOn(file, "close");
@@ -49,6 +49,27 @@ test("removed projects release file snapshots and cached comment wrappers", asyn
   expect(file.opened).toBeNull();
   expect(hook.result.current.projectFiles(1)).not.toBe(file);
   expect(hook.result.current.comments(1)).not.toBe(comments);
+});
+
+test("selectors do not rerender controls for unrelated UI state", () => {
+  const rendered = vi.fn();
+  const hook = renderHook(
+    () => {
+      const state = useWorkbench((state) => ({
+        filesShown: state.filesShown,
+        showFiles: state.showFiles,
+        showTab: state.showTab,
+      }));
+      rendered();
+      return state;
+    },
+    { wrapper: WorkbenchProvider },
+  );
+  rendered.mockClear();
+  act(() => hook.result.current.showTab("terminal"));
+  expect(rendered).not.toHaveBeenCalled();
+  act(() => hook.result.current.showFiles(!hook.result.current.filesShown));
+  expect(rendered).toHaveBeenCalledOnce();
 });
 
 test("changes are not opened before first use and the hold is released on unmount", () => {

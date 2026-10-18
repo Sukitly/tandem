@@ -1,45 +1,5 @@
-import type { ConversationSummary, WorkspaceSummary } from "@tandem/contracts";
-import { cn } from "cn";
-import {
-  BikeIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  EllipsisIcon,
-  FolderIcon,
-  FolderMinusIcon,
-  FolderOpenIcon,
-  GlobeIcon,
-  KeyRoundIcon,
-  MonitorIcon,
-  MoonIcon,
-  PlusIcon,
-  SunIcon,
-} from "lucide-react";
-import { type MouseEvent, useState } from "react";
+import { GlobeIcon, KeyRoundIcon, PlusIcon } from "lucide-react";
 import { useDevicesDialog } from "@/auth/devices-dialog.tsx";
-import { ConversationMenu } from "@/chat/conversation-menu.tsx";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -50,38 +10,39 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-  useSidebar,
-} from "@/components/ui/sidebar";
-import { Spinner } from "@/components/ui/spinner";
+} from "@/components/ui/sidebar.tsx";
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { type ThemeChoice, useTheme } from "@/theme.tsx";
 import { usePublicAccessPage } from "@/tunnel/public-access.tsx";
+import { SidebarBrand } from "./sidebar-brand.tsx";
+import { RecentConversationItem } from "./sidebar-conversation-row.tsx";
+import { ProjectItem } from "./sidebar-project-item.tsx";
+import { SidebarThemeMenu } from "./sidebar-theme-menu.tsx";
 import { useWorkbench } from "./workbench.tsx";
 
+export { SidebarBrand, SidebarToggle } from "./sidebar-brand.tsx";
+
 /**
- * The app's navigation, after the Codex app: projects with their conversations, then every conversation by recent
+ * The app's navigation: projects with their conversations, then every conversation by recent
  * activity. A conversation's link sets the URL hash, which is how the open conversation is chosen.
  */
 export function AppSidebar() {
   const { workspaces, conversations } = useConnected();
   const projects = useReplicatedState(workspaces.state)?.workspaces ?? [];
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
-  const { selected, addProject } = useWorkbench();
-  const closeNavigation = useCloseSidebarOnNavigate();
+  const { selected, addProject } = useWorkbench((state) => ({
+    selected: state.selected,
+    addProject: state.addProject,
+  }));
   const providers = useProvidersDialog();
   const devices = useDevicesDialog();
   const publicAccess = usePublicAccessPage();
   const names = new Map(projects.map((project) => [project.id, project.name]));
+
   return (
-    // Collapsed, the sidebar keeps a column of icons; the lists hide.
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
         <SidebarBrand />
@@ -111,42 +72,12 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {list.map((summary) => (
-                  <SidebarMenuItem key={summary.id} className="group/conv-row relative">
-                    <SidebarMenuButton
-                      render={
-                        <a
-                          href={`#${summary.id}`}
-                          onClick={closeNavigation}
-                          aria-current={summary.id === selected ? "page" : undefined}
-                        />
-                      }
-                      isActive={summary.id === selected}
-                      className={cn(summary.id === selected && "bg-sidebar-accent", "pr-7")}
-                      title={summary.cwd}
-                    >
-                      <span className="truncate">{summary.title}</span>
-                      {summary.running ? (
-                        <Spinner aria-label="Running" className="ml-auto" />
-                      ) : (
-                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                          {names.get(summary.workspaceId)}
-                        </span>
-                      )}
-                    </SidebarMenuButton>
-                    <ConversationMenu
-                      summary={summary}
-                      side="right"
-                      trigger={
-                        <SidebarMenuAction
-                          className={CONVERSATION_ACTION_CLASS}
-                          title="More"
-                          aria-label={`More for ${summary.title}`}
-                        >
-                          <EllipsisIcon />
-                        </SidebarMenuAction>
-                      }
-                    />
-                  </SidebarMenuItem>
+                  <RecentConversationItem
+                    key={summary.id}
+                    summary={summary}
+                    selected={selected}
+                    projectName={names.get(summary.workspaceId)}
+                  />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -177,237 +108,10 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <ThemeMenu />
+            <SidebarThemeMenu />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
-  );
-}
-
-// Scope hover and keyboard focus to the project row, not its conversation list. Touch devices keep actions visible.
-const PROJECT_ACTION_CLASS =
-  "opacity-0 group-hover/project-row:opacity-100 group-focus-within/project-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
-
-const CONVERSATION_ACTION_CLASS =
-  "opacity-0 group-hover/conv-row:opacity-100 group-focus-within/conv-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
-
-/** A project that opens to show its conversations. Its row reveals actions on hover or keyboard focus. */
-function ProjectItem({
-  project,
-  conversations,
-  selected,
-}: {
-  project: WorkspaceSummary;
-  conversations: ConversationSummary[];
-  selected: number | null;
-}) {
-  const { newConversation, removeProject } = useWorkbench();
-  const closeNavigation = useCloseSidebarOnNavigate();
-  const { terminals } = useConnected();
-  // The project's terminals whose shell still runs: removing the project ends them, and adding it again does not bring
-  // them back.
-  const running = (useReplicatedState(terminals.state)?.terminals ?? []).filter(
-    (summary) => summary.workspaceId === project.id && summary.exit === undefined,
-  );
-  const [open, setOpen] = useState(true);
-  const [confirming, setConfirming] = useState(false);
-  return (
-    <Collapsible open={open} onOpenChange={setOpen} render={<SidebarMenuItem />}>
-      <div className="group/project-row relative">
-        {/* Room for both actions, which sit side by side at the row's end. */}
-        <CollapsibleTrigger
-          render={
-            <SidebarMenuButton title={project.path} className="group-has-data-[sidebar=menu-action]/menu-item:pr-14" />
-          }
-        >
-          {open ? <FolderOpenIcon /> : <FolderIcon />}
-          <span>{project.name}</span>
-        </CollapsibleTrigger>
-        <SidebarMenuAction
-          className={`${PROJECT_ACTION_CLASS} right-7`}
-          title={`New conversation in ${project.name}`}
-          aria-label={`New conversation in ${project.name}`}
-          onClick={() => {
-            newConversation(project.id);
-            closeNavigation();
-          }}
-        >
-          <PlusIcon />
-        </SidebarMenuAction>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <SidebarMenuAction
-                className={PROJECT_ACTION_CLASS}
-                title="More"
-                aria-label={`More for ${project.name}`}
-              />
-            }
-          >
-            <EllipsisIcon />
-          </DropdownMenuTrigger>
-          {/* The content takes the trigger's width by default; the trigger is an icon, as in shadcn's sidebar blocks. */}
-          <DropdownMenuContent side="right" align="start" className="w-48">
-            <DropdownMenuItem variant="destructive" onClick={() => setConfirming(true)}>
-              <FolderMinusIcon />
-              Remove project
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <AlertDialog open={confirming} onOpenChange={setConfirming}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {project.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The project and its conversations leave the sidebar. No file or conversation is deleted: add the same
-              directory again to bring them back.
-            </AlertDialogDescription>
-            {running.length > 0 && (
-              <AlertDialogDescription>
-                {running.length === 1 ? "A terminal is" : `${running.length} terminals are`} still running and will be
-                ended, with what runs in {running.length === 1 ? "it" : "them"}:{" "}
-                {running.map((summary) => summary.title).join(", ")}.
-              </AlertDialogDescription>
-            )}
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                setConfirming(false);
-                removeProject(project.id);
-              }}
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      {conversations.length > 0 && (
-        <CollapsibleContent>
-          <SidebarMenuSub className="mr-0 pr-0">
-            {conversations.map((summary) => (
-              <SidebarMenuSubItem key={summary.id} className="group/conv-row relative">
-                <SidebarMenuSubButton
-                  href={`#${summary.id}`}
-                  onClick={closeNavigation}
-                  isActive={summary.id === selected}
-                  aria-current={summary.id === selected ? "page" : undefined}
-                  className={cn(summary.id === selected && "bg-sidebar-accent", "pr-7")}
-                >
-                  <span className="truncate">{summary.title}</span>
-                  {summary.running && <Spinner aria-label="Running" className="ml-auto" />}
-                </SidebarMenuSubButton>
-                <ConversationMenu
-                  summary={summary}
-                  side="right"
-                  trigger={
-                    <SidebarMenuAction
-                      className={cn(CONVERSATION_ACTION_CLASS, "top-1 right-1")}
-                      title="More"
-                      aria-label={`More for ${summary.title}`}
-                    >
-                      <EllipsisIcon />
-                    </SidebarMenuAction>
-                  }
-                />
-              </SidebarMenuSubItem>
-            ))}
-          </SidebarMenuSub>
-        </CollapsibleContent>
-      )}
-    </Collapsible>
-  );
-}
-
-/** The name and the sidebar toggle, with directional icons matching the project panel's toggle. */
-function SidebarBrand() {
-  const { state, toggleSidebar } = useSidebar();
-  const collapsed = state === "collapsed";
-  return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        {collapsed ? (
-          <SidebarMenuButton aria-label="Expand the sidebar" onClick={toggleSidebar}>
-            <ChevronRightIcon />
-          </SidebarMenuButton>
-        ) : (
-          <div className="flex h-8 items-center gap-2 pl-2">
-            <div className="flex flex-1 items-center gap-2 text-sm font-semibold [&>svg]:size-4">
-              <BikeIcon />
-              Tandem
-            </div>
-            <Button variant="ghost" size="icon-sm" aria-label="Collapse the sidebar" onClick={toggleSidebar}>
-              <ChevronLeftIcon />
-            </Button>
-          </div>
-        )}
-      </SidebarMenuItem>
-    </SidebarMenu>
-  );
-}
-
-const THEMES: { value: ThemeChoice; label: string; icon: typeof SunIcon }[] = [
-  { value: "system", label: "System", icon: MonitorIcon },
-  { value: "light", label: "Light", icon: SunIcon },
-  { value: "dark", label: "Dark", icon: MoonIcon },
-];
-
-function ThemeMenu() {
-  const { choice, setChoice } = useTheme();
-  const current = THEMES.find((theme) => theme.value === choice) ?? THEMES[0];
-  const Icon = current?.icon ?? MonitorIcon;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<SidebarMenuButton tooltip={`Theme: ${current?.label}`} />}>
-        <Icon />
-        <span>{current?.label}</span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Theme</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={choice} onValueChange={(value: ThemeChoice) => setChoice(value)}>
-            {THEMES.map((theme) => (
-              <DropdownMenuRadioItem key={theme.value} value={theme.value} closeOnClick>
-                <theme.icon />
-                {theme.label}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/** Native links still own navigation, including modified clicks that open another tab. */
-function useCloseSidebarOnNavigate() {
-  const { isMobile, setOpenMobile } = useSidebar();
-  return (event?: MouseEvent): void => {
-    if (
-      event &&
-      (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
-    )
-      return;
-    if (isMobile) setOpenMobile(false);
-  };
-}
-
-/** A button to open or close the sidebar on small screens. */
-export function SidebarToggle({ className }: { className?: string } = {}) {
-  const { toggleSidebar } = useSidebar();
-  return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className={className}
-      aria-label="Expand the sidebar"
-      onClick={toggleSidebar}
-    >
-      <ChevronRightIcon />
-    </Button>
   );
 }

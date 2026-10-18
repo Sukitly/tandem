@@ -1,5 +1,5 @@
 import type { FileContent, FileEntry, Files } from "@tandem/contracts";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { ProjectFiles } from "../src/files/project-files.ts";
 
 function deferred<T>() {
@@ -53,8 +53,7 @@ describe("file request ordering", () => {
     await Promise.resolve();
     expect(files.content).toEqual({ status: "loading" });
     reads[1]?.resolve(content("new"));
-    await Promise.resolve();
-    expect(files.content).toEqual({ status: "ready", value: content("new") });
+    await vi.waitFor(() => expect(files.content).toEqual({ status: "ready", value: content("new") }));
   });
 
   test.each([false, true])("ignores a superseded directory listing (failure: %s)", async (failure) => {

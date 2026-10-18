@@ -1,12 +1,16 @@
 import { CodeView, type CodeViewFileItem, type CodeViewHandle, type CodeViewProps } from "@pierre/diffs/react";
 import type { CommentThread } from "@tandem/contracts";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { DIFF_COMMENT_CSS } from "@/changes/diff-plain-annotations.ts";
-import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
+import { CODE_COMMENT_CSS } from "@/comments/code-comment-style.ts";
 import type { PlacedThread } from "@/comments/comment-anchor.ts";
+import {
+  type CommentAnnotation as Annotation,
+  CommentAnnotationView,
+  CommentDraftList,
+} from "@/comments/comment-annotations.tsx";
 import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
-import type { PlacedDraft, useCommentDrafts } from "@/comments/use-comment-drafts.ts";
+import type { useCommentDrafts } from "@/comments/use-comment-drafts.ts";
 import { CodeCopyButton } from "@/components/copy-text.tsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +18,6 @@ import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 import { useRenderVersion } from "@/hooks/use-render-version.ts";
 import { useTheme } from "@/theme.tsx";
 import type { OpenedFile } from "./project-files.ts";
-
-type Annotation = { kind: "thread"; thread: CommentThread } | { kind: "draft"; draft: PlacedDraft };
 
 /** Long files use the existing virtual renderer; the editor stays mounted even when its line scrolls away. */
 export function VirtualFile({
@@ -53,13 +55,15 @@ export function VirtualFile({
   const target = Number(input);
   const valid = Number.isSafeInteger(target) && target >= 1 && target <= lines.length;
   const version = useRenderVersion([text, placed, drafts.placed]);
+  // The virtualizer prepares layout against this identity. Annotation changes are not new file contents.
+  const file = useMemo(() => ({ name: path, contents: text, lang: "text" as const }), [path, text]);
   const items = useMemo<CodeViewFileItem<Annotation>[]>(
     () => [
       {
         id: path,
         type: "file",
         version,
-        file: { name: path, contents: text, lang: "text" },
+        file,
         annotations: [
           ...placed.flatMap(({ thread, line }) =>
             line === undefined ? [] : [{ lineNumber: line, metadata: { kind: "thread" as const, thread } }],
@@ -70,7 +74,7 @@ export function VirtualFile({
         ],
       },
     ],
-    [path, text, placed, drafts.placed, version],
+    [path, file, placed, drafts.placed, version],
   );
 
   const go = (number: number): void => {
@@ -103,12 +107,13 @@ export function VirtualFile({
     shown.current = opened;
   }, [opened, path, line]);
 
+  const startDraft = drafts.start;
   const onLineNumberClick = useCallback(
     ({ lineNumber }: { lineNumber: number }): void => {
       setInput(String(lineNumber));
-      drafts.start("additions", lineNumber);
+      startDraft("additions", lineNumber);
     },
-    [drafts],
+    [startDraft],
   );
 
   const options: CodeViewProps<Annotation, undefined>["options"] = useMemo(
@@ -117,7 +122,7 @@ export function VirtualFile({
       themeType: choice,
       disableFileHeader: true,
       overflow: wrap ? "wrap" : "scroll",
-      unsafeCSS: DIFF_COMMENT_CSS,
+      unsafeCSS: CODE_COMMENT_CSS,
       lineHoverHighlight: "both",
       onLineNumberClick,
     }),
@@ -176,19 +181,7 @@ export function VirtualFile({
           Large file: only nearby lines are rendered. Search here, jump to a line, or copy the entire file.
         </p>
       </form>
-      {drafts.detached.length > 0 && (
-        <div className="max-h-1/2 shrink-0 overflow-auto border-b">
-          {drafts.detached.map((draft) => (
-            <AnchoredCommentEditor
-              key={draft.record.id}
-              draft={draft}
-              store={drafts.store}
-              comments={comments}
-              view={box}
-            />
-          ))}
-        </div>
-      )}
+      <CommentDraftList entries={drafts.placed} drafts={drafts} comments={comments} view={box} />
       {above.length > 0 && (
         <div className="max-h-1/2 shrink-0 overflow-auto border-b">
           {above.map(({ thread, why }) => (
@@ -204,20 +197,24 @@ export function VirtualFile({
         items={items}
         options={options}
         renderAnnotation={(annotation) => {
-          const written = annotation.metadata;
-          if (written === undefined) return null;
-          if (written.kind === "draft") {
+          const entry = annotation.metadata;
+          if (entry?.kind === "draft")
             return (
-              <AnchoredCommentEditor
-                key={written.draft.record.id}
-                draft={written.draft}
-                store={drafts.store}
-                comments={comments}
-                view={box}
-              />
+              <Button
+                size="sm"
+                variant="link"
+                onClick={() => {
+                  const editor = box.current?.querySelector<HTMLTextAreaElement>(
+                    `[data-comment-draft="${entry.draft.record.id}"] textarea`,
+                  );
+                  editor?.focus({ preventScroll: true });
+                  editor?.scrollIntoView({ block: "nearest" });
+                }}
+              >
+                Edit comment on line {entry.draft.line}
+              </Button>
             );
-          }
-          return <CommentThreadBox thread={written.thread} comments={comments} view={box} />;
+          return <CommentAnnotationView annotation={entry} drafts={drafts} comments={comments} view={box} />;
         }}
       />
     </div>

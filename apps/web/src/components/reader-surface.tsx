@@ -1,29 +1,21 @@
 import { WrapTextIcon } from "lucide-react";
 import { type ReactNode, type RefObject, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/button";
+import { IconAction } from "@/components/icon-action.tsx";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function ReaderWrapButton({ wrap, onToggle }: { wrap: boolean; onToggle(): void }) {
   const label = wrap ? "Do not wrap lines" : "Wrap lines";
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant={wrap ? "secondary" : "ghost"}
-            size="icon-xs"
-            aria-label={label}
-            aria-pressed={wrap}
-            onClick={onToggle}
-          />
-        }
-      >
-        <WrapTextIcon />
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <IconAction
+      variant={wrap ? "secondary" : "ghost"}
+      size="icon-xs"
+      label={label}
+      aria-pressed={wrap}
+      onClick={onToggle}
+    >
+      <WrapTextIcon />
+    </IconAction>
   );
 }
 

@@ -14,7 +14,7 @@ export function CommentList({
   comments: WaitingComment[];
   onWithdraw(comment: WaitingComment): void;
 }) {
-  const { openChange } = useWorkbench();
+  const { openChange } = useWorkbench((state) => ({ openChange: state.openChange }));
   if (comments.length === 0) return null;
   return (
     <ItemGroup aria-label="Comments to send" className="gap-1">

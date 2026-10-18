@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import type { CodeViewDiffItem } from "@pierre/diffs/react";
-import { cleanup, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChangeDiff } from "../src/changes/change-diff.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
+import { cleanup, render } from "./render.tsx";
 
 const captured = vi.hoisted(() => ({ items: [] as CodeViewDiffItem[] }));
 vi.mock("@pierre/diffs/react", () => ({
