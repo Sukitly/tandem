@@ -23,7 +23,7 @@ export function TranscriptEntry({ item }: { item: TranscriptItem }) {
       return (
         <Message align="end">
           <MessageContent>
-            <TranscriptImages images={item.images} className="max-w-[85%] justify-end" />
+            <TranscriptImages images={item.images} className="max-w-[85%] self-end justify-end" />
             {item.text !== "" && (
               <Bubble align="end" variant="muted">
                 <BubbleContent>
