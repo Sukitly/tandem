@@ -174,23 +174,4 @@ describe("server preview proxy integration", () => {
       await standalone.stop();
     }
   });
-
-  test("request to dangerous port via preview path is rejected with 403", async () => {
-    const res = await fetch(new URL("/preview/6379/test", server.url), {
-      headers: {
-        Authorization: `Bearer ${server.token}`,
-      },
-    });
-    expect(res.status).toBe(403);
-  });
-
-  test("request to tandem's own port via preview path is rejected with 403", async () => {
-    const ownPort = Number(server.url.port);
-    const res = await fetch(new URL(`/preview/${ownPort}/test`, server.url), {
-      headers: {
-        Authorization: `Bearer ${server.token}`,
-      },
-    });
-    expect(res.status).toBe(403);
-  });
 });

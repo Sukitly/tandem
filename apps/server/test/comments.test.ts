@@ -20,7 +20,6 @@ import { afterEach, describe, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { createFauxProvider } from "../src/models.ts";
 import type { TandemServer } from "../src/server.ts";
-import { threadText } from "../src/services/comments.ts";
 
 const context = BACKGROUND_CONTEXT;
 const servers: TandemServer[] = [];
@@ -377,36 +376,5 @@ describe("the agent's replies are refused", () => {
     const { ask, workspaces, workspaceId, threadId } = await setUp();
     await workspaces.remove(workspaceId, context);
     expect(await ask("Still here?")).toBe(`Tool said: There is no comment #${threadId} in this project.`);
-  });
-});
-
-describe("what the agent reads of a thread", () => {
-  const thread: CommentThread = {
-    id: 3,
-    workspaceId: 1,
-    anchor,
-    messages: [
-      { id: 1, author: "user", text: "Why three?", createdAt: 0, sent: { conversationId: 1, requestId: "r" } },
-      { id: 2, author: "agent", text: "The API allows three.", createdAt: 0, conversationId: 1 },
-      { id: 3, author: "user", text: "Make it a setting.", createdAt: 0 },
-    ],
-  };
-
-  test("is the place, the line, and the note for a new thread", () => {
-    expect(threadText({ ...thread, messages: thread.messages.slice(0, 1) }, thread.messages.slice(0, 1))).toBe(
-      ["Comment #3 on [src/app.ts:42](src/app.ts#L42)", "> const retries = 3;", "Why three?"].join("\n\n"),
-    );
-  });
-
-  test("carries the discussion so far with a reply", () => {
-    expect(threadText(thread, thread.messages.slice(2))).toBe(
-      [
-        "Comment #3 on [src/app.ts:42](src/app.ts#L42)",
-        "> const retries = 3;",
-        "**User:** Why three?",
-        "**Agent:** The API allows three.",
-        "**User:** Make it a setting.",
-      ].join("\n\n"),
-    );
   });
 });

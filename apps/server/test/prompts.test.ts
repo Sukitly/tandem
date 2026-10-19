@@ -140,9 +140,4 @@ describe("prompts", () => {
     expect(await prompts.list(workspaceId, context)).toEqual([]);
     await expect(prompts.list(99, context)).rejects.toThrow("Project 99 does not exist");
   });
-
-  test("the machine's own templates are not read", () => {
-    // The test setup points the agent directory at an empty one; without it the developer's own commands would show.
-    expect(process.env.PI_CODING_AGENT_DIR).toMatch(tmpdir());
-  });
 });

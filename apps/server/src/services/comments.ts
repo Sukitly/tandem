@@ -286,7 +286,7 @@ export class CommentBoard {
  * What the agent reads of a thread: its number, so that a reply can name it, the place and the line it is about, what
  * was said before, and the new messages. The place is a Markdown link, so the transcript shows it as one.
  */
-export function threadText(thread: CommentThread, messages: readonly CommentMessage[]): string {
+function threadText(thread: CommentThread, messages: readonly CommentMessage[]): string {
   const { path, line, quote } = thread.anchor;
   const last = Math.max(...messages.map((message) => message.id));
   // Everything said up to the newest message, so that a conversation that did not see the thread can follow it.

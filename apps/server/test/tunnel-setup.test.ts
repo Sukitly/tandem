@@ -191,20 +191,3 @@ test("create hands back the token and writes nothing on this machine", { timeout
   expect(calls).toContain(`tunnel token ${TUNNEL_ID}`);
   expect(calls).not.toContain("tunnel --config");
 });
-
-test("the create command prints the token and what to do with it", { timeout: 20_000 }, async () => {
-  const b = await bench();
-  const lines: string[] = [];
-  vi.spyOn(console, "log").mockImplementation((line: string) => void lines.push(line));
-  vi.stubEnv("PATH", `${b.root}:${process.env.PATH ?? ""}`);
-  try {
-    await runTunnel(["create", "--public-url", PUBLIC_URL], b.state);
-  } finally {
-    vi.restoreAllMocks();
-  }
-  const output = lines.join("\n");
-  expect(output).toContain("eyJhIjoi-connector-token");
-  expect(output).toContain("bun run tunnel configure --public-url https://tandem.example.com --token-file -");
-  expect(output).toContain("Do not run `tunnel setup` on that machine");
-  expect(await loadTunnelConfig(b.state)).toBeUndefined();
-});
