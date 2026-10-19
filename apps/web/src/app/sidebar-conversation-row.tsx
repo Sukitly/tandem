@@ -1,4 +1,5 @@
 import type { ConversationSummary } from "@tandem/contracts";
+import { Link } from "@tanstack/react-router";
 import { EllipsisIcon } from "lucide-react";
 import { ConversationMenu } from "@/chat/conversation-menu.tsx";
 import {
@@ -28,7 +29,7 @@ export function ProjectConversationItem({
   return (
     <SidebarMenuSubItem className="group/conv-row relative">
       <SidebarMenuSubButton
-        href={`#${summary.id}`}
+        render={<Link to="/c/$conversationId" params={{ conversationId: String(summary.id) }} />}
         onClick={closeNavigation}
         isActive={isSelected}
         aria-current={isSelected ? "page" : undefined}
@@ -69,7 +70,14 @@ export function RecentConversationItem({
   return (
     <SidebarMenuItem className="group/conv-row relative">
       <SidebarMenuButton
-        render={<a href={`#${summary.id}`} onClick={closeNavigation} aria-current={isSelected ? "page" : undefined} />}
+        render={
+          <Link
+            to="/c/$conversationId"
+            params={{ conversationId: String(summary.id) }}
+            onClick={closeNavigation}
+            aria-current={isSelected ? "page" : undefined}
+          />
+        }
         isActive={isSelected}
         className={cn(isSelected && "bg-sidebar-accent", "pr-7")}
         title={summary.cwd}

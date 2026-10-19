@@ -1,11 +1,12 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { tunnelTokenIdentity } from "@tandem/contracts";
+import { Link, useCanGoBack, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
-import { createContext, type MouseEvent, type ReactNode, useContext, useEffect, useRef, useState } from "react";
-import { navigate as navigateTo, routeHash, useRoute } from "@/app/navigation.ts";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { FieldError } from "@/components/ui/field.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { isPlainClick } from "@/lib/click.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { pastedToken } from "./cloudflare.ts";
@@ -13,68 +14,16 @@ import { PublicAccessStatus } from "./public-access-status.tsx";
 import { PublicAccessFlow } from "./setup-guide.tsx";
 import { UnpublishDialog } from "./unpublish-dialog.tsx";
 
-const PublicAccessPageContext = createContext<{ href: string; onClick(event: MouseEvent<HTMLAnchorElement>): void }>({
-  href: `/${routeHash({ kind: "publicAccess" })}`,
-  onClick: () => {},
-});
-
-export function usePublicAccessPage() {
-  return useContext(PublicAccessPageContext);
-}
-
-export function PublicAccessPageProvider({ children }: { children: ReactNode }) {
-  const workspaceUrl = useRef("/");
-  const route = useRoute();
-  const open = route.kind === "publicAccess";
-
+/** The page for publishing this machine, in place of the workbench, which waits hidden behind it. */
+export function PublicAccessPage() {
   useEffect(() => {
-    if (route.kind !== "publicAccess") {
-      workspaceUrl.current = window.location.pathname + window.location.search + window.location.hash;
-    }
-  }, [route]);
-
-  useEffect(() => {
-    if (!open) return;
     const previous = document.title;
     document.title = "Public access · Tandem";
     return () => {
       document.title = previous;
     };
-  }, [open]);
+  }, []);
 
-  const navigate = (event: MouseEvent<HTMLAnchorElement>, show: boolean) => {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey ||
-      (event.currentTarget.target && event.currentTarget.target !== "_self")
-    )
-      return;
-    event.preventDefault();
-    if (show) workspaceUrl.current = window.location.pathname + window.location.search + window.location.hash;
-    navigateTo(event.currentTarget.href);
-  };
-
-  return (
-    <PublicAccessPageContext.Provider
-      value={{ href: `/${routeHash({ kind: "publicAccess" })}`, onClick: (event) => navigate(event, true) }}
-    >
-      <div hidden={open}>{children}</div>
-      {open && <PublicAccessPage backHref={workspaceUrl.current} onBack={(event) => navigate(event, false)} />}
-    </PublicAccessPageContext.Provider>
-  );
-}
-
-function PublicAccessPage({
-  backHref,
-  onBack,
-}: {
-  backHref: string;
-  onBack: (event: MouseEvent<HTMLAnchorElement>) => void;
-}) {
   const { publicAccess } = useConnected();
   const state = useReplicatedState(publicAccess.state);
   const [origin, setOrigin] = useState("https://");
@@ -114,14 +63,7 @@ function PublicAccessPage({
       <div className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-6 px-4 py-6 sm:px-8 sm:py-10 [overflow-wrap:anywhere]">
         <header className="space-y-3">
           <nav aria-label="Page navigation">
-            <a
-              href={backHref}
-              onClick={onBack}
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground hover:underline"
-            >
-              <ArrowLeftIcon className="size-4" aria-hidden="true" />
-              Back to workspace
-            </a>
+            <BackToWorkspace />
           </nav>
           <h1 className="text-2xl font-semibold" tabIndex={-1} ref={focusHeading}>
             Public access
@@ -180,4 +122,24 @@ function PublicAccessPage({
 
 function focusHeading(node: HTMLHeadingElement | null) {
   node?.focus();
+}
+
+/** Back, when the workspace is where this page was reached from, returns to the very page it left. */
+function BackToWorkspace() {
+  const router = useRouter();
+  const canGoBack = useCanGoBack();
+  return (
+    <Link
+      to="/"
+      onClick={(event) => {
+        if (!canGoBack || !isPlainClick(event)) return;
+        event.preventDefault();
+        router.history.back();
+      }}
+      className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground hover:underline"
+    >
+      <ArrowLeftIcon className="size-4" aria-hidden="true" />
+      Back to workspace
+    </Link>
+  );
 }

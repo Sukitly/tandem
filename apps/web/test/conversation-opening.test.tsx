@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { ChatView } from "../src/chat/chat-view.tsx";
+import { renderInRouter } from "./in-router.tsx";
 
 const state = vi.hoisted(() => {
   const listeners = new Set<() => void>();
@@ -19,19 +20,17 @@ const state = vi.hoisted(() => {
       for (const listener of listeners) listener();
     }),
   };
-  return { open, select: vi.fn() };
+  return { open };
 });
 vi.mock("../src/rpc/connection.tsx", () => ({ useConnected: () => ({ open: state.open }) }));
-vi.mock("../src/app/workbench.tsx", () => ({ useWorkbench: () => ({ select: state.select }) }));
 afterEach(() => {
   cleanup();
   state.open.retry.mockClear();
   state.open.failureValue = new Error("Permission denied");
-  state.select.mockClear();
 });
 
-test("an opening failure has a retry action that returns to the loading state", () => {
-  render(<ChatView conversationId={7} />);
+test("an opening failure has a retry action that returns to the loading state", async () => {
+  await renderInRouter(<ChatView conversationId={7} />, { path: "/c/7" });
   expect(screen.getByRole("alert").textContent).toBe("Permission denied");
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(state.open.retry).toHaveBeenCalledWith(7);
@@ -39,8 +38,10 @@ test("an opening failure has a retry action that returns to the loading state", 
   expect(screen.getByText("Opening the conversation")).toBeTruthy();
 });
 
-test("failed conversations can be left without reloading the page", () => {
-  render(<ChatView conversationId={7} />);
-  fireEvent.click(screen.getByRole("button", { name: "Back to workspace" }));
-  expect(state.select).toHaveBeenCalledWith(null);
+test("failed conversations can be left without reloading the page", async () => {
+  const { router } = await renderInRouter(<ChatView conversationId={7} />, { path: "/c/7" });
+  const back = screen.getByRole("link", { name: "Back to workspace" });
+  expect(back.getAttribute("href")).toBe("/");
+  fireEvent.click(back);
+  await waitFor(() => expect(router.state.location.pathname).toBe("/"));
 });

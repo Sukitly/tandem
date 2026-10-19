@@ -1,11 +1,12 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Conversation, ConversationNotice } from "@tandem/contracts";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { MessageCircleDashedIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useDrafts, useMessageDraft } from "@/app/drafts.tsx";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
-import { Button } from "@/components/ui/button.tsx";
+import { Button, buttonVariants } from "@/components/ui/button.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
 import {
   MessageScroller,
@@ -37,7 +38,6 @@ export function ChatView({ conversationId }: { conversationId: number }) {
   const conversation = useConversation(conversationId);
   const failure = useConversationFailure(conversationId);
   const { open } = useConnected();
-  const { select } = useWorkbench((state) => ({ select: state.select }));
 
   if (conversation === undefined && failure !== undefined) {
     return (
@@ -48,9 +48,9 @@ export function ChatView({ conversationId }: { conversationId: number }) {
         </EmptyHeader>
         <div className="flex gap-2">
           <Button onClick={() => open.retry(conversationId)}>Retry</Button>
-          <Button variant="outline" onClick={() => select(null)}>
+          <Link to="/" className={buttonVariants({ variant: "outline" })}>
             Back to workspace
-          </Button>
+          </Link>
         </div>
       </Empty>
     );
@@ -87,8 +87,8 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
   const { workspaces, conversations, models } = useConnected();
   const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
   const available = useReplicatedState(models.state);
-  const { select, comments, reportFailure } = useWorkbench((state) => ({
-    select: state.select,
+  const navigate = useNavigate();
+  const { comments, reportFailure } = useWorkbench((state) => ({
     comments: state.comments,
     reportFailure: state.reportFailure,
   }));
@@ -132,7 +132,8 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
               BACKGROUND_CONTEXT,
             );
             const moved = drafts?.move(draftKey, `conversation:${id}`);
-            select(id);
+            // The page for starting a conversation gives way to the conversation, which Back does not return to.
+            void navigate({ to: "/c/$conversationId", params: { conversationId: String(id) }, replace: true });
             if (moved === "conflict") {
               reportFailure(
                 "Conversation started; both drafts were kept",

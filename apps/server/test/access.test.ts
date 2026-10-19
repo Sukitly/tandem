@@ -325,7 +325,16 @@ describe("built web assets", () => {
     expect(html.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     expect(html.headers.get("content-security-policy")).toContain("sha256-");
     expect(html.headers.get("referrer-policy")).toBe("no-referrer");
-    expect((await fetch(new URL("/pair", server.url))).status).toBe(200);
+    // A page's address that no file is at is the page itself, whose router reads the address; nothing else is.
+    const asPage = { headers: { accept: "text/html,application/xhtml+xml" } };
+    for (const address of ["/pair", "/c/42", "/p/3/new", "/public-access"]) {
+      const page = await fetch(new URL(address, server.url), asPage);
+      expect(page.status, address).toBe(200);
+      expect(await page.text(), address).toContain("theme");
+    }
+    expect((await fetch(new URL("/c/42", server.url))).status).toBe(404);
+    expect((await fetch(new URL("/c/42", server.url), { headers: { accept: "application/json" } })).status).toBe(404);
+    expect((await fetch(new URL("/assets/missing.js", server.url), asPage)).status).toBe(404);
     const asset = await fetch(new URL("/assets/main-hash.js", server.url));
     expect(asset.headers.get("cache-control")).toContain("immutable");
     expect((await fetch(new URL("/link.txt", server.url))).status).toBe(404);

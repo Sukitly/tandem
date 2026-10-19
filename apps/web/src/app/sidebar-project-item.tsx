@@ -1,4 +1,5 @@
 import type { ConversationSummary, WorkspaceSummary } from "@tandem/contracts";
+import { Link } from "@tanstack/react-router";
 import { EllipsisIcon, FolderIcon, FolderMinusIcon, FolderOpenIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import {
@@ -38,10 +39,7 @@ export function ProjectItem({
   conversations: ConversationSummary[];
   selected: number | null;
 }) {
-  const { newConversation, removeProject } = useWorkbench((state) => ({
-    newConversation: state.newConversation,
-    removeProject: state.removeProject,
-  }));
+  const { removeProject } = useWorkbench((state) => ({ removeProject: state.removeProject }));
   const closeNavigation = useCloseSidebarOnNavigate();
   const { terminals } = useConnected();
   const running = (useReplicatedState(terminals.state)?.terminals ?? []).filter(
@@ -61,13 +59,11 @@ export function ProjectItem({
           <span>{project.name}</span>
         </CollapsibleTrigger>
         <SidebarMenuAction
+          render={<Link to="/p/$workspaceId/new" params={{ workspaceId: String(project.id) }} />}
           className={`${PROJECT_ACTION_CLASS} right-7`}
           title={`New conversation in ${project.name}`}
           aria-label={`New conversation in ${project.name}`}
-          onClick={() => {
-            newConversation(project.id);
-            closeNavigation();
-          }}
+          onClick={closeNavigation}
         >
           <PlusIcon />
         </SidebarMenuAction>

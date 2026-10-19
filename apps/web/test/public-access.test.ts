@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { Link } from "@tanstack/react-router";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { PublicAccessPageProvider, usePublicAccessPage } from "../src/tunnel/public-access.tsx";
+import { useOnPublicAccess } from "../src/app/current-route.ts";
+import { PublicAccessPage } from "../src/tunnel/public-access.tsx";
+import { renderInRouter } from "./in-router.tsx";
 
 const mock = vi.hoisted(() => ({
   state: { status: "none", cloudflared: true } as Record<string, unknown>,
@@ -14,14 +17,13 @@ vi.mock("../src/rpc/connection.tsx", () => ({
 }));
 vi.mock("../src/rpc/use-replicated-state.ts", () => ({ useReplicatedState: (state: unknown) => state }));
 
-function Open() {
-  const page = usePublicAccessPage();
-  return createElement("a", page, "Open");
+/** Stands for the session: the page when its address is open, and a link to it otherwise. */
+function Frame() {
+  return useOnPublicAccess() ? createElement(PublicAccessPage) : createElement(Link, { to: "/public-access" }, "Open");
 }
 
-function setup() {
-  render(createElement(PublicAccessPageProvider, null, createElement(Open)));
-  fireEvent.click(screen.getByRole("link", { name: "Open" }));
+async function setup(path = "/public-access") {
+  return renderInRouter(createElement(Frame), { path });
 }
 
 function fill(address: string, token: string) {
@@ -30,50 +32,60 @@ function fill(address: string, token: string) {
 }
 
 beforeEach(() => {
-  window.history.replaceState(null, "", "/");
   mock.state = { status: "none", cloudflared: true };
   vi.clearAllMocks();
 });
 afterEach(() => {
   cleanup();
-  window.history.replaceState(null, "", "/");
+  vi.restoreAllMocks();
 });
 
-test("opens a dedicated page from a real link and returns to the original conversation", () => {
-  window.history.replaceState(null, "", "/#42");
-  render(createElement(PublicAccessPageProvider, null, createElement(Open)));
-  expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe("/#public-access");
+test("opens a dedicated page from a real link, and Back returns to the page it left", async () => {
+  const { router } = await setup("/c/42");
+  expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe("/public-access");
   fireEvent.click(screen.getByRole("link", { name: "Open" }));
+  await waitFor(() => expect(screen.getByRole("heading", { level: 1, name: "Public access" })).toBeDefined());
   expect(screen.queryByRole("link", { name: "Open" })).toBeNull();
-  expect(screen.getByRole("heading", { level: 1, name: "Public access" })).toBeDefined();
-  expect(screen.getByRole("link", { name: "Back to workspace" }).getAttribute("href")).toBe("/#42");
   fireEvent.click(screen.getByRole("link", { name: "Back to workspace" }));
-  expect(window.location.hash).toBe("#42");
-  expect(screen.getByRole("link", { name: "Open" })).toBeDefined();
+  await waitFor(() => expect(screen.getByRole("link", { name: "Open" })).toBeDefined());
+  expect(router.state.location.pathname).toBe("/c/42");
 });
 
-test("opens directly from its URL and follows browser navigation", () => {
-  window.history.replaceState(null, "", "/#public-access");
-  render(createElement(PublicAccessPageProvider, null, createElement(Open)));
+test("opened directly, the page's Back goes to the workspace, as there is no page before it", async () => {
+  const { router } = await setup("/public-access");
   expect(screen.getByRole("main", { name: "Public access" })).toBeDefined();
-  window.history.replaceState(null, "", "/");
-  fireEvent.popState(window);
+  const back = screen.getByRole("link", { name: "Back to workspace" });
+  expect(back.getAttribute("href")).toBe("/");
+  fireEvent.click(back);
+  await waitFor(() => expect(router.state.location.pathname).toBe("/"));
   expect(screen.queryByRole("main", { name: "Public access" })).toBeNull();
 });
 
 test.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1 }])(
-  "leaves modified link clicks to the browser: %j",
-  (modifiers) => {
-    render(createElement(PublicAccessPageProvider, null, createElement(Open)));
-    const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers });
-    fireEvent(screen.getByRole("link", { name: "Open" }), event);
-    expect(event.defaultPrevented).toBe(false);
-    expect(screen.queryByRole("main", { name: "Public access" })).toBeNull();
+  "leaves a modified click on Back to the browser: %j",
+  async (modifiers) => {
+    const { router } = await setup("/public-access");
+    // The click is stopped at the document, as the browser's own navigation is not run here.
+    const reached = vi.fn();
+    const stop = (event: Event): void => {
+      reached(event.defaultPrevented);
+      event.preventDefault();
+    };
+    document.addEventListener("click", stop);
+    try {
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers });
+      fireEvent(screen.getByRole("link", { name: "Back to workspace" }), event);
+    } finally {
+      document.removeEventListener("click", stop);
+    }
+    expect(reached).toHaveBeenCalledWith(false);
+    expect(router.state.location.pathname).toBe("/public-access");
+    expect(screen.getByRole("main", { name: "Public access" })).toBeDefined();
   },
 );
 
-test("walks the website path in order, saying where each step happens and what it looks like when done", () => {
-  setup();
+test("walks the website path in order, saying where each step happens and what it looks like when done", async () => {
+  await setup();
   const steps = within(screen.getByRole("list", { name: "Cloudflare website setup steps" })).getAllByRole("heading", {
     level: 3,
   });
@@ -90,14 +102,14 @@ test("walks the website path in order, saying where each step happens and what i
   expect(screen.getAllByText(/Done when:/).length).toBeGreaterThan(0);
 });
 
-test("says the token comes from the manual command, without running it", () => {
-  setup();
+test("says the token comes from the manual command, without running it", async () => {
+  await setup();
   expect(screen.getByText(/The value after --token, not the whole command/)).toBeDefined();
 });
 
-test("publishes the address and the token the person entered", () => {
+test("publishes the address and the token the person entered", async () => {
   mock.publish.mockResolvedValue(undefined);
-  setup();
+  await setup();
   fill("https://tandem.example.com", "eyJhIjoi");
   fireEvent.click(screen.getByRole("button", { name: "Publish" }));
   expect(mock.publish).toHaveBeenCalledWith(
@@ -106,9 +118,9 @@ test("publishes the address and the token the person entered", () => {
   );
 });
 
-test("automatically extracts token if user pastes the full cloudflared run command", () => {
+test("automatically extracts token if user pastes the full cloudflared run command", async () => {
   mock.publish.mockResolvedValue(undefined);
-  setup();
+  await setup();
   fill("https://tandem.example.com", "cloudflared tunnel run --token eyJhbGciOiJIUzI1NiJ9");
   expect((screen.getByLabelText("Tunnel token") as HTMLInputElement).value).toBe("eyJhbGciOiJIUzI1NiJ9");
   fireEvent.click(screen.getByRole("button", { name: "Publish" }));
@@ -118,8 +130,8 @@ test("automatically extracts token if user pastes the full cloudflared run comma
   );
 });
 
-test("refuses to publish without HTTPS or without a token", () => {
-  setup();
+test("refuses to publish without HTTPS or without a token", async () => {
+  await setup();
   fill("http://tandem.example.com", "eyJhIjoi");
   expect(screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled")).toBe(true);
   fill("https://tandem.example.com", "");
@@ -127,8 +139,8 @@ test("refuses to publish without HTTPS or without a token", () => {
   expect(mock.publish).not.toHaveBeenCalled();
 });
 
-test("names Cloudflare Access as a step, with the hostname it protects", () => {
-  setup();
+test("names Cloudflare Access as a step, with the hostname it protects", async () => {
+  await setup();
   expect(screen.getByText("A connected tunnel is not a login")).toBeDefined();
   expect(screen.getByText(/Never/).textContent).toContain("Bypass");
   expect(screen.getByRole("link", { name: "Open Cloudflare Access applications" }).getAttribute("href")).toBe(
@@ -138,14 +150,14 @@ test("names Cloudflare Access as a step, with the hostname it protects", () => {
   expect(screen.getByText("A different, unlisted email is refused.")).toBeDefined();
 });
 
-test("directly jumps to the specific tunnel routes and access pages when tunnel identity is known", () => {
+test("directly jumps to the specific tunnel routes and access pages when tunnel identity is known", async () => {
   mock.state = {
     status: "connected",
     cloudflared: true,
     publicUrl: "https://tandem.example.com",
     tunnel: { accountId: "1234567890abcdef1234567890abcdef", tunnelId: "c4648dd8-acd3-48f5-9004-3f3dc20192c2" },
   };
-  setup();
+  await setup();
   const routeLinks = screen.getAllByRole("link", { name: "Open Tunnel in Cloudflare" });
   expect(routeLinks.length).toBeGreaterThanOrEqual(1);
   for (const link of routeLinks) {
@@ -159,8 +171,8 @@ test("directly jumps to the specific tunnel routes and access pages when tunnel 
   );
 });
 
-test("walks the CLI path on this machine, and on another computer with only a token", () => {
-  setup();
+test("walks the CLI path on this machine, and on another computer with only a token", async () => {
+  await setup();
   fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
   expect(screen.getByText("bun run tunnel setup --public-url https://tandem.example.com")).toBeDefined();
   expect(screen.queryByText("bun run tunnel create --public-url https://tandem.example.com")).toBeNull();
@@ -174,17 +186,17 @@ test("walks the CLI path on this machine, and on another computer with only a to
   expect(mock.publish).not.toHaveBeenCalled();
 });
 
-test("keeps the entered token when the setup method changes", () => {
-  setup();
+test("keeps the entered token when the setup method changes", async () => {
+  await setup();
   fill("https://tandem.example.com", "saved-token");
   fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
   fireEvent.click(screen.getByRole("tab", { name: "Cloudflare website" }));
   expect((screen.getByLabelText("Tunnel token") as HTMLInputElement).value).toBe("saved-token");
 });
 
-test("shows how to install cloudflared and blocks publishing without it", () => {
+test("shows how to install cloudflared and blocks publishing without it", async () => {
   mock.state = { status: "none", cloudflared: false };
-  setup();
+  await setup();
   expect(screen.getByRole("heading", { name: "Install cloudflared on the host" })).toBeDefined();
   expect(screen.getByText("brew install cloudflared")).toBeDefined();
   expect(screen.getByRole("button", { name: "Publish" }).hasAttribute("disabled")).toBe(true);
@@ -193,7 +205,7 @@ test("shows how to install cloudflared and blocks publishing without it", () => 
 test("reports a connected tunnel, replaces the publish form, and offers to stop", async () => {
   mock.state = { status: "connected", cloudflared: true, publicUrl: "https://tandem.example.com" };
   mock.unpublish.mockResolvedValue(undefined);
-  setup();
+  await setup();
   expect(screen.getByText(/Tunnel connected for/)).toBeDefined();
   expect(screen.getByText(/The address only reaches it once you finish the route and Access steps/)).toBeDefined();
   expect(screen.queryByLabelText("Tunnel token")).toBeNull();
@@ -217,7 +229,7 @@ test("shows loading state while publishing and while stopping", async () => {
       resolvePublish = resolve;
     }),
   );
-  setup();
+  await setup();
   fill("https://tandem.example.com", "eyJhIjoi");
   const publishBtn = screen.getByRole("button", { name: "Publish" });
   fireEvent.click(publishBtn);
@@ -226,13 +238,13 @@ test("shows loading state while publishing and while stopping", async () => {
   await waitFor(() => expect(screen.queryByRole("button", { name: /Publishing…/ })).toBeNull());
 });
 
-test("reports the reason a tunnel is not reachable", () => {
+test("reports the reason a tunnel is not reachable", async () => {
   mock.state = {
     status: "failed",
     cloudflared: true,
     publicUrl: "https://tandem.example.com",
     message: "cloudflared exited with 255",
   };
-  setup();
+  await setup();
   expect(screen.getByText("cloudflared exited with 255")).toBeDefined();
 });

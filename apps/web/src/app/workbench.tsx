@@ -12,7 +12,6 @@ import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
-import { useRoute } from "./navigation.ts";
 import { ProjectResources } from "./project-resources.ts";
 import { errorMessage, SnapshotProvider } from "./query-client.tsx";
 import { createWorkbenchStore, type WorkbenchState, type WorkbenchStore } from "./workbench-store.ts";
@@ -52,36 +51,33 @@ export function useWorkbench<T>(select?: (state: Workbench) => T): T | Workbench
   );
 }
 
-export function WorkbenchProvider({ children }: { children: ReactNode }) {
+/** `workspaceId` is the project the page that is open is about, which the workbench's panel shows. */
+export function WorkbenchProvider({
+  workspaceId = null,
+  children,
+}: {
+  workspaceId?: number | null;
+  children: ReactNode;
+}) {
   return (
     <SnapshotProvider>
-      <WorkbenchSession>{children}</WorkbenchSession>
+      <WorkbenchSession workspaceId={workspaceId}>{children}</WorkbenchSession>
     </SnapshotProvider>
   );
 }
 
-function WorkbenchSession({ children }: { children: ReactNode }) {
+function WorkbenchSession({ workspaceId, children }: { workspaceId: number | null; children: ReactNode }) {
   const { workspaces, conversations, files, comments } = useConnected();
   const client = useQueryClient();
   const mobile = useIsMobile();
-  const route = useRoute();
-  const [store] = useState(() => createWorkbenchStore(mobile, window.location.hash));
+  const [store] = useState(() => createWorkbenchStore(mobile));
   const [resources] = useState(() => new ProjectResources(files, comments, client));
-  const selected = useStore(store, (state) => state.selected);
-  const draft = useStore(store, (state) => state.draft);
   const listed = useReplicatedState(workspaces.state)?.workspaces;
-  const summaries = useReplicatedState(conversations.state)?.conversations;
-  const workspaceId = draft ?? summaries?.find((summary) => summary.id === selected)?.workspaceId ?? null;
 
   useEffect(() => store.getState().setMobile(mobile), [store, mobile]);
-  useEffect(() => store.getState().followRoute(route), [store, route]);
   useEffect(() => {
     if (listed !== undefined) resources.retain(listed.map((workspace) => workspace.id));
   }, [listed, resources]);
-  useEffect(() => {
-    if (selected !== null && summaries !== undefined && !summaries.some((summary) => summary.id === selected))
-      store.getState().select(null);
-  }, [selected, summaries, store]);
   useDisposable(resources);
 
   const actions = useMemo<WorkbenchActions>(() => {
@@ -107,22 +103,14 @@ function WorkbenchSession({ children }: { children: ReactNode }) {
       openChange(target) {
         if (workspaceId !== null) store.getState().revealChange({ workspaceId, ...target });
       },
+      // A page about what is removed leaves by itself: the conversation or project is no longer there.
       removeProject(id) {
-        const before = store.getState();
-        void command("Could not remove the project", async () => {
-          await workspaces.remove(id, BACKGROUND_CONTEXT);
-          const after = store.getState();
-          if (workspaceId === id && after.selected === before.selected && after.draft === before.draft)
-            after.select(null);
-        }).catch(() => {});
+        void command("Could not remove the project", () => workspaces.remove(id, BACKGROUND_CONTEXT)).catch(() => {});
       },
       renameConversation: (id, title) =>
         command("Could not rename the conversation", () => conversations.rename(id, title, BACKGROUND_CONTEXT)),
       removeConversation: (id) =>
-        command("Could not delete the conversation", async () => {
-          await conversations.remove(id, BACKGROUND_CONTEXT);
-          if (store.getState().selected === id) store.getState().select(null);
-        }),
+        command("Could not delete the conversation", () => conversations.remove(id, BACKGROUND_CONTEXT)),
     };
   }, [resources, store, workspaceId, workspaces, conversations]);
   const value = useMemo(() => ({ store, actions, workspaceId }), [store, actions, workspaceId]);

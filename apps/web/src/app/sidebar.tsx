@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { GlobeIcon, KeyRoundIcon, PlusIcon } from "lucide-react";
 import { useDevicesDialog } from "@/auth/devices-dialog.tsx";
 import {
@@ -16,7 +17,7 @@ import {
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import { usePublicAccessPage } from "@/tunnel/public-access.tsx";
+import { useConversationId } from "./current-route.ts";
 import { SidebarBrand } from "./sidebar-brand.tsx";
 import { RecentConversationItem } from "./sidebar-conversation-row.tsx";
 import { ProjectItem } from "./sidebar-project-item.tsx";
@@ -27,19 +28,16 @@ export { SidebarBrand, SidebarToggle } from "./sidebar-brand.tsx";
 
 /**
  * The app's navigation: projects with their conversations, then every conversation by recent
- * activity. A conversation's link sets the URL hash, which is how the open conversation is chosen.
+ * activity. A conversation's link is its page, and the open page's address is what marks it selected.
  */
 export function AppSidebar() {
   const { workspaces, conversations } = useConnected();
   const projects = useReplicatedState(workspaces.state)?.workspaces ?? [];
   const list = useReplicatedState(conversations.state)?.conversations ?? [];
-  const { selected, addProject } = useWorkbench((state) => ({
-    selected: state.selected,
-    addProject: state.addProject,
-  }));
+  const selected = useConversationId();
+  const { addProject } = useWorkbench((state) => ({ addProject: state.addProject }));
   const providers = useProvidersDialog();
   const devices = useDevicesDialog();
-  const publicAccess = usePublicAccessPage();
   const names = new Map(projects.map((project) => [project.id, project.name]));
 
   return (
@@ -99,10 +97,7 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              tooltip="Public access"
-              render={<a href={publicAccess.href} onClick={publicAccess.onClick} />}
-            >
+            <SidebarMenuButton tooltip="Public access" render={<Link to="/public-access" />}>
               <GlobeIcon />
               <span>Public access</span>
             </SidebarMenuButton>

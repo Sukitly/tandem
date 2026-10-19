@@ -1,7 +1,9 @@
 import type { ConversationSummary, WorkspaceSummary } from "@tandem/contracts";
+import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { createAppRouter } from "../src/app/router.tsx";
 import { AppSidebar } from "../src/app/sidebar.tsx";
 import { SidebarProvider } from "../src/components/ui/sidebar.tsx";
 
@@ -20,15 +22,15 @@ vi.mock("../src/rpc/connection.tsx", () => ({
   }),
 }));
 
+vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => false }));
+
 vi.mock("../src/rpc/use-replicated-state.ts", () => ({
   useReplicatedState: (value: unknown) => value,
 }));
 
 vi.mock("../src/app/workbench.tsx", () => ({
   useWorkbench: () => ({
-    selected: state.selected,
     addProject: vi.fn(),
-    newConversation: vi.fn(),
     removeProject: vi.fn(),
     renameConversation: vi.fn(),
     removeConversation: vi.fn(),
@@ -39,8 +41,15 @@ vi.mock("../src/models/providers-dialog.tsx", () => ({
   useProvidersDialog: () => ({ open: vi.fn() }),
 }));
 
-function sidebar(defaultOpen = true): string {
-  return renderToStaticMarkup(createElement(SidebarProvider, { defaultOpen }, createElement(AppSidebar)));
+/** The sidebar as the page draws it, with the conversation the test selects open. */
+async function sidebar(defaultOpen = true): Promise<string> {
+  const path = state.selected === null ? "/" : `/c/${state.selected}`;
+  const router = createAppRouter({
+    history: createMemoryHistory({ initialEntries: [path] }),
+    layout: () => createElement(SidebarProvider, { defaultOpen }, createElement(AppSidebar)),
+  });
+  await router.load();
+  return renderToStaticMarkup(createElement(RouterProvider, { router }));
 }
 
 beforeEach(() => {
@@ -50,8 +59,10 @@ beforeEach(() => {
 });
 
 describe("sidebar toggle", () => {
-  test("uses a directional close icon and the same ghost icon button as the project panel", () => {
-    const toggle = sidebar().match(/<button\b[^>]*aria-label="Collapse the sidebar"[^>]*>[\s\S]*?<\/button>/)?.[0];
+  test("uses a directional close icon and the same ghost icon button as the project panel", async () => {
+    const toggle = (await sidebar()).match(
+      /<button\b[^>]*aria-label="Collapse the sidebar"[^>]*>[\s\S]*?<\/button>/,
+    )?.[0];
     expect(toggle).toBeDefined();
     expect(toggle).toContain("lucide-chevron-left");
     expect(toggle).toContain("group/button");
@@ -63,29 +74,31 @@ describe("sidebar toggle", () => {
     expect(toggle).not.toContain('data-sidebar="menu-action"');
   });
 
-  test("uses a directional open icon when the sidebar is collapsed", () => {
-    const toggle = sidebar(false).match(/<button\b[^>]*aria-label="Expand the sidebar"[^>]*>[\s\S]*?<\/button>/)?.[0];
+  test("uses a directional open icon when the sidebar is collapsed", async () => {
+    const toggle = (await sidebar(false)).match(
+      /<button\b[^>]*aria-label="Expand the sidebar"[^>]*>[\s\S]*?<\/button>/,
+    )?.[0];
     expect(toggle).toBeDefined();
     expect(toggle).toContain("lucide-chevron-right");
     expect(toggle).not.toContain("tooltip-trigger");
     expect(toggle).not.toContain("title=");
     expect(toggle).toContain("hover:bg-sidebar-accent");
     expect(toggle).not.toContain("lucide-bike");
-    expect(sidebar(false)).not.toContain('aria-label="Collapse the sidebar"');
+    expect(await sidebar(false)).not.toContain('aria-label="Collapse the sidebar"');
   });
 });
 
 describe("conversation creation in the sidebar", () => {
-  test("has no global conversation action when no project exists", () => {
-    expect(sidebar()).not.toContain("New conversation");
+  test("has no global conversation action when no project exists", async () => {
+    expect(await sidebar()).not.toContain("New conversation");
   });
 
-  test("offers conversation creation only within each project", () => {
+  test("offers conversation creation only within each project", async () => {
     state.workspaces.workspaces = [
       { id: 1, name: "First", path: "/projects/first" },
       { id: 2, name: "Second", path: "/projects/second" },
     ];
-    const markup = sidebar();
+    const markup = await sidebar();
     expect(markup).toContain('aria-label="New conversation in First"');
     expect(markup).toContain('aria-label="New conversation in Second"');
     expect(markup).not.toContain('title="New conversation"');
@@ -109,8 +122,8 @@ describe("project row actions", () => {
     ];
   });
 
-  test("limits the action hover group to the project header, excluding conversations", () => {
-    const markup = sidebar();
+  test("limits the action hover group to the project header, excluding conversations", async () => {
+    const markup = await sidebar();
     const row = markup.match(/<div class="group\/project-row relative">([\s\S]*?)<\/div>/)?.[1];
     expect(row).toBeDefined();
     expect(row).toContain('aria-label="New conversation in First"');
@@ -119,8 +132,8 @@ describe("project row actions", () => {
     expect(markup).toContain("Existing conversation");
   });
 
-  test("uses row hover and focus at every width while keeping touch and expanded actions visible", () => {
-    const actions = (sidebar().match(/<button\b[^>]*>/g) ?? []).filter(
+  test("uses row hover and focus at every width while keeping touch and expanded actions visible", async () => {
+    const actions = ((await sidebar()).match(/<(?:button|a)\b[^>]*>/g) ?? []).filter(
       (button) =>
         button.includes('aria-label="New conversation in First"') || button.includes('aria-label="More for First"'),
     );
@@ -139,7 +152,7 @@ describe("project row actions", () => {
 });
 
 function conversationRows(markup: string, id: number): string[] {
-  return (markup.match(/<a\b[^>]*>/g) ?? []).filter((link) => link.includes(`href="#${id}"`));
+  return (markup.match(/<a\b[^>]*>/g) ?? []).filter((link) => link.includes(`href="/c/${id}"`));
 }
 
 function rowClasses(row: string): string[] {
@@ -160,9 +173,9 @@ describe("the current conversation background", () => {
     }));
   });
 
-  test("keeps the workspace hover background on the current conversation in both lists", () => {
+  test("keeps the workspace hover background on the current conversation in both lists", async () => {
     state.selected = 10;
-    const markup = sidebar();
+    const markup = await sidebar();
     const currentRows = conversationRows(markup, 10);
     expect(currentRows).toHaveLength(2);
     for (const row of currentRows) {
@@ -181,8 +194,10 @@ describe("the current conversation background", () => {
     expect(rowClasses(projectButton ?? "")).not.toContain("bg-sidebar-accent");
   });
 
-  test("aligns conversation backgrounds with the project row's right edge while keeping left indentation", () => {
-    const list = (sidebar().match(/<ul\b[^>]*>/g) ?? []).find((tag) => tag.includes('data-slot="sidebar-menu-sub"'));
+  test("aligns conversation backgrounds with the project row's right edge while keeping left indentation", async () => {
+    const list = ((await sidebar()).match(/<ul\b[^>]*>/g) ?? []).find((tag) =>
+      tag.includes('data-slot="sidebar-menu-sub"'),
+    );
     expect(list).toBeDefined();
     const classes = rowClasses(list ?? "");
     expect(classes).toContain("mr-0");
@@ -191,11 +206,13 @@ describe("the current conversation background", () => {
     expect(classes).toContain("px-2.5");
   });
 
-  test("moves the persistent background in both lists when the current conversation changes", () => {
+  test("moves the persistent background in both lists when the current conversation changes", async () => {
     state.selected = 10;
-    expect(conversationRows(sidebar(), 10).every((row) => rowClasses(row).includes("bg-sidebar-accent"))).toBe(true);
+    expect(conversationRows(await sidebar(), 10).every((row) => rowClasses(row).includes("bg-sidebar-accent"))).toBe(
+      true,
+    );
     state.selected = 11;
-    const markup = sidebar();
+    const markup = await sidebar();
     for (const row of conversationRows(markup, 10)) {
       expect(rowClasses(row)).not.toContain("bg-sidebar-accent");
       expect(row).not.toContain("aria-current");
@@ -206,8 +223,8 @@ describe("the current conversation background", () => {
     }
   });
 
-  test("does not keep a conversation highlighted when no conversation is open", () => {
-    const markup = sidebar();
+  test("does not keep a conversation highlighted when no conversation is open", async () => {
+    const markup = await sidebar();
     for (const id of [10, 11]) {
       const rows = conversationRows(markup, id);
       expect(rows).toHaveLength(2);
@@ -235,8 +252,8 @@ describe("conversation actions in the sidebar", () => {
     ];
   });
 
-  test("renders action triggers with accessible labels for both project and recent conversation rows", () => {
-    const markup = sidebar();
+  test("renders action triggers with accessible labels for both project and recent conversation rows", async () => {
+    const markup = await sidebar();
     const actions = (markup.match(/<button\b[^>]*>/g) ?? []).filter((button) =>
       button.includes('aria-label="More for Test conversation"'),
     );

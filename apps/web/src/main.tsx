@@ -12,6 +12,6 @@ const pairCode = takePairingCode();
 
 createRoot(root).render(
   <StrictMode>
-    <App initialPairCode={pairCode} />
+    <App pairCode={pairCode} />
   </StrictMode>,
 );
