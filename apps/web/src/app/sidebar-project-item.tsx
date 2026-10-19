@@ -27,7 +27,7 @@ import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ProjectConversationItem } from "./sidebar-conversation-row.tsx";
 import { useCloseSidebarOnNavigate } from "./sidebar-navigation.ts";
 
-export const PROJECT_ACTION_CLASS =
+const PROJECT_ACTION_CLASS =
   "opacity-0 group-hover/project-row:opacity-100 group-focus-within/project-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
 
 /** A project that opens to show its conversations. Its row reveals actions on hover or keyboard focus. */

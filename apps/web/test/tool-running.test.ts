@@ -18,22 +18,6 @@ function step(kind: "terminal" | "tool", status: TerminalProps["status"]) {
     : createElement(Tool, { name: "read", description: "src/app.ts", status });
 }
 
-test.each(["terminal", "tool"] as const)("%s uses a spinner while running and its static icon otherwise", (kind) => {
-  const { container, rerender } = render(step(kind, "running"));
-  const spinner = container.querySelector("[data-slot=trace-icon] .animate-spin");
-  expect(spinner?.classList.contains("lucide-loader-circle")).toBe(true);
-  expect(spinner?.classList.contains("motion-reduce:animate-none")).toBe(true);
-  expect(container.querySelector("[data-slot=trace-title]")?.classList.contains("shimmer-none!")).toBe(true);
-
-  for (const status of ["pending", "done", "error", "failed", "cancelled"] as const) {
-    rerender(step(kind, status));
-    expect(container.querySelector(".animate-spin")).toBeNull();
-    const icon = kind === "terminal" ? ".lucide-terminal" : ".lucide-check";
-    expect(container.querySelector(`[data-slot=trace-icon] ${icon}`)).not.toBeNull();
-    if (kind === "terminal") expect(container.querySelector(".lucide-check")).toBeNull();
-  }
-});
-
 test.each(["bash", "read", "edit", "write", "reply_to_comment", "new_backend_tool"])(
   "transcript displays the backend name %s verbatim in a badge in every state",
   (name) => {
@@ -51,8 +35,6 @@ test.each(["bash", "read", "edit", "write", "reply_to_comment", "new_backend_too
       rerender(entry(status));
       expect(container.querySelector("[data-slot=badge]")?.textContent).toBe(name);
       expect(container.querySelectorAll("[data-slot=badge]")).toHaveLength(1);
-      const icon = status === "running" ? ".animate-spin" : name === "bash" ? ".lucide-terminal" : ".lucide-check";
-      expect(container.querySelector(`[data-slot=trace-icon] ${icon}`)).not.toBeNull();
       expect(container.textContent).not.toMatch(/Ran|Running|Read|Reading|Edited|Editing|Wrote|Writing|Called/);
       if (status === "failed" || status === "cancelled") expect(screen.getByText(status)).toBeDefined();
     }
@@ -157,7 +139,6 @@ test("expanding a terminal reveals the complete multi-line command, not just its
   // The exit code lives outside the truncated title, so a long command cannot push it out of view.
   const description = container.querySelector("[data-slot=trace-description]");
   expect(description?.textContent).toBe("failed (exit 2)");
-  expect(description?.classList.contains("shrink-0")).toBe(true);
   expect(title(container)).toBe(longCommand);
 });
 

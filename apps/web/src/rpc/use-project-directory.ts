@@ -5,7 +5,7 @@ import { useState } from "react";
 import { serviceKey } from "@/app/query-client.tsx";
 import { errorMessage } from "@/lib/errors.ts";
 
-export type ProjectDirectoryRead =
+type ProjectDirectoryRead =
   | { status: "loading" }
   | { status: "ready"; value: ProjectDirectory }
   | { status: "failed"; message: string };

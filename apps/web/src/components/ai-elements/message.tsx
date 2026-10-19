@@ -3,10 +3,6 @@ import { Button } from "@/components/ui/button.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
 import { cn } from "@/lib/utils.ts";
 
-export function MessageActions({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="message-actions" className={cn("flex items-center gap-1", className)} {...props} />;
-}
-
 export function MessageAction({
   label,
   children,

@@ -113,7 +113,7 @@ function listed(stored: readonly StoredWorkspace[]): WorkspaceSummary[] {
 }
 
 /** An existing directory's absolute path, with `~` expanded. */
-export async function directory(input: string): Promise<string> {
+async function directory(input: string): Promise<string> {
   if (typeof input !== "string" || input.trim() === "") throw invalidInput("Enter the directory's path");
   const trimmed = input.trim();
   const expanded = trimmed === "~" || trimmed.startsWith("~/") ? join(homedir(), trimmed.slice(1)) : trimmed;

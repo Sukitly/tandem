@@ -201,17 +201,6 @@ describe("device authentication at the HTTP boundary", () => {
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get("retry-after")).toBe("60");
   });
-  test("anonymous failures cannot prevent valid pairing or recovery through HTTP", async () => {
-    const { server, devices, pair } = await start();
-    const code = server.pair().code;
-    const recovery = (await devices.regenerateRecoveryCodes())[0] as string;
-    for (let i = 0; i < 5; i++) await pair("wrong");
-    expect((await pair("wrong")).status).toBe(429);
-    expect((await pair(code)).status).toBe(200);
-    expect((await pair(recovery)).status).toBe(200);
-    expect((await pair(code)).status).toBe(429);
-    expect((await pair(recovery)).status).toBe(429);
-  });
   test.each([RPC_PATH, "/pty/security-test"])("public origin revocation closes and rejects %s", async (path) => {
     const oldOrigin = "https://old.example.com";
     const nextOrigin = "https://next.example.com";

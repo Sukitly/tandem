@@ -9,8 +9,6 @@ import { ModelPicker } from "./model-picker.tsx";
 import { ThinkingSelector } from "./thinking-selector.tsx";
 import type { ContextUsage } from "./transcript.ts";
 
-export { formatCost, formatTokens } from "./context-usage.tsx";
-
 export interface AgentChoice {
   model?: ModelRef;
   thinkingLevel?: string;

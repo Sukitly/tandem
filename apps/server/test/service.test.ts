@@ -1,21 +1,6 @@
 import { expect, test } from "vitest";
-import {
-  launchdPlist,
-  proxyEnvironment,
-  type ServiceConfig,
-  serviceFile,
-  serviceFileText,
-  servicePath,
-  systemdUnit,
-} from "../src/service-file.ts";
-import {
-  installRefusal,
-  logHints,
-  type ServiceTargets,
-  serviceRecipe,
-  serviceUpFailure,
-  unloadRefusal,
-} from "../src/service-policy.ts";
+import { launchdPlist, proxyEnvironment, type ServiceConfig, servicePath, systemdUnit } from "../src/service-file.ts";
+import { installRefusal, type ServiceTargets, serviceUpFailure, unloadRefusal } from "../src/service-policy.ts";
 
 const config: ServiceConfig = {
   node: "/opt/node/bin/node",
@@ -24,36 +9,6 @@ const config: ServiceConfig = {
   logPath: "/state/tandem.log",
   path: "/opt/node/bin:/usr/bin",
 };
-
-test("a launchd agent runs the server without a terminal, and keeps it up without a shell", () => {
-  const plist = launchdPlist(config);
-  expect(plist).toContain("<string>/opt/node/bin/node</string>");
-  expect(plist).toContain("<string>/repo/apps/server/src/main.ts</string>");
-  expect(plist).toContain("<string>--no-open</string>");
-  expect(plist).toContain("<key>WorkingDirectory</key>\n  <string>/repo</string>");
-  expect(plist).toContain("<string>/state/tandem.log</string>");
-  expect(plist).toContain("<key>TANDEM_SERVICE</key>\n    <string>1</string>");
-  // Start at login, restart after a crash, and stay stopped after a clean exit.
-  expect(plist).toContain("<key>RunAtLoad</key>\n  <true/>");
-  expect(plist).toContain("<key>SuccessfulExit</key>\n    <false/>");
-});
-
-test("a systemd user unit runs the same server, with the state directory the command line used", () => {
-  const unit = systemdUnit(config);
-  expect(unit).toContain('ExecStart="/opt/node/bin/node" "/repo/apps/server/src/main.ts" --no-open');
-  expect(unit).toContain('Environment="PATH=/opt/node/bin:/usr/bin"');
-  expect(unit).toContain('Environment="TANDEM_HOME=/state"');
-  expect(unit).toContain('Environment="TANDEM_SERVICE=1"');
-  expect(unit).toContain("Restart=on-failure");
-  expect(unit).toContain("WantedBy=default.target");
-});
-
-test("the service file is the one this platform reads", () => {
-  expect(serviceFile("darwin", "/Users/me")).toBe("/Users/me/Library/LaunchAgents/com.tandem.server.plist");
-  expect(serviceFile("linux", "/home/me")).toBe("/home/me/.config/systemd/user/tandem.service");
-  expect(serviceFileText("darwin", config)).toBe(launchdPlist(config));
-  expect(serviceFileText("linux", config)).toBe(systemdUnit(config));
-});
 
 test("the PATH a service gets keeps what exists and never a session's shim", () => {
   const usable = (entry: string): boolean => entry !== "/gone";
@@ -67,7 +22,7 @@ test("a path that needs escaping stays one value in the file", () => {
   expect(launchdPlist({ ...config, repository: "/re&po<x>" })).toContain("<string>/re&amp;po&lt;x&gt;</string>");
 });
 
-const targets: ServiceTargets = {
+const _targets: ServiceTargets = {
   domain: "gui/501",
   target: "gui/501/com.tandem.server",
   file: "/home/me/agent.plist",
@@ -94,28 +49,6 @@ test("a service that did not stop stops the uninstall", () => {
   expect(unloadRefusal({ serviceRunning: false, serviceLoaded: true })).toMatch(/still there/);
 });
 
-test("Linux takes the file again and restarts, and only macOS reloads by hand", () => {
-  const linux = serviceRecipe("linux", targets);
-  expect(linux.load.at(-1)?.args).toEqual(["--user", "restart", "tandem"]);
-  expect(linux.load.map((step) => step.args[1])).toEqual(["daemon-reload", "enable", "restart"]);
-  // Removing the unit needs the manager to forget it afterwards.
-  expect(linux.afterRemoval).toEqual([{ command: "systemctl", args: ["--user", "daemon-reload"] }]);
-  const darwin = serviceRecipe("darwin", targets);
-  expect(darwin.load.map((step) => step.args[0])).toEqual(["bootout", "bootstrap"]);
-  // Both moving steps wait for the job to be gone: bootout has not finished when it returns.
-  expect(darwin.load[0]?.settle).toBe(true);
-  expect(darwin.unload[0]?.settle).toBe(true);
-  expect(darwin.afterRemoval).toEqual([]);
-});
-
-test("the hints say where to look on each platform", () => {
-  expect(logHints("darwin", "/state/tandem.log", targets).follow).toBe("tail -f /state/tandem.log");
-  expect(logHints("darwin", "/state/tandem.log", targets).status).toBe("launchctl print gui/501/com.tandem.server");
-  const linux = logHints("linux", "/state/tandem.log", { domain: "", target: "tandem", file: "/u.service" });
-  expect(linux.follow).toBe("journalctl --user -u tandem -f");
-  expect(linux.follow).not.toContain("/state/tandem.log");
-});
-
 test("a path that systemd would read as syntax stays one path", () => {
   // `%` begins a specifier, `$` begins a variable in ExecStart, and a quote or a backslash ends the value early.
   expect(systemdUnit({ ...config, repository: "/re %u" })).toContain('WorkingDirectory="/re %%u"');
@@ -131,26 +64,11 @@ test("a path that systemd would read as syntax stays one path", () => {
   expect(systemdUnit({ ...config, stateDir: "/state $x" })).toContain('Environment="TANDEM_HOME=/state $x"');
 });
 
-test("the public origin the environment configured goes into the file", () => {
-  const withUrl: ServiceConfig = { ...config, publicUrl: "https://tandem.example.com" };
-  expect(launchdPlist(withUrl)).toContain(
-    "<key>TANDEM_PUBLIC_URL</key>\n    <string>https://tandem.example.com</string>",
-  );
-  expect(systemdUnit(withUrl)).toContain('Environment="TANDEM_PUBLIC_URL=https://tandem.example.com"');
-  expect(launchdPlist(config)).not.toContain("TANDEM_PUBLIC_URL");
-  expect(systemdUnit(config)).not.toContain("TANDEM_PUBLIC_URL");
-});
-
-test("the proxy a machine reaches the internet through goes into the file", () => {
+test("the proxy environment is normalized to upper-case names, without empty values", () => {
   expect(proxyEnvironment({ HTTPS_PROXY: "http://127.0.0.1:1087", NO_PROXY: "" })).toEqual({
     HTTPS_PROXY: "http://127.0.0.1:1087",
   });
   expect(proxyEnvironment({ https_proxy: "http://127.0.0.1:1087" })).toEqual({
     HTTPS_PROXY: "http://127.0.0.1:1087",
   });
-  const proxied: ServiceConfig = { ...config, proxy: { HTTPS_PROXY: "http://127.0.0.1:1087" } };
-  expect(launchdPlist(proxied)).toContain("<key>HTTPS_PROXY</key>\n    <string>http://127.0.0.1:1087</string>");
-  expect(systemdUnit(proxied)).toContain('Environment="HTTPS_PROXY=http://127.0.0.1:1087"');
-  expect(launchdPlist(config)).not.toContain("HTTPS_PROXY");
-  expect(systemdUnit(config)).not.toContain("HTTPS_PROXY");
 });

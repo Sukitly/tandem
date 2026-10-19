@@ -12,7 +12,7 @@ const reload = (): void => window.location.reload();
  * fills its place offers to try again and to reload, since a reload is what mends a script that failed to load; a
  * part that is one line among others offers only to try again.
  */
-export function ErrorFallback({
+function ErrorFallback({
   what,
   error,
   reset,

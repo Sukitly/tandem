@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { PAIR_CODE_PATH, PROOF_PATH } from "@tandem/contracts";
 import { afterEach, expect, test, vi } from "vitest";
 import { writeJsonFile } from "../src/json-file.ts";
-import { pairingUrl, runningPair } from "../src/launch.ts";
+import { runningPair } from "../src/launch.ts";
 import { startServer, type TandemServer } from "../src/server.ts";
 
 const servers: TandemServer[] = [];
@@ -51,12 +51,6 @@ async function identityFile(serverId: string, token: string): Promise<void> {
   vi.stubEnv("TANDEM_HOME", home);
   await writeJsonFile(join(home, "server.json"), { serverId, token });
 }
-
-test("a pairing link carries only a short-lived code in its fragment", () => {
-  const url = pairingUrl("https://tandem.example.com", "code");
-  expect(url.href).toBe("https://tandem.example.com/pair#code");
-  expect(url.search).toBe("");
-});
 
 test("reuses only the running server of the same state directory", async () => {
   const home = await mkdtemp(join(tmpdir(), "tandem-launch-"));

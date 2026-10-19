@@ -49,7 +49,7 @@ const LANGUAGE_LABELS: Record<string, string> = {
   graphql: "GraphQL",
 };
 
-export function formatCodeBlockTitle(filename?: string, language?: string): string {
+function formatCodeBlockTitle(filename?: string, language?: string): string {
   if (filename && filename.trim() !== "") {
     return filename;
   }
@@ -60,7 +60,7 @@ export function formatCodeBlockTitle(filename?: string, language?: string): stri
   return LANGUAGE_LABELS[lower] ?? lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-export function parseFencedInfo(languageRaw?: string): { language?: string; filename?: string } {
+function parseFencedInfo(languageRaw?: string): { language?: string; filename?: string } {
   let lang = languageRaw;
   let filename: string | undefined;
 

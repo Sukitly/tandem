@@ -38,7 +38,7 @@ export function ChatFrame({
 }
 
 /** Shows or hides the files panel beside the conversation. */
-export function FilesToggle() {
+function FilesToggle() {
   const { filesShown, showFiles } = useWorkbench((state) => ({
     filesShown: state.filesShown,
     showFiles: state.showFiles,

@@ -59,59 +59,6 @@ export function safeError(error: unknown): string {
   return redactSecrets(raw);
 }
 
-const VALIDATION_URL_HOST = "accounts.google.com";
-
-export function safeValidationUrl(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length === 0 || value.length > 2048 || /\s/.test(value)) return undefined;
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return undefined;
-  }
-  if (url.protocol !== "https:" || url.username || url.password) return undefined;
-  if (url.hostname !== VALIDATION_URL_HOST) return undefined;
-  return url.toString();
-}
-
-export function extractValidationUrl(text: string): string | undefined {
-  try {
-    const parsed = JSON.parse(text) as { error?: { details?: unknown } };
-    const details = parsed.error?.details;
-    if (Array.isArray(details)) {
-      for (const detail of details) {
-        if (!isRecord(detail) || !isRecord(detail.metadata)) continue;
-        const safe = safeValidationUrl(detail.metadata.validation_url);
-        if (safe) return safe;
-      }
-    }
-  } catch {
-    // not JSON
-  }
-  const match = text.match(/https:\/\/accounts\.google\.com\/[^\s"'<>\\]+/);
-  return match ? safeValidationUrl(match[0]?.replace(/[),.;]+$/, "")) : undefined;
-}
-
-export function stripValidationUrls(text: string): string {
-  return text
-    .replace(/https:\/\/accounts\.google\.com\/[^\s"'<>\\]+/g, "[redacted-validation-url]")
-    .replace(
-      / Open this link in a browser signed in to the same Google account to verify: \[redacted-validation-url\]/g,
-      "",
-    );
-}
-
-export function maskEmail(email: string | undefined): string | undefined {
-  if (!email || typeof email !== "string") return undefined;
-  const parts = email.split("@");
-  const name = parts[0];
-  const domain = parts[1];
-  if (parts.length !== 2 || !name || !domain) return "[redacted-email]";
-  const lastChar = name.at(-1) || "";
-  const maskedName = name.length > 2 ? `${name[0]}***${lastChar}` : `${name[0]}***`;
-  return `${maskedName}@${domain}`;
-}
-
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -142,7 +89,7 @@ export function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function stableProjectId(seed: string): string {
+function stableProjectId(seed: string): string {
   const bytes = createHash("sha1").update(`antigravity:${seed}`).digest().subarray(0, 16);
   const b6 = bytes[6] ?? 0;
   const b8 = bytes[8] ?? 0;
@@ -156,7 +103,7 @@ export function defaultProjectId(seed = "antigravity-default"): string {
   return antigravityEnv("PROJECT_ID")?.trim() || stableProjectId(seed);
 }
 
-export function stableUuid(seed: string): string {
+function stableUuid(seed: string): string {
   const bytes = createHash("sha1").update(seed).digest().subarray(0, 16);
   const b6 = bytes[6] ?? 0;
   const b8 = bytes[8] ?? 0;
@@ -166,7 +113,7 @@ export function stableUuid(seed: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export function toInt64SessionId(seed?: string): string {
+function toInt64SessionId(seed?: string): string {
   if (seed?.trim()) {
     const s = seed.trim();
     if (/^-?\d+$/.test(s)) {

@@ -155,7 +155,7 @@ export class ProjectFiles {
 export function useProjectFiles<T>(files: ProjectFiles, select: (files: ProjectFiles) => T): T {
   return useSyncExternalStore(files.subscribe, () => select(files));
 }
-export function ancestors(path: string): string[] {
+function ancestors(path: string): string[] {
   const segments = path.split("/").slice(0, -1);
   return ["", ...segments.map((_, index) => segments.slice(0, index + 1).join("/"))];
 }

@@ -11,8 +11,6 @@ import { lazyMermaid } from "./lazy-mermaid.ts";
 import { texDelimiters } from "./tex-delimiters.ts";
 import { untrustedMarkdown } from "./untrusted-markdown.ts";
 
-export { formatCodeBlockTitle, parseFencedInfo } from "./fenced-code.tsx";
-
 const plugins = { cjk, code, math, mermaid: lazyMermaid };
 // A single newline is a line break, as a person writing in a message box expects.
 const remarkPlugins = [...Object.values(defaultRemarkPlugins), remarkBreaks, texDelimiters, untrustedMarkdown];

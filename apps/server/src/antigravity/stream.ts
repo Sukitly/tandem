@@ -734,7 +734,7 @@ export function buildRequest(
 const STREAM_HEADER_TIMEOUT_MS = 180_000;
 const STREAM_STALL_TIMEOUT_MS = 120_000;
 
-export async function fetchWithHeaderDeadline(
+async function fetchWithHeaderDeadline(
   url: string,
   init: RequestInit,
   callerSignal: AbortSignal | undefined,

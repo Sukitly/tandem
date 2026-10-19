@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useCommand } from "@/hooks/use-command.ts";
 
-export async function redeemCode(code: string): Promise<void> {
+async function redeemCode(code: string): Promise<void> {
   const response = await fetch(PAIR_PATH, {
     method: "POST",
     headers: { "content-type": "application/json" },

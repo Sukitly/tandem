@@ -103,7 +103,7 @@ function AddProjectContent({ onAdded }: { onAdded: () => void }) {
 }
 
 /** The current directory is selected; opening a child selects that directory instead. */
-export function ProjectDirectoryPicker({
+function ProjectDirectoryPicker({
   directory,
   busy,
   onNavigate,

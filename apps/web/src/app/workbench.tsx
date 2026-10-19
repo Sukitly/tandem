@@ -14,7 +14,7 @@ import { ProjectResources } from "./project-resources.ts";
 import { SnapshotProvider } from "./query-client.tsx";
 import { createWorkbenchStore, type WorkbenchState, type WorkbenchStore } from "./workbench-store.ts";
 
-export { type PanelTab, panelTabOf } from "./workbench-store.ts";
+export { panelTabOf } from "./workbench-store.ts";
 
 /** The files and comments of each project, kept as long as the project is listed. */
 interface ProjectResourceAccess {

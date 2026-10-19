@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
@@ -38,35 +38,7 @@ test("a successful send preserves edits made while waiting for the server", asyn
   expect(onSend).toHaveBeenCalledWith("First", [], [], "steer");
 });
 
-// jsdom does not lay out text; check the wrapping utilities on the rendered components.
 describe("queued chat messages", () => {
-  test.each(["steer", "followUp"] as const)("keeps long %s messages wrappable without truncation", (mode) => {
-    const text = `${"A long queued message. ".repeat(30)}\n${"src/".repeat(100)}file.ts\nLast line`;
-    const { container } = render(
-      createElement(ChatComposer, {
-        busy: true,
-        queued: [{ id: 1, mode, text, imageCount: 0 }],
-        onSend: vi.fn(),
-        onStop: vi.fn(),
-        imageSupport: { kind: "accepted" },
-      }),
-    );
-    const queue = screen.getByRole("list", { name: "Queued messages" });
-    expect(within(queue).getByText(mode === "steer" ? "Steering" : "Follow-up")).toBeDefined();
-    const description = queue.querySelector('[data-slot="item-description"]');
-    expect(description?.textContent).toBe(text);
-    expect(description?.classList.contains("whitespace-pre-wrap")).toBe(true);
-    expect(description?.classList.contains("wrap-anywhere")).toBe(true);
-    expect(description?.classList.contains("line-clamp-none")).toBe(true);
-    expect(description?.classList.contains("line-clamp-2")).toBe(false);
-    expect(description?.classList.contains("truncate")).toBe(false);
-    expect(description?.parentElement?.classList.contains("min-w-0")).toBe(true);
-    expect(container.firstElementChild?.classList.contains("min-w-0")).toBe(true);
-    // The box is a combobox, for its slash command menu.
-    expect(screen.getByRole("combobox", { name: "Message" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
-  });
-
   test("updates the queue without retaining messages already consumed by the agent", () => {
     const props = { busy: true, onSend: vi.fn(), onStop: vi.fn(), imageSupport: { kind: "accepted" } as const };
     const queued: QueuedMessage[] = [

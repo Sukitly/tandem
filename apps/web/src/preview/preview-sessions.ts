@@ -7,7 +7,7 @@ export type PreviewSessions = ReadonlyMap<number, number>;
  * Only a port that was visited has a frame, and keeps it, hidden, while another is shown: its document and its forms
  * are not lost by switching tabs. A port that is gone loses its frame. What is the same is returned as it was.
  */
-export function syncSessions(
+function syncSessions(
   previous: PreviewSessions,
   ports: readonly number[],
   current: number | null,
@@ -20,7 +20,7 @@ export function syncSessions(
 }
 
 /** A port's frame, drawn again from the start. */
-export function reloaded(previous: PreviewSessions, port: number): PreviewSessions {
+function reloaded(previous: PreviewSessions, port: number): PreviewSessions {
   return new Map(previous).set(port, (previous.get(port) ?? 0) + 1);
 }
 

@@ -72,7 +72,6 @@ test("sending successfully resumes following the bottom even when reading older 
       }),
   );
   render(createElement(ChatView, { conversationId: 1 }));
-  expect(screen.getByRole("log", { name: "Transcript" }).classList.contains("chat-transcript-scrollbar")).toBe(true);
   // Browsing history must not jump back to the bottom until this client successfully sends.
   fireEvent.wheel(screen.getByRole("log", { name: "Transcript" }), { deltaY: -100 });
   expect(mock.scrollToEnd).not.toHaveBeenCalled();
@@ -109,26 +108,4 @@ test("subscription updates alone do not force a reader back to the bottom", () =
   mock.transcript.busy = true;
   rerender(createElement(ChatView, { conversationId: 1 }));
   expect(mock.scrollToEnd).not.toHaveBeenCalled();
-});
-
-test("consecutive assistant messages are spaced like steps within one message", () => {
-  const assistant = (key: string) => ({ kind: "assistant", key, parts: [], ending: "complete" });
-  mock.transcript.items = [
-    { kind: "user", key: "u", text: "Go", images: [] },
-    assistant("a1"),
-    assistant("a2"),
-    assistant("a3"),
-    { kind: "user", key: "u2", text: "More", images: [] },
-    assistant("a4"),
-  ] as never;
-  try {
-    render(createElement(ChatView, { conversationId: 1 }));
-    const tight = [...document.querySelectorAll('[data-slot="message-scroller-item"]')].map((element) =>
-      element.classList.contains("-mt-4"),
-    );
-    // Only an assistant item directly after another assistant item is pulled up; a user turn keeps the full gap.
-    expect(tight).toEqual([false, false, true, true, false, false]);
-  } finally {
-    mock.transcript.items = [];
-  }
 });

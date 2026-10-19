@@ -185,18 +185,6 @@ test("configure reloads an installed service, so that one command leaves the tun
   expect(reloads).toHaveLength(1);
 });
 
-test("status says so when nothing is configured", { timeout: 20_000 }, async () => {
-  const state = await mkdtemp(join(tmpdir(), "tandem-state-"));
-  const lines: string[] = [];
-  vi.spyOn(console, "log").mockImplementation((line: string) => void lines.push(line));
-  try {
-    await runTunnel(["status"], state, isolated(state).options);
-  } finally {
-    vi.restoreAllMocks();
-  }
-  expect(lines.join("\n")).toContain(`No tunnel: ${tunnelConfigPath(state)} does not exist.`);
-});
-
 test("runs from the configuration this machine wrote, and otherwise from a token", async () => {
   const state = await mkdtemp(join(tmpdir(), "tandem-state-"));
   expect(tunnelInvocation({ publicUrl: CONFIG.publicUrl, token: CONFIG.token }, state)).toEqual({

@@ -56,7 +56,7 @@ const SERVICES = {
 /** What `OpenConversations` and `OpenChanges` open one of per conversation and per project, not used by name. */
 const OPENED_SERVICES = [Conversation, Changes, ProjectChanges] as const;
 
-export type ServiceHandles = {
+type ServiceHandles = {
   [Name in keyof typeof SERVICES]: (typeof SERVICES)[Name] extends Service<infer Handle> ? Handle : never;
 };
 

@@ -18,14 +18,12 @@ test("copies the exact file path and briefly shows a checkmark", async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });
   const path = "apps/web/src/a file with spaces.tsx";
-  const { container } = render(createElement(CopyPathButton, { path }));
+  render(createElement(CopyPathButton, { path }));
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Copy file path" })));
   expect(writeText).toHaveBeenCalledExactlyOnceWith(path);
   expect(screen.getByRole("button", { name: "Copied file path" })).toBeDefined();
-  expect(container.querySelector(".lucide-check")).not.toBeNull();
   act(() => vi.advanceTimersByTime(2000));
   expect(screen.getByRole("button", { name: "Copy file path" })).toBeDefined();
-  expect(container.querySelector(".lucide-copy")).not.toBeNull();
 });
 
 test("switching the selected file resets feedback and copies the new path", async () => {

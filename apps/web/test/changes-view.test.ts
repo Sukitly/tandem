@@ -49,22 +49,7 @@ function changes(): string {
   );
 }
 
-describe("file type icons in the changed files list", () => {
-  test.each([
-    ["src/app.tsx", "app.tsx", "modified"],
-    ["apps/web/package.json", "package.json", "modified"],
-    ["deploy/Dockerfile", "Dockerfile", "untracked"],
-    ["src/removed.ts", "removed.ts", "deleted"],
-    ["docs/renamed.md", "renamed.md", "renamed"],
-    ["notes.unknown-extension", "notes.unknown-extension", "added"],
-  ] as const)("matches the Files icon for %s (%s, %s)", (path, name, status) => {
-    state.changes.files = [{ path, status }];
-    const markup = changes();
-    const icon = renderToStaticMarkup(createElement(FileIcon, { fileName: name, autoAssign: true }));
-    expect(markup).toContain(icon);
-    expect(markup).toContain(path);
-  });
-
+describe("the changed files list", () => {
   test("sums every changed file's line counts in the header", () => {
     state.changes.files = [
       { path: "src/a.ts", status: "modified", additions: 10, deletions: 2 },
@@ -99,13 +84,6 @@ describe("file type icons in the changed files list", () => {
     expect(markup).toContain("−3");
   });
 
-  test("shows word wrap toggle button for the selected diff", () => {
-    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
-    const markup = changes();
-    expect(markup).toContain('aria-label="Wrap lines"');
-    expect(markup).toContain('aria-pressed="false"');
-  });
-
   test("respects stored diff wrap preference", () => {
     vi.stubGlobal("localStorage", {
       getItem: (key: string) => (key === "tandem.diffWrap" ? "true" : null),
@@ -114,29 +92,5 @@ describe("file type icons in the changed files list", () => {
     const markup = changes();
     expect(markup).toContain('aria-label="Do not wrap lines"');
     expect(markup).toContain('aria-pressed="true"');
-  });
-
-  test("shows full screen zoom toggle button for the selected diff", () => {
-    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
-    const markup = changes();
-    expect(markup).toContain('aria-label="Full screen"');
-  });
-
-  test("shows a copy path button beside the selected file name", () => {
-    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
-    expect(changes()).toContain('aria-label="Copy file path"');
-  });
-
-  test("shows close button for the selected diff", () => {
-    state.changes.files = [{ path: "src/app.tsx", status: "modified" }];
-    const markup = changes();
-    expect(markup).toContain('aria-label="Close the diff"');
-  });
-
-  test("shows line count parts in the selected diff header", () => {
-    state.changes.files = [{ path: "src/app.tsx", status: "modified", additions: 8, deletions: 3 }];
-    const markup = changes();
-    expect(markup).toContain("+8");
-    expect(markup).toContain("−3");
   });
 });

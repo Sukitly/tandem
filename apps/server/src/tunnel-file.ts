@@ -16,7 +16,7 @@ export interface LocalTunnel {
 }
 
 /** cloudflared's own directory: the origin certificate from `login`, and the credentials of each tunnel. */
-export function cloudflaredHome(home?: string): string {
+function cloudflaredHome(home?: string): string {
   return join(home ?? process.env.HOME ?? "", ".cloudflared");
 }
 

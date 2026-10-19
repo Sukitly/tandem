@@ -24,7 +24,7 @@ import { ProjectItem } from "./sidebar-project-item.tsx";
 import { SidebarThemeMenu } from "./sidebar-theme-menu.tsx";
 import { useWorkbench } from "./workbench.tsx";
 
-export { SidebarBrand, SidebarToggle } from "./sidebar-brand.tsx";
+export { SidebarToggle } from "./sidebar-brand.tsx";
 
 /**
  * The app's navigation: projects with their conversations, then every conversation by recent

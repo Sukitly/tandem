@@ -54,7 +54,7 @@ export async function runningPair(base: URL): Promise<PairingCode | undefined> {
   return (await issued.json()) as PairingCode;
 }
 
-export async function openBrowser(url: URL): Promise<void> {
+async function openBrowser(url: URL): Promise<void> {
   const [command, args] =
     process.platform === "darwin"
       ? ["open", [url.href]]

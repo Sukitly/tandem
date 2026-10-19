@@ -10,8 +10,8 @@ import {
   safeError,
 } from "./util.ts";
 
-export const DEFAULT_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com";
-export const ENDPOINT_FALLBACKS = [
+const DEFAULT_ENDPOINT = "https://daily-cloudcode-pa.googleapis.com";
+const ENDPOINT_FALLBACKS = [
   DEFAULT_ENDPOINT,
   "https://daily-cloudcode-pa.sandbox.googleapis.com",
   "https://cloudcode-pa.googleapis.com",
@@ -34,7 +34,7 @@ export function endpointCandidates(): string[] {
 const DEFAULT_USER_AGENT =
   "antigravity/cli/1.2.4 (aidev_client; os_type=linux; arch=amd64; cl=982146307; auth_method=consumer)";
 
-export function defaultUserAgent(): string {
+function defaultUserAgent(): string {
   return DEFAULT_USER_AGENT;
 }
 
@@ -71,7 +71,7 @@ export function parseApiKey(apiKeyRaw: string | undefined): AntigravityApiKey {
   }
 }
 
-export function extractProjectId(data: unknown): string | undefined {
+function extractProjectId(data: unknown): string | undefined {
   if (!isRecord(data)) return undefined;
   const direct =
     data.antigravityProjectId ??
@@ -118,7 +118,7 @@ async function listCloudAICompanionProjects(token: string): Promise<string | und
   return undefined;
 }
 
-export function isUsableRuntimeModelId(id: string): boolean {
+function isUsableRuntimeModelId(id: string): boolean {
   return /^(gemini-|claude-|gpt-oss-)/i.test(id) && !/\s/.test(id) && !/^MODEL_/i.test(id);
 }
 

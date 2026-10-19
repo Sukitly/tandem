@@ -1,12 +1,5 @@
 import type { Server } from "node:http";
-import type {
-  OAuthCredentials,
-  SimpleStreamOptions,
-  TextContent,
-  ThinkingContent,
-  Tool,
-  ToolCall,
-} from "@earendil-works/pi-ai";
+import type { SimpleStreamOptions, TextContent, ThinkingContent, Tool, ToolCall } from "@earendil-works/pi-ai";
 
 export const GeminiRole = {
   User: "user",
@@ -46,12 +39,6 @@ export const ToolChoice = {
 } as const;
 export type ToolChoice = (typeof ToolChoice)[keyof typeof ToolChoice];
 
-export type AntigravityOAuthCredentials = OAuthCredentials & {
-  type: "oauth";
-  projectId?: string;
-  email?: string;
-};
-
 export type AntigravityApiKey = {
   token: string;
   projectId: string;
@@ -77,22 +64,19 @@ export type AntigravityRouting = {
   defaultRequestId?: string;
 };
 
-export const ANTIGRAVITY_API = "antigravity" as const;
-export type AntigravityApi = typeof ANTIGRAVITY_API;
-
 export type AntigravityStreamOptions = Omit<SimpleStreamOptions, "toolChoice"> & {
   toolChoice?: ToolChoice;
   tools?: Tool[];
 };
 
-export type GeminiTextPart = { text: string; thoughtSignature?: string };
+type GeminiTextPart = { text: string; thoughtSignature?: string };
 export type GeminiInlineDataPart = { inlineData: { mimeType: string; data: string } };
-export type GeminiThoughtPart = {
+type GeminiThoughtPart = {
   thought: true;
   text: string;
   thoughtSignature?: string;
 };
-export type GeminiFunctionCallPart = {
+type GeminiFunctionCallPart = {
   functionCall: {
     name: string;
     args: Record<string, unknown>;
@@ -126,7 +110,7 @@ export type GeminiFunctionDeclaration = {
   parametersJsonSchema?: unknown;
 };
 
-export type GeminiToolConfig = {
+type GeminiToolConfig = {
   functionCallingConfig: {
     mode: GeminiToolCallingMode;
   };
@@ -165,7 +149,7 @@ export type AntigravityGenerateRequest = {
   requestId: string;
 };
 
-export type StreamPart = {
+type StreamPart = {
   text?: string;
   thought?: boolean;
   thoughtSignature?: string;
@@ -176,7 +160,7 @@ export type StreamPart = {
   };
 };
 
-export type StreamUsageMetadata = {
+type StreamUsageMetadata = {
   promptTokenCount?: number;
   cachedContentTokenCount?: number;
   candidatesTokenCount?: number;
@@ -184,12 +168,12 @@ export type StreamUsageMetadata = {
   totalTokenCount?: number;
 };
 
-export type StreamCandidate = {
+type StreamCandidate = {
   content?: { parts?: StreamPart[] };
   finishReason?: string;
 };
 
-export type StreamResponseData = {
+type StreamResponseData = {
   candidates?: StreamCandidate[];
   usageMetadata?: StreamUsageMetadata;
 };
@@ -209,63 +193,11 @@ export type LooseImageBlock = {
 
 export type ContentBlock = TextContent | ThinkingContent | ToolCall | LooseImageBlock;
 
-export type ActiveTextBlock = TextContent;
-export type ActiveThinkingBlock = ThinkingContent;
+type ActiveTextBlock = TextContent;
+type ActiveThinkingBlock = ThinkingContent;
 export type ActiveBlock = ActiveTextBlock | ActiveThinkingBlock;
 
-export type QuotaBucket = {
-  bucketId: string;
-  displayName: string;
-  window?: string;
-  resetTime?: string;
-  description?: string;
-  remainingFraction: number;
-};
-
-export type QuotaGroup = {
-  displayName: string;
-  description?: string;
-  buckets: QuotaBucket[];
-};
-
-export type ModelQuotaRow = {
-  modelId: string;
-  displayName?: string;
-  remainingFraction?: number;
-  resetTime?: string;
-  modelProvider?: string;
-  supportsThinking?: boolean;
-  supportsImages?: boolean;
-  recommended?: boolean;
-};
-
-export type TierInfo = {
-  id?: string;
-  name?: string;
-  description?: string;
-};
-
-export type AccountUsage = {
-  projectId: string;
-  endpoint: string;
-  email?: string;
-  productTier?: TierInfo;
-  paidTier?: TierInfo;
-  planLabel?: string;
-  groups: QuotaGroup[];
-  groupDescription?: string;
-  quotaSummaryError?: string;
-  models: ModelQuotaRow[];
-  defaultAgentModelId?: string;
-  fetchedAt: number;
-};
-
-export type ApiErrorBody = {
-  error?: { message?: string };
-  raw?: string;
-};
-
-export type QuotaBucketRaw = {
+type QuotaBucketRaw = {
   bucketId?: unknown;
   displayName?: unknown;
   window?: unknown;
@@ -274,7 +206,7 @@ export type QuotaBucketRaw = {
   remainingFraction?: unknown;
 };
 
-export type QuotaGroupRaw = {
+type QuotaGroupRaw = {
   displayName?: unknown;
   description?: unknown;
   buckets?: QuotaBucketRaw[];
@@ -285,7 +217,7 @@ export type QuotaSummaryRaw = {
   description?: unknown;
 };
 
-export type ModelInfoRaw = {
+type ModelInfoRaw = {
   isInternal?: boolean;
   label?: unknown;
   displayName?: unknown;
@@ -307,11 +239,4 @@ export type AvailableModelsRaw = {
   models?: Record<string, ModelInfoRaw>;
   defaultAgentModelId?: unknown;
   defaultAgentModel?: unknown;
-};
-
-export type LoadCodeAssistRaw = {
-  currentTier?: unknown;
-  paidTier?: unknown;
-  project?: unknown;
-  cloudaicompanionProject?: unknown;
 };

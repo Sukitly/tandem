@@ -379,7 +379,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Tan
  * answer comes from `Origin`, which the browser sets and cannot set to anything but where it is running. Only a
  * request that sets no `Origin` at all — a navigation — is judged by the `Host` it addressed.
  */
-export function cameFromPublicOrigin(request: IncomingMessage, publicUrl: string): boolean {
+function cameFromPublicOrigin(request: IncomingMessage, publicUrl: string): boolean {
   const origin = request.headers.origin;
   if (origin !== undefined) return origin === publicUrl;
   return request.headers.host === new URL(publicUrl).host;

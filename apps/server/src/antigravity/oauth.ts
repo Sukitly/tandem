@@ -5,11 +5,11 @@ import { loadCodeAssist } from "./client.ts";
 import type { CallbackServer } from "./types.ts";
 import { antigravityEnv, defaultProjectId, escapeHtml, redactSecrets, resolveCallbackHost } from "./util.ts";
 
-export const REDIRECT_URI = "http://localhost:51121/oauth-callback";
-export const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-export const TOKEN_URL = "https://oauth2.googleapis.com/token";
-export const OAUTH_CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
-export const SCOPES = [
+const REDIRECT_URI = "http://localhost:51121/oauth-callback";
+const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const OAUTH_CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
+const SCOPES = [
   "https://www.googleapis.com/auth/aicode",
   "https://www.googleapis.com/auth/cloud-platform",
   "https://www.googleapis.com/auth/userinfo.email",
@@ -18,13 +18,12 @@ export const SCOPES = [
   "https://www.googleapis.com/auth/experimentsandconfigs",
 ];
 
-export const CLIENT_ID =
+const CLIENT_ID =
   antigravityEnv("CLIENT_ID") ||
   atob("MTA3MTAwNjA2MDU5MS10bWhzc2luMmgyMWxjcmUyMzV2dG9sb2poNGc0MDNlcC5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbQ==");
-export const CLIENT_SECRET =
-  antigravityEnv("CLIENT_SECRET") || atob("R09DU1BYLUs1OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY=");
+const CLIENT_SECRET = antigravityEnv("CLIENT_SECRET") || atob("R09DU1BYLUs1OEZXUjQ4NkxkTEoxbUxCOHNYQzR6NnFEQWY=");
 
-export const CALLBACK_HOST = resolveCallbackHost();
+const CALLBACK_HOST = resolveCallbackHost();
 
 function oauthCallbackHeaders(contentType = "text/html; charset=utf-8"): Record<string, string> {
   return {
@@ -214,7 +213,7 @@ function parsePastedCallback(raw: string, expectedState: string): { code: string
   return { code, state };
 }
 
-export async function acquireAuthCode(
+async function acquireAuthCode(
   expectedState: string,
   opts: {
     waitForCode: () => Promise<{ code: string; state: string }>;

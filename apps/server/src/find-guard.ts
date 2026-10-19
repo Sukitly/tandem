@@ -9,7 +9,7 @@ import { defineExtension, type Extension, hook, section, ToolTask } from "@earen
  */
 
 /** The rule the agent reads in its system prompt. */
-export const FIND_GUIDANCE =
+const FIND_GUIDANCE =
   "Bash command policy: `find` is disabled. Use `fd` for file-name or path searches and `rg` for content searches.";
 
 /** What the agent reads when a `find` call is refused, or the shim runs. */
