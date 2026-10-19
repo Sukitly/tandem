@@ -74,14 +74,15 @@ export interface ChatComposerProps {
 
 /**
  * The message box. Desktop Enter always steers; mobile uses its chosen send mode (steering by default).
- * Alt+Enter explicitly queues a follow-up on either layout.
+ * Alt+Enter explicitly queues a follow-up on either layout. Escape stops the agent, as the Stop button does.
  * Shift+Enter starts a new line. Platform editing is the default; Emacs shortcuts are an explicit preference.
  *
  * The box is a combobox, and its suggestion menu is Tandem's own, laid over the box rather than rendered by a popover
  * or a menu component: focus must stay in the box so that ordinary typing, spaces, and Shift+Enter keep working, and
  * such a component would take the keys for itself. It follows how pi's own input behaves: a message that begins with
  * `/` and holds no argument yet offers the project's slash commands, the arrows move through them, Tab fills the
- * highlighted one into the box so its arguments can be typed, Enter sends it, Escape puts the menu away, and
+ * highlighted one into the box so its arguments can be typed, Enter sends it, Escape puts the menu away (or, with no
+ * menu, stops the agent), and
  * optional Emacs editing keys are handled by the box; everything else is left to the browser.
  */
 export function ChatComposer({
@@ -133,6 +134,9 @@ export function ChatComposer({
   );
   const { value, textareaRef } = editor;
   const empty = value.trim() === "" && comments.length === 0 && attached.length === 0;
+  // While the agent works, an empty box offers Stop and a message offers Send, which steers or queues it. A message
+  // being sent offers Stop too, as Send cannot be pressed again; Escape stops whatever the box holds.
+  const stopOffered = busy && (empty || sending);
 
   const accept = (command: PromptTemplateSummary): void => {
     editor.setText(completeCommand(command));
@@ -152,7 +156,15 @@ export function ChatComposer({
     );
   };
 
-  const keyboard = useComposerKeyboard({ editor, keyboardMode, menu, send, sendMode, accept });
+  const keyboard = useComposerKeyboard({
+    editor,
+    keyboardMode,
+    menu,
+    send,
+    sendMode,
+    accept,
+    stop: busy && !stopping ? onStop : undefined,
+  });
   const { composition, onKeyDown } = keyboard;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
@@ -263,19 +275,26 @@ export function ChatComposer({
                 onMode={chooseSendMode}
               />
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                {busy && (
-                  <PromptInputSubmitButton type="button" aria-label="Stop" disabled={stopping} onClick={onStop}>
+                {stopOffered ? (
+                  <PromptInputSubmitButton
+                    type="button"
+                    aria-label="Stop"
+                    title="Stop (Esc)"
+                    disabled={stopping}
+                    onClick={onStop}
+                  >
                     <SquareIcon />
                   </PromptInputSubmitButton>
+                ) : (
+                  <PromptInputSubmitButton
+                    type="submit"
+                    aria-label="Send"
+                    title={busy && sendMode === "followUp" ? "Queue follow-up" : "Send"}
+                    disabled={empty || sending}
+                  >
+                    <ArrowUpIcon />
+                  </PromptInputSubmitButton>
                 )}
-                <PromptInputSubmitButton
-                  type="submit"
-                  aria-label="Send"
-                  title={busy && sendMode === "followUp" ? "Queue follow-up" : "Send"}
-                  disabled={empty || sending}
-                >
-                  <ArrowUpIcon />
-                </PromptInputSubmitButton>
               </div>
             </PromptInputActions>
           </PromptInput>

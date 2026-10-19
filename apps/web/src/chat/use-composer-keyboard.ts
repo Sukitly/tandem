@@ -6,7 +6,7 @@ import { emacsColumn, emacsEdit } from "./emacs-edit.ts";
 import { type CommandCompletion, completeCommand } from "./use-command-completion.ts";
 import type { useComposerText } from "./use-composer-text.ts";
 
-/** One owner for IME, undo, completion, Emacs editing and submission, in that precedence order. */
+/** One owner for IME, undo, completion, stopping, Emacs editing and submission, in that precedence order. */
 export function useComposerKeyboard({
   editor,
   keyboardMode,
@@ -14,6 +14,7 @@ export function useComposerKeyboard({
   send,
   sendMode,
   accept,
+  stop,
 }: {
   editor: ReturnType<typeof useComposerText>;
   keyboardMode: KeyboardMode;
@@ -21,6 +22,8 @@ export function useComposerKeyboard({
   send(text: string, whenBusy: SendMode): Promise<void>;
   sendMode: SendMode;
   accept(command: PromptTemplateSummary): void;
+  /** Stops the agent; absent when it is not working or is already stopping, so that Escape does nothing. */
+  stop: (() => void) | undefined;
 }) {
   const { value } = editor;
   const { open: menuOpen, matching, selected } = menu;
@@ -75,6 +78,13 @@ export function useComposerKeyboard({
         void send(message, event.altKey ? "followUp" : sendMode);
         return;
       }
+    }
+    // With no menu to put away, Escape stops the agent whatever the box holds. A held key stops it once.
+    if (event.key === "Escape" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (stop === undefined) return;
+      event.preventDefault();
+      if (!event.repeat) stop();
+      return;
     }
     const textarea = event.currentTarget;
     const vertical = emacsControl && (event.key.toLowerCase() === "p" || event.key.toLowerCase() === "n");
