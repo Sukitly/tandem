@@ -17,8 +17,8 @@ export type PanelTab = (typeof PANEL_TABS)[number];
 
 /**
  * Everything the page remembers between visits, declared once: where each is kept, which values it takes, and what it is
- * until someone chooses. The keys are what earlier versions wrote, so they stay. Components read and write them with
- * `usePreference`; a store that must hold one as part of its own state uses `readPreference` and `writePreference`.
+ * until someone chooses. Components read and write them with `usePreference`; a store that must hold one as part of its
+ * own state uses `readPreference` and `writePreference`.
  */
 export const userPreferences = {
   /** Also read by the inline script in `index.html`, which applies it before the page first paints. */

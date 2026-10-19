@@ -107,7 +107,7 @@ describe("toTranscript", () => {
     }
   });
 
-  test("puts thinking, text, and tool calls in order, with results, running output, and diffs", () => {
+  test("puts thinking, text, and tool calls in order, with results, running output, and patches", () => {
     const calls = [
       { type: "toolCall", id: "a", name: "bash", arguments: { command: "ls" } },
       { type: "toolCall", id: "b", name: "edit", arguments: { path: "x.ts" } },
@@ -144,7 +144,7 @@ describe("toTranscript", () => {
                 toolCallId: "b",
                 toolName: "edit",
                 content: [{ type: "text", text: "Replaced" }],
-                details: { diff: "-1 old\n+1 new", patch: "--- x.ts\n+++ x.ts\n@@ -1 +1 @@\n-old\n+new\n" },
+                details: { patch: "--- x.ts\n+++ x.ts\n@@ -1 +1 @@\n-old\n+new\n" },
                 isError: true,
               },
             ],
@@ -163,7 +163,6 @@ describe("toTranscript", () => {
           callId: "b",
           status: "failed",
           output: "Replaced",
-          diff: "-1 old\n+1 new",
           patch: "--- x.ts\n+++ x.ts\n@@ -1 +1 @@\n-old\n+new\n",
         },
         { kind: "tool", callId: "c", status: "running", output: "partial" },

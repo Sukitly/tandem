@@ -2,7 +2,6 @@ import { File, PatchDiff } from "@pierre/diffs/react";
 import type { ReactNode } from "react";
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block.tsx";
 import { useTheme } from "@/theme.tsx";
-import { ToolDiff } from "./tool-diff.tsx";
 import type { AssistantPart } from "./transcript.ts";
 
 type ToolPart = Extract<AssistantPart, { kind: "tool" }>;
@@ -36,10 +35,7 @@ export function fileToolBody(step: ToolPart): ReactNode | undefined {
 
 function changeOf(step: ToolPart): ReactNode | undefined {
   if (step.name === "edit") {
-    if (step.patch !== undefined) return <ToolPatch patch={step.patch} />;
-    // Results recorded before the patch was kept hold only the diff.
-    if (step.diff !== undefined) return <ToolDiff diff={step.diff} />;
-    return undefined;
+    return step.patch === undefined ? undefined : <ToolPatch patch={step.patch} />;
   }
   const { path, content } = step.args;
   if (step.name === "write" && typeof path === "string" && typeof content === "string") {

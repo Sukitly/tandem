@@ -32,7 +32,7 @@ test("nothing chosen reads as each preference's default", () => {
   expect(readPreference(userPreferences.diffWrap.fullscreen)).toBe(false);
 });
 
-test("the keys and values earlier versions stored are still read", () => {
+test("each preference is kept under its own key, as the strings it takes", () => {
   const stored: [string, string, unknown, () => unknown][] = [
     ["tandem.theme", "dark", "dark", () => readPreference(userPreferences.theme)],
     ["tandem.keyboardMode", "emacs", "emacs", () => readPreference(userPreferences.keyboardMode)],
@@ -81,7 +81,7 @@ test("a stored value the preference does not take reads as its default", () => {
   expect(panelTabOf("preview")).toBe("preview");
 });
 
-test("a written value is stored as the key's earlier versions stored it", () => {
+test("a written value is stored as the string the preference formats it to", () => {
   writePreference(userPreferences.theme, "light");
   writePreference(userPreferences.filesShown, false);
   writePreference(userPreferences.diffStyle.fullscreen, "unified");

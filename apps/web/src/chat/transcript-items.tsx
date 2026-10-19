@@ -9,12 +9,12 @@ import { Trace } from "@/components/ui/trace.tsx";
 import { ChatError, CopyAction } from "./chat-error.tsx";
 import { fileToolBody, isFileTool } from "./file-tool-body.tsx";
 import { Markdown } from "./markdown.tsx";
-import { ToolDiff, toolDescription } from "./tool-diff.tsx";
+import { toolDescription } from "./tool-description.ts";
 import type { AssistantPart, TranscriptItem } from "./transcript.ts";
 import { TranscriptImages } from "./transcript-images.tsx";
 
 export { ChatError } from "./chat-error.tsx";
-export { parseDiffLine, ToolDiff, toolDescription } from "./tool-diff.tsx";
+export { toolDescription } from "./tool-description.ts";
 export { WaitingDots } from "./waiting-dots.tsx";
 
 export function TranscriptEntry({ item }: { item: TranscriptItem }) {
@@ -142,7 +142,7 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
                       </Tool>
                     );
                   }
-                  const hasDetail = step.images.length > 0 || step.diff !== undefined || step.output !== "";
+                  const hasDetail = step.images.length > 0 || step.output !== "";
 
                   return (
                     <Tool
@@ -155,15 +155,13 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
                       {hasDetail ? (
                         <>
                           {step.images.length > 0 && <TranscriptImages images={step.images} className="mb-2" />}
-                          {step.diff !== undefined ? (
-                            <ToolDiff diff={step.diff} />
-                          ) : step.output !== "" ? (
+                          {step.output !== "" && (
                             <CodeBlock size="sm">
                               <CodeBlockContent wrap className="max-h-64">
                                 {step.output}
                               </CodeBlockContent>
                             </CodeBlock>
-                          ) : null}
+                          )}
                         </>
                       ) : undefined}
                     </Tool>

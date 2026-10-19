@@ -39,23 +39,13 @@ const patch = "--- a.ts\n+++ a.ts\n@@ -1 +1 @@\n-old\n+new\n";
 
 test("an edit expands to its patch, not to its arguments as JSON", () => {
   const args = { path: "a.ts", edits: [{ oldText: "old", newText: "new" }] };
-  render(
-    entry({ name: "edit", args, output: "Successfully replaced 1 block(s) in a.ts.", diff: "-1 old\n+1 new", patch }),
-  );
+  render(entry({ name: "edit", args, output: "Successfully replaced 1 block(s) in a.ts.", patch }));
   fireEvent.click(screen.getByRole("button"));
   expect(screen.getByTestId("patch").textContent).toBe(patch);
   expect(screen.queryByText("Input")).toBeNull();
   expect(screen.queryByText("Output")).toBeNull();
   expect(screen.queryByText(/oldText/)).toBeNull();
   expect(screen.queryByText(/Successfully replaced/)).toBeNull();
-});
-
-test("an edit recorded without a patch still shows its diff lines", () => {
-  render(entry({ name: "edit", args: { path: "a.ts" }, diff: "-1 old\n+1 new" }));
-  fireEvent.click(screen.getByRole("button"));
-  expect(screen.queryByTestId("patch")).toBeNull();
-  expect(screen.getByText(/^1\s+old$/)).toBeDefined();
-  expect(screen.getByText(/^1\s+new$/)).toBeDefined();
 });
 
 test("a write expands to the content it wrote, named for the file, not to its arguments as JSON", () => {
