@@ -1,4 +1,5 @@
 import { DevicesDialogProvider } from "@/auth/devices-dialog.tsx";
+import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { ProvidersDialogProvider } from "@/models/providers-dialog.tsx";
 import { ConnectionProvider } from "@/rpc/connection.tsx";
 import { PublicAccessPage } from "@/tunnel/public-access.tsx";
@@ -30,7 +31,11 @@ export function SessionFrame() {
       <div hidden={publicAccess}>
         <WorkbenchFrame />
       </div>
-      {publicAccess && <PublicAccessPage />}
+      {publicAccess && (
+        <ErrorBoundary what="the public access page">
+          <PublicAccessPage />
+        </ErrorBoundary>
+      )}
     </>
   );
 }

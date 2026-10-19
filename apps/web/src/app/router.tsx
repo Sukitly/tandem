@@ -7,6 +7,7 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { PageError } from "@/components/error-boundary.tsx";
 import { ConversationPage, HomePage, NewConversationPage, NotFoundPage, PairPage } from "./pages.tsx";
 
 export interface RouterContext {
@@ -64,6 +65,7 @@ export function createAppRouter({
     routeTree: routes(layout),
     history,
     context: { pairCode },
+    defaultErrorComponent: PageError,
     scrollRestoration: false,
     defaultHashScrollIntoView: false,
   });

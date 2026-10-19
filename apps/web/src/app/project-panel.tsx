@@ -120,7 +120,7 @@ export function ProjectPanel({
           )}
         </div>
       </header>
-      <RetainedTab value="files" visited={visited}>
+      <RetainedTab value="files" label="Files" visited={visited}>
         <FilesPanel
           files={files}
           comments={comments}
@@ -128,7 +128,7 @@ export function ProjectPanel({
           active={active && panelTab === "files"}
         />
       </RetainedTab>
-      <RetainedTab value="changes" visited={visited}>
+      <RetainedTab value="changes" label="Changes" visited={visited}>
         <ChangesView
           active={active && panelTab === "changes"}
           changes={changes}
@@ -138,11 +138,11 @@ export function ProjectPanel({
         />
       </RetainedTab>
       {/* Kept mounted, so the terminals keep their screens and connections while another tab shows. */}
-      <RetainedTab value="terminal" visited={visited}>
+      <RetainedTab value="terminal" label="Terminal" visited={visited}>
         <TerminalsView workspaceId={workspaceId} active={active && panelTab === "terminal"} />
       </RetainedTab>
       {/* Kept mounted, so the preview iframe keeps its page state while another tab shows. */}
-      <RetainedTab value="preview" visited={visited}>
+      <RetainedTab value="preview" label="Preview" visited={visited}>
         <PreviewView active={active && panelTab === "preview"} />
       </RetainedTab>
     </Tabs>

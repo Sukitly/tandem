@@ -1,5 +1,6 @@
 import { RouterProvider } from "@tanstack/react-router";
 import { useState } from "react";
+import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { Toaster } from "@/components/ui/sonner.tsx";
 import { TooltipProvider } from "@/components/ui/tooltip.tsx";
 import { createAppRouter } from "./app/router.tsx";
@@ -17,7 +18,9 @@ export function App({ pairCode }: { pairCode?: string } = {}) {
     <ThemeProvider>
       <TooltipProvider>
         <AppToaster />
-        <RouterProvider router={router} />
+        <ErrorBoundary what="Tandem">
+          <RouterProvider router={router} />
+        </ErrorBoundary>
       </TooltipProvider>
     </ThemeProvider>
   );

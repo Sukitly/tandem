@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useMessageDraft } from "@/app/drafts.tsx";
 import { useProjectResources } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
+import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -59,7 +60,9 @@ export function OpenChat({ conversationId, conversation }: { conversationId: num
           <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
             {transcript.items.map((item) => (
               <MessageScrollerItem key={item.key} messageId={item.key}>
-                <TranscriptEntry item={item} />
+                <ErrorBoundary what="this message" resetKey={item} compact>
+                  <TranscriptEntry item={item} />
+                </ErrorBoundary>
               </MessageScrollerItem>
             ))}
             <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
