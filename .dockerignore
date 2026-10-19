@@ -1,9 +1,12 @@
-node_modules
+# Docker matches these patterns from the context root only, so anything that can also appear inside a workspace package
+# (apps/*, packages/*) needs a `**/` prefix. Without it the host's nested `node_modules` and `dist` are copied over the
+# image's own install and build, and host-only caches and secrets leak into the image.
+**/node_modules
 .git
-.tandem
-*.log
-dist
-.env*
+**/.tandem
+**/*.log
+**/dist
+**/.env*
 compose.override.*
 docker-compose.override.*
-.DS_Store
+**/.DS_Store
