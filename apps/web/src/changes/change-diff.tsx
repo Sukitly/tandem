@@ -8,7 +8,6 @@ import {
 } from "@pierre/diffs/react";
 import type { FilePatch } from "@tandem/contracts";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { usePanelNavigation } from "@/app/workbench.tsx";
 import { CODE_COMMENT_CSS } from "@/comments/code-comment-style.ts";
 import { type PlacedThread, placeThreads, revealedLine } from "@/comments/comment-anchor.ts";
 import {
@@ -16,13 +15,12 @@ import {
   CommentAnnotationView,
   DetachedCommentDrafts,
 } from "@/comments/comment-annotations.tsx";
-import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { useCommentDrafts } from "@/comments/use-comment-drafts.ts";
-import { Button } from "@/components/ui/button";
 import { useRenderVersion } from "@/hooks/use-render-version.ts";
 import { useTheme } from "@/theme.tsx";
 import type { ChangeTarget } from "./change-target.ts";
+import { DetachedThreads } from "./detached-threads.tsx";
 import { diffLineCount, diffLines } from "./diff-lines.ts";
 import { useDetachedThreads } from "./use-detached-threads.ts";
 
@@ -62,7 +60,6 @@ export function ChangeDiff({
   const { choice } = useTheme();
   const box = useRef<HTMLDivElement>(null);
   const view = useRef<CodeViewHandle<Annotation, undefined>>(null);
-  const { openFile } = usePanelNavigation();
   const text = patch.kind === "patch" ? patch.patch : "";
   const threads = useCommentThreads(comments);
 
@@ -208,37 +205,14 @@ export function ChangeDiff({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {orphaned}
-      {detached.length > 0 && (
-        <div className="max-h-1/2 shrink-0 overflow-auto border-b">
-          {verifying && (
-            <p role="status" className="p-2 text-xs">
-              Checking comment locations…
-            </p>
-          )}
-          {verificationFailure !== null && (
-            <div role="alert" className="p-2 text-sm">
-              <p>Could not verify comment locations: {verificationFailure}</p>
-              <Button size="sm" variant="outline" onClick={retryVerification}>
-                Retry location check
-              </Button>
-            </div>
-          )}
-          {detached.map(({ thread, line, reason }) => (
-            <div key={thread.id} data-detached-thread={thread.id}>
-              <CommentThreadBox thread={thread} comments={comments} detached={reason} />
-              {reason !== "outdated" && thread.anchor.side !== "deletions" && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={() => openFile(path, { threadId: thread.id, line: line ?? thread.anchor.line })}
-                >
-                  Show comment in file
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <DetachedThreads
+        path={path}
+        comments={comments}
+        threads={detached}
+        verifying={verifying}
+        failure={verificationFailure}
+        onRetry={retryVerification}
+      />
       <div ref={box} className="relative min-h-0 flex-1">
         <CodeView
           onScroll={(top) => {

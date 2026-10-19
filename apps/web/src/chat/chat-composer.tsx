@@ -1,23 +1,15 @@
 import type { ImageInput, ModelRef, ModelSummary, PromptTemplateSummary } from "@tandem/contracts";
-import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
 import { type FormEvent, type ReactNode, useSyncExternalStore } from "react";
 import { useMessageDraft } from "@/app/drafts.tsx";
 import type { MessageDraft } from "@/app/message-draft.ts";
 import { userPreferences } from "@/app/user-preferences.ts";
 import type { WaitingComment } from "@/comments/project-comments.ts";
-import {
-  PromptInput,
-  PromptInputActionButton,
-  PromptInputActions,
-  PromptInputSubmitButton,
-  PromptInputTextarea,
-} from "@/components/ai-elements/index.ts";
+import { PromptInput, PromptInputActions, PromptInputTextarea } from "@/components/ai-elements/index.ts";
 import { FieldError } from "@/components/ui/field";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { usePreference } from "@/lib/preferences.ts";
-import { IMAGE_ACCEPT } from "./attached-images.ts";
 import { CommandSuggestions } from "./command-suggestions.tsx";
+import { AttachImages, placeholderOf, SubmitOrStop } from "./composer-actions.tsx";
 import { ComposerAttachments } from "./composer-attachments.tsx";
 import { ComposerContext, ComposerDetails } from "./composer-context.tsx";
 import { ComposerOptions, type SendMode } from "./composer-options.tsx";
@@ -119,9 +111,6 @@ export function ChatComposer({
   );
   const { value, textareaRef } = editor;
   const empty = value.trim() === "" && comments.length === 0 && attached.length === 0;
-  // While the agent works, an empty box offers Stop and a message offers Send, which steers or queues it. A message
-  // being sent offers Stop too, as Send cannot be pressed again; Escape stops whatever the box holds.
-  const stopOffered = busy && (empty || sending);
 
   const accept = (command: PromptTemplateSummary): void => {
     editor.setText(completeCommand(command));
@@ -212,45 +201,11 @@ export function ChatComposer({
               aria-expanded={menu.open}
               aria-controls={menu.open ? menu.listId : undefined}
               aria-activedescendant={menu.selected >= 0 ? menu.optionId(menu.selected) : undefined}
-              placeholder={
-                busy
-                  ? sendMode === "followUp"
-                    ? "Queue a follow-up"
-                    : "Steer the agent, or Alt+Enter to queue a follow-up"
-                  : "Ask the agent"
-              }
+              placeholder={placeholderOf(busy, sendMode)}
               autoFocus={autoFocus}
             />
             <PromptInputActions className="flex-wrap">
-              {imageSupport.kind === "accepted" && (
-                <>
-                  <input
-                    ref={picker}
-                    type="file"
-                    accept={IMAGE_ACCEPT}
-                    multiple
-                    hidden
-                    onChange={(event) => {
-                      void attach([...(event.target.files ?? [])]);
-                      event.target.value = "";
-                    }}
-                  />
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <PromptInputActionButton
-                          type="button"
-                          aria-label="Attach images"
-                          onClick={() => picker.current?.click()}
-                        />
-                      }
-                    >
-                      <PlusIcon />
-                    </TooltipTrigger>
-                    <TooltipContent>Attach images, or paste or drop them</TooltipContent>
-                  </Tooltip>
-                </>
-              )}
+              {imageSupport.kind === "accepted" && <AttachImages picker={picker} onAttach={attach} />}
               {statusBar !== undefined && <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">{statusBar}</div>}
               <ComposerOptions
                 mobile={mobile}
@@ -260,26 +215,14 @@ export function ChatComposer({
                 onMode={chooseSendMode}
               />
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                {stopOffered ? (
-                  <PromptInputSubmitButton
-                    type="button"
-                    aria-label="Stop"
-                    title="Stop (Esc)"
-                    disabled={stopping}
-                    onClick={onStop}
-                  >
-                    <SquareIcon />
-                  </PromptInputSubmitButton>
-                ) : (
-                  <PromptInputSubmitButton
-                    type="submit"
-                    aria-label="Send"
-                    title={busy && sendMode === "followUp" ? "Queue follow-up" : "Send"}
-                    disabled={empty || sending}
-                  >
-                    <ArrowUpIcon />
-                  </PromptInputSubmitButton>
-                )}
+                <SubmitOrStop
+                  busy={busy}
+                  empty={empty}
+                  sending={sending}
+                  stopping={stopping}
+                  sendMode={sendMode}
+                  onStop={onStop}
+                />
               </div>
             </PromptInputActions>
           </PromptInput>

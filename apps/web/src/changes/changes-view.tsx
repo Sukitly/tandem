@@ -1,6 +1,5 @@
 import type { ProjectChanges } from "@tandem/contracts";
 import { AlertCircleIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import { usePanelNavigation, useWorkbench } from "@/app/workbench.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
 import { Reader } from "@/components/reader.tsx";
@@ -10,11 +9,11 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { errorMessage } from "@/lib/errors.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
-import type { DiffReadingState } from "./change-diff.tsx";
 import type { ChangeTarget } from "./change-target.ts";
 import { ChangeView } from "./change-view.tsx";
 import { ChangedFilesList } from "./changed-files-list.tsx";
 import { useChangePatch } from "./use-change-patch.ts";
+import { useChangeSelection } from "./use-change-selection.ts";
 
 /**
  * The changes of a project against its integration branch, as Git reports them, and the selected file's patch.
@@ -38,41 +37,11 @@ export function ChangesView({
   const { openFile } = usePanelNavigation();
   const { forgetChangeTarget } = useWorkbench((state) => ({ forgetChangeTarget: state.forgetChangeTarget }));
   const state = useReplicatedState(changes?.state);
-  const [selected, setSelected] = useState<string | null>(() => state?.files[0]?.path ?? null);
-  const initialized = useRef(selected !== null);
-  const [reading] = useState<DiffReadingState>(() => ({ positions: new Map(), revealed: new WeakSet() }));
-  const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
+  const { selected, select, revealed, reading } = useChangeSelection(state, reveal, {
+    openFile,
+    settle: forgetChangeTarget,
+  });
   const patch = useChangePatch(changes, state, selected);
-
-  useEffect(() => {
-    if (reveal === undefined || state === undefined) return;
-    if (state.status === "ready" && state.files.some((file) => file.path === reveal.path)) {
-      setSelected(reveal.path);
-      setRevealed(reveal);
-      initialized.current = true;
-    } else {
-      openFile(reveal.path, {
-        ...(reveal.line === undefined ? {} : { line: reveal.line }),
-        ...(reveal.threadId === undefined ? {} : { threadId: reveal.threadId }),
-      });
-    }
-    forgetChangeTarget();
-  }, [reveal, state, openFile, forgetChangeTarget]);
-
-  useEffect(() => {
-    if (state?.status !== "ready") return;
-    for (const path of reading.positions.keys()) {
-      if (!state.files.some((file) => file.path === path)) reading.positions.delete(path);
-    }
-    if (!initialized.current && state.files.length > 0) {
-      initialized.current = true;
-      setSelected(state.files[0]?.path ?? null);
-      return;
-    }
-    setSelected((current) =>
-      current !== null && state?.files.some((file) => file.path === current) === true ? current : null,
-    );
-  }, [state, reading]);
 
   if (failure !== null) {
     return (
@@ -104,7 +73,7 @@ export function ChangesView({
     <div className="flex h-full min-h-0 flex-col">
       <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
         <ResizablePanel id="changes" minSize={80} className="overflow-auto px-2 pb-2">
-          <ChangedFilesList state={state} selected={selected} onSelect={setSelected} />
+          <ChangedFilesList state={state} selected={selected} onSelect={select} />
         </ResizablePanel>
         {selectedFile !== undefined && (
           <>
@@ -118,7 +87,7 @@ export function ChangesView({
                   patch={patch.data ?? null}
                   failure={patch.isError ? errorMessage(patch.error) : null}
                   comments={comments}
-                  onClose={() => setSelected(null)}
+                  onClose={() => select(null)}
                 />
               </Reader>
             </ResizablePanel>

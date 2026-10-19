@@ -1,6 +1,6 @@
 import { CodeView, type CodeViewFileItem, type CodeViewHandle, type CodeViewProps } from "@pierre/diffs/react";
 import type { CommentThread } from "@tandem/contracts";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { CODE_COMMENT_CSS } from "@/comments/code-comment-style.ts";
 import type { PlacedThread } from "@/comments/comment-anchor.ts";
 import {
@@ -11,12 +11,10 @@ import {
 import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
 import type { useCommentDrafts } from "@/comments/use-comment-drafts.ts";
-import { CodeCopyButton } from "@/components/copy-text.tsx";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 import { useRenderVersion } from "@/hooks/use-render-version.ts";
 import { useTheme } from "@/theme.tsx";
+import { FileFinderBar, useFileFinder } from "./file-finder.tsx";
 import type { OpenedFile } from "./project-files.ts";
 
 /** Long files use the existing virtual renderer; the editor stays mounted even when its line scrolls away. */
@@ -46,14 +44,6 @@ export function VirtualFile({
   const box = useRef<HTMLDivElement>(null);
   const view = useRef<CodeViewHandle<Annotation, undefined>>(null);
   const shown = useRef<OpenedFile | null>(null);
-  const [input, setInput] = useState("1");
-  const inputId = useId();
-  const composition = useCompositionGuard();
-  const [query, setQuery] = useState("");
-  const [match, setMatch] = useState<number | null>(null);
-  const [searchStatus, setSearchStatus] = useState<string | null>(null);
-  const target = Number(input);
-  const valid = Number.isSafeInteger(target) && target >= 1 && target <= lines.length;
   const version = useRenderVersion([text, placed, drafts.placed]);
   // The virtualizer prepares layout against this identity. Annotation changes are not new file contents.
   const file = useMemo(() => ({ name: path, contents: text, lang: "text" as const }), [path, text]);
@@ -81,21 +71,7 @@ export function VirtualFile({
     view.current?.scrollTo({ type: "line", id: path, lineNumber: number, align: "center" });
     view.current?.setSelectedLines({ id: path, range: { start: number, end: number } });
   };
-  const findNext = (): void => {
-    if (query === "") return;
-    const needle = query.toLowerCase();
-    for (let offset = 0; offset < lines.length; offset += 1) {
-      const index = ((match === null ? 0 : match + 1) + offset) % lines.length;
-      if (!lines[index]?.toLowerCase().includes(needle)) continue;
-      setMatch(index);
-      setInput(String(index + 1));
-      setSearchStatus(`Found on line ${index + 1}`);
-      go(index + 1);
-      return;
-    }
-    setMatch(null);
-    setSearchStatus("No matching line");
-  };
+  const finder = useFileFinder(lines, go);
   useEffect(() => {
     if (shown.current === opened) return;
     if (line !== undefined) {
@@ -110,10 +86,10 @@ export function VirtualFile({
   const startDraft = drafts.start;
   const onLineNumberClick = useCallback(
     ({ lineNumber }: { lineNumber: number }): void => {
-      setInput(String(lineNumber));
+      finder.setLine(String(lineNumber));
       startDraft("additions", lineNumber);
     },
-    [startDraft],
+    [startDraft, finder.setLine],
   );
 
   const options: CodeViewProps<Annotation, undefined>["options"] = useMemo(
@@ -131,56 +107,7 @@ export function VirtualFile({
 
   return (
     <div ref={box} className="flex h-full min-h-0 flex-col" data-virtual-file>
-      <form
-        className="flex shrink-0 flex-wrap items-center gap-2 border-b p-2 text-xs"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (valid && !composition.active()) go(target);
-        }}
-      >
-        <label htmlFor={inputId}>Line</label>
-        <Input
-          id={inputId}
-          type="number"
-          min={1}
-          max={lines.length}
-          required
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          className="w-24"
-        />
-        <Button type="submit" size="sm" variant="outline" disabled={!valid}>
-          Go to line
-        </Button>
-        <CodeCopyButton value={text} aria-label="Copy entire file" />
-        <Input
-          type="search"
-          aria-label="Search file"
-          placeholder="Search file"
-          value={query}
-          className="w-40"
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setMatch(null);
-            setSearchStatus(null);
-          }}
-          onCompositionStart={composition.onCompositionStart}
-          onCompositionEnd={composition.onCompositionEnd}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !composition.owns(event)) {
-              event.preventDefault();
-              findNext();
-            }
-          }}
-        />
-        <Button type="button" size="sm" variant="outline" disabled={query === ""} onClick={findNext}>
-          Find next line
-        </Button>
-        {searchStatus !== null && <span role="status">{searchStatus}</span>}
-        <p className="w-full text-muted-foreground">
-          Large file: only nearby lines are rendered. Search here, jump to a line, or copy the entire file.
-        </p>
-      </form>
+      <FileFinderBar finder={finder} lineCount={lines.length} text={text} />
       <CommentDraftList entries={drafts.placed} drafts={drafts} comments={comments} view={box} />
       {above.length > 0 && (
         <div className="max-h-1/2 shrink-0 overflow-auto border-b">

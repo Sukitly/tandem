@@ -1,4 +1,3 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { tunnelTokenIdentity } from "@tandem/contracts";
 import { Link, useCanGoBack, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
@@ -13,6 +12,7 @@ import { pastedToken } from "./cloudflare.ts";
 import { PublicAccessStatus } from "./public-access-status.tsx";
 import { PublicAccessFlow } from "./setup-guide.tsx";
 import { UnpublishDialog } from "./unpublish-dialog.tsx";
+import { usePublishing } from "./use-publishing.ts";
 
 /** The page for publishing this machine, in place of the workbench, which waits hidden behind it. */
 export function PublicAccessPage() {
@@ -28,35 +28,12 @@ export function PublicAccessPage() {
   const state = useReplicatedState(publicAccess.state);
   const [origin, setOrigin] = useState("https://");
   const [token, setToken] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [stopping, setStopping] = useState(false);
 
   const installed = state?.cloudflared ?? false;
   const status = state?.status ?? "none";
-  const isPublishing = publishing || status === "starting" || status === "authorizing";
-
-  useEffect(() => {
-    if (status === "connected" || status === "failed" || status === "unavailable" || status === "none") {
-      setPublishing(false);
-    }
-  }, [status]);
-
+  const tunnel = usePublishing(publicAccess, status);
   const activeTunnel = state?.tunnel ?? (token ? tunnelTokenIdentity(pastedToken(token) ?? token) : undefined);
-
-  const stopPublishing = async () => {
-    setStopping(true);
-    setError(null);
-    try {
-      await publicAccess.unpublish(BACKGROUND_CONTEXT);
-      setConfirmStop(false);
-    } catch (failure: unknown) {
-      setError(failure instanceof Error ? failure.message : String(failure));
-    } finally {
-      setStopping(false);
-    }
-  };
 
   return (
     <main className="h-dvh overflow-y-auto" aria-label="Public access">
@@ -82,39 +59,32 @@ export function PublicAccessPage() {
           token={token}
           onOriginChange={setOrigin}
           onTokenChange={setToken}
-          publishing={isPublishing}
-          onSubmit={async (event) => {
+          publishing={tunnel.publishing}
+          onSubmit={(event) => {
             event.preventDefault();
-            const cleanToken = (pastedToken(token) ?? token).trim();
-            setPublishing(true);
-            setError(null);
-            try {
-              await publicAccess.publish({ publicUrl: origin.trim(), token: cleanToken }, BACKGROUND_CONTEXT);
-            } catch (failure: unknown) {
-              setError(failure instanceof Error ? failure.message : String(failure));
-            } finally {
-              setPublishing(false);
-            }
+            void tunnel.publish({ publicUrl: origin.trim(), token: (pastedToken(token) ?? token).trim() });
           }}
           tunnel={activeTunnel}
           stopControl={
-            <Button variant="destructive" disabled={stopping} onClick={() => setConfirmStop(true)}>
-              {stopping && <Spinner />}
-              {stopping ? "Stopping…" : "Stop publishing"}
+            <Button variant="destructive" disabled={tunnel.stopping} onClick={() => setConfirmStop(true)}>
+              {tunnel.stopping && <Spinner />}
+              {tunnel.stopping ? "Stopping…" : "Stop publishing"}
             </Button>
           }
         />
 
-        {error !== null && <FieldError>{error}</FieldError>}
+        {tunnel.error !== null && <FieldError>{tunnel.error}</FieldError>}
       </div>
 
       <UnpublishDialog
         open={confirmStop}
-        stopping={stopping}
+        stopping={tunnel.stopping}
         onOpenChange={(open) => {
-          if (!stopping) setConfirmStop(open);
+          if (!tunnel.stopping) setConfirmStop(open);
         }}
-        onConfirm={stopPublishing}
+        onConfirm={async () => {
+          if (await tunnel.stop()) setConfirmStop(false);
+        }}
       />
     </main>
   );

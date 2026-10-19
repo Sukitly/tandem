@@ -6,6 +6,9 @@ import { indexLines, type PlacedThread, relocate } from "@/comments/comment-anch
 import { errorMessage } from "@/lib/errors.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 
+/** A comment the patch does not show, and what is known of where it belongs. */
+export type DetachedThread = PlacedThread & { reason: "outdated" | "outside" | "unverified" };
+
 /** Missing patch context never proves an anchor is outdated. Verify it against a separately owned snapshot. */
 export function useDetachedThreads(
   workspaceId: number,
@@ -33,7 +36,7 @@ export function useDetachedThreads(
     () => (lines === undefined ? new Map<string, number[]>() : indexLines((line) => lines[line - 1], lines.length)),
     [lines],
   );
-  const threads: (PlacedThread & { reason: "outdated" | "outside" | "unverified" })[] = missing.map(({ thread }) => {
+  const threads: DetachedThread[] = missing.map(({ thread }) => {
     // We have no old-file snapshot with which to verify a deletion-side anchor.
     if (thread.anchor.side === "deletions" || lines === undefined)
       return { thread, line: undefined, reason: "unverified" };

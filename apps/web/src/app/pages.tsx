@@ -1,7 +1,8 @@
 import { Link, Navigate, useParams, useRouteContext } from "@tanstack/react-router";
 import { FileQuestionIcon } from "lucide-react";
 import { PairScreen } from "@/auth/pair-screen.tsx";
-import { ChatView, NewChat } from "@/chat/chat-view.tsx";
+import { ChatView } from "@/chat/chat-view.tsx";
+import { NewChat } from "@/chat/new-chat.tsx";
 import { buttonVariants } from "@/components/ui/button.tsx";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
 import { useConnected } from "@/rpc/connection.tsx";

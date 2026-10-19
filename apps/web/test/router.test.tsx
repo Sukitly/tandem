@@ -51,6 +51,8 @@ vi.mock("../src/app/empty-workspace.tsx", () => ({
 }));
 vi.mock("../src/chat/chat-view.tsx", () => ({
   ChatView: ({ conversationId }: { conversationId: number }) => <p>Conversation {conversationId}</p>,
+}));
+vi.mock("../src/chat/new-chat.tsx", () => ({
   NewChat: ({ workspaceId }: { workspaceId: number }) => <p>New conversation in {workspaceId}</p>,
 }));
 vi.mock("../src/auth/pair-screen.tsx", () => ({
