@@ -1,7 +1,7 @@
 import { DefaultFolderOpenedIcon, FileIcon, FolderIcon, getIconForFolder } from "@react-symbols/icons/utils";
 import type { FileEntry } from "@tandem/contracts";
 import { FileSymlinkIcon } from "lucide-react";
-import { isValidElement, useEffect, useRef } from "react";
+import { isValidElement, useEffect, useRef, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   SidebarMenu,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { isDimmed } from "./dimmed.ts";
+import { truncateEntries } from "./file-tree-limit.ts";
 import { formatSize } from "./format-size.ts";
 import { type ProjectFiles, useProjectFiles } from "./project-files.ts";
 
@@ -56,6 +57,7 @@ function Entries({
   dimmed?: boolean;
   showHidden?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const listed = useProjectFiles(files, (current) => current.directory(path));
   useEffect(() => files.load(path), [files, path]);
   if (listed === undefined || listed.status === "loading") {
@@ -66,15 +68,31 @@ function Entries({
     );
   }
   if (listed.status === "failed") return null;
-  const entries = showHidden ? listed.value : listed.value.filter((entry) => !isDimmed(entry, dimmed));
-  return entries.map((entry) => {
-    const entryDimmed = isDimmed(entry, dimmed);
-    return entry.kind === "directory" ? (
-      <Directory key={entry.path} files={files} entry={entry} dimmed={entryDimmed} showHidden={showHidden} />
-    ) : (
-      <File key={entry.path} files={files} entry={entry} dimmed={entryDimmed} />
-    );
-  });
+  const all = showHidden ? listed.value : listed.value.filter((entry) => !isDimmed(entry, dimmed));
+  const { shown, remaining } = expanded ? { shown: all, remaining: 0 } : truncateEntries(all);
+  return (
+    <>
+      {shown.map((entry) => {
+        const entryDimmed = isDimmed(entry, dimmed);
+        return entry.kind === "directory" ? (
+          <Directory key={entry.path} files={files} entry={entry} dimmed={entryDimmed} showHidden={showHidden} />
+        ) : (
+          <File key={entry.path} files={files} entry={entry} dimmed={entryDimmed} />
+        );
+      })}
+      {remaining > 0 && (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            className="text-xs text-muted-foreground"
+            onClick={() => setExpanded(true)}
+            aria-label={`Show ${remaining} more items`}
+          >
+            … and {remaining} more
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      )}
+    </>
+  );
 }
 
 function Directory({ files, entry, dimmed, showHidden }: DirectoryProps) {
