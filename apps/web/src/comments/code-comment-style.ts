@@ -1,7 +1,7 @@
 /**
  * The only renderer-specific style compatibility layer, passed through CodeView's public unsafeCSS option.
- * No comment component reaches into or mutates a ShadowRoot. Keep these selectors covered by browser regressions
- * when upgrading @pierre/diffs: comments are plain, code remains selectable, and gutters permit touch scrolling.
+ * No comment component reaches into or mutates a ShadowRoot. Check these selectors when upgrading @pierre/diffs:
+ * comments are plain, code remains selectable, and gutters permit touch scrolling.
  */
 export const CODE_COMMENT_CSS = `
 [data-line-annotation], [data-gutter-buffer="annotation"] { --diffs-annotation-bg: var(--diffs-bg); }

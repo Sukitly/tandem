@@ -243,7 +243,7 @@ Tandem stores all state in `$TANDEM_HOME` (default: `~/.tandem` for native runs;
 - **Composition:** `AdaptivePanel` owns layout, `Reader` owns expansion/focus, and their callers compose feature-specific content and actions. Comment presentation is shared across renderers. Composer completion, keyboard precedence, attachment handling, and context presentation have separate owners.
 - **Lifetimes:** Drafts live above connection/layout boundaries and never enter browser storage. Hidden visited views retain terminal and iframe identity; hidden projects release changes subscriptions. Virtual-file draft editors live outside the virtualized line window.
 
-Unit tests exercise these ownership boundaries; the [browser regressions](apps/web/browser/README.md) exercise actual renderers, focus, and retained DOM resources.
+Unit tests exercise these ownership boundaries.
 
 For contributing guidelines and architectural rules, see [AGENTS.md](AGENTS.md) and [SECURITY.md](SECURITY.md).
 
