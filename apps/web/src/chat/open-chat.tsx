@@ -58,8 +58,16 @@ export function OpenChat({ conversationId, conversation }: { conversationId: num
           className="chat-transcript-scrollbar size-full min-h-0 min-w-0 overflow-y-auto scroll-fade-none"
         >
           <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-            {transcript.items.map((item) => (
-              <MessageScrollerItem key={item.key} messageId={item.key}>
+            {transcript.items.map((item, index) => (
+              <MessageScrollerItem
+                key={item.key}
+                messageId={item.key}
+                // Each model call is its own assistant item. Back-to-back ones are one agent turn, so they use the
+                // 8px spacing of steps inside a message (gap-2) instead of the 24px gap (gap-6) between messages.
+                className={
+                  item.kind === "assistant" && transcript.items[index - 1]?.kind === "assistant" ? "-mt-4" : undefined
+                }
+              >
                 <ErrorBoundary what="this message" resetKey={item} compact>
                   <TranscriptEntry item={item} />
                 </ErrorBoundary>
