@@ -41,6 +41,9 @@ export default defineConfig({
       output: {
         manualChunks: (id) => {
           if (id.includes("node_modules/katex/")) return "vendor-katex";
+          // Mermaid is loaded when a diagram is first drawn (see `chat/lazy-mermaid.ts`). A manual chunk takes in what its
+          // modules import, so `@streamdown/mermaid` must stay out of this one, or mermaid's core loads at startup.
+          if (id.includes("node_modules/@streamdown/mermaid/")) return undefined;
           if (id.includes("node_modules/streamdown/") || id.includes("node_modules/@streamdown/"))
             return "vendor-streamdown";
           if (id.includes("node_modules/@tanstack/")) return "vendor-tanstack";
