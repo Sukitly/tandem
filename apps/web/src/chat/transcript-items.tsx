@@ -119,10 +119,13 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
                     );
                   }
                   if (step.name === "bash") {
+                    const { command, ...options } = step.args;
                     return (
                       <Terminal
                         key={step.callId}
-                        command={String(step.args.command ?? "")}
+                        name={step.name}
+                        command={String(command ?? "")}
+                        options={options}
                         output={step.output}
                         status={step.status}
                       />

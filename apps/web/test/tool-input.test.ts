@@ -46,15 +46,20 @@ test("generic tool input is expandable even without any output", async () => {
   expect(screen.getByText(/"enabled": true/)).toBeDefined();
 });
 
-test("bash expands directly to output instead of generic tool input and output sections", async () => {
+test("bash expands to one block of command, arguments and output instead of generic tool sections", async () => {
   const { container } = render(entry("bash", { command: "echo hello", timeout: 120 }, "hello"));
-  expect(screen.getByText("Ran echo hello")).toBeDefined();
-  expect(container.querySelector("[data-slot=badge]")).toBeNull();
+  expect(container.querySelector("[data-slot=badge]")?.textContent).toBe("bash");
+  expect(screen.getByText("echo hello")).toBeDefined();
   fireEvent.click(screen.getByRole("button"));
   await waitFor(() => expect(screen.getByText("hello")).toBeDefined());
   expect(screen.queryByText("Input")).toBeNull();
   expect(screen.queryByText("Output")).toBeNull();
-  expect(container.querySelectorAll("[data-slot=code-block-content]")).toHaveLength(1);
+  expect(
+    Array.from(container.querySelectorAll("[data-slot=code-block-content]"), (block) => block.textContent),
+  ).toEqual(["$ echo hello", "hello"]);
+  expect(container.querySelectorAll("[data-slot=code-block]")).toHaveLength(1);
+  // Arguments other than the command stay visible, and the command is not repeated among them.
+  expect(container.querySelector("[data-slot=terminal-options]")?.textContent).toBe("timeout 120s");
 });
 
 test("an empty input is still available as an empty object", async () => {
