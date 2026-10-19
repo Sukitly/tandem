@@ -7,12 +7,17 @@ import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { connect, type TandemConnection } from "@tandem/client";
 import {
+  COMMENT_CONTEXT_LINES,
   type CommentAnchor,
   Comments,
   type CommentThread,
   Conversation,
   Conversations,
   type ConversationView,
+  MAX_COMMENT_LENGTH,
+  MAX_COMMENT_LINE_LENGTH,
+  MAX_COMMENT_THREADS,
+  MAX_THREAD_MESSAGES,
   Workspaces,
   waitingMessages,
 } from "@tandem/contracts";
@@ -236,6 +241,165 @@ describe("comment threads", () => {
       comments.start({ workspaceId, anchor: { ...anchor, line: 0 }, text: "One." }, context),
     ).rejects.toThrow(/line/);
     await expect(comments.start({ workspaceId, anchor, text: "x".repeat(10_001) }, context)).rejects.toThrow(/at most/);
+  });
+
+  test("a send carries the messages it names of a thread, with the quote when there is one", async () => {
+    const { server } = await start();
+    const { workspaces, comments, conversations, threads, openConversation, view } = await client(server);
+    const workspaceId = await workspaces.add({ path: tmpdir() }, context);
+    const threadId = await comments.start(
+      { workspaceId, anchor: { ...anchor, quote: "  padded  " }, text: "One." },
+      context,
+    );
+    await comments.reply({ threadId, text: "Two." }, context);
+    await comments.reply({ threadId, text: "Three." }, context);
+    await waitFor(() => waitingIds(threads()).length === 3);
+    const [one, two, three] = waitingIds(threads()) as [number, number, number];
+    const place = "Comment #1 on [src/app.ts:42](src/app.ts#L42)";
+    const read = async (ids: number[]): Promise<string> => {
+      const id = await conversations.start({ workspaceId, text: "", comments: ids }, context);
+      await openConversation(id);
+      await waitFor(() => userMessages(view(id)).length === 1);
+      return userMessages(view(id))[0] as string;
+    };
+
+    // What was written after the newest message it names is not part of it.
+    expect(await read([one])).toBe([place, "> padded", "One."].join("\n\n"));
+    // Messages of one thread read as its discussion up to the newest of them.
+    expect(await read([two, three])).toBe(
+      [place, "> padded", "**User:** One.", "**User:** Two.", "**User:** Three."].join("\n\n"),
+    );
+
+    // A line that is only blank space is not quoted.
+    const blank = await comments.start(
+      { workspaceId, anchor: { ...anchor, line: 7, quote: "   " }, text: "Blank." },
+      context,
+    );
+    await waitFor(() => threads().some((thread) => thread.id === blank));
+    const blankId = threads().find((thread) => thread.id === blank)?.messages[0]?.id as number;
+    expect(await read([blankId])).toBe(["Comment #2 on [src/app.ts:7](src/app.ts#L7)", "Blank."].join("\n\n"));
+  });
+
+  test("a send names its comments as a list of message IDs, and takes only those of its own project", async () => {
+    const { server } = await start();
+    const { workspaces, comments, conversations, threads, openConversation, view } = await client(server);
+    const workspaceId = await workspaces.add({ path: tmpdir() }, context);
+    const other = await workspaces.add({ path: await mkdtemp(join(tmpdir(), "tandem-other-")) }, context);
+    await comments.start({ workspaceId: other, anchor, text: "Elsewhere." }, context);
+    await waitFor(() => threads().length === 1);
+    const elsewhere = waitingIds(threads())[0] as number;
+
+    for (const bad of ["1", [1.5], ["1"]]) {
+      await expect(conversations.start({ workspaceId, text: "Go.", comments: bad as never }, context)).rejects.toThrow(
+        /list of message IDs/,
+      );
+    }
+    const id = await conversations.start({ workspaceId, text: "Go.", comments: [elsewhere] }, context);
+    await openConversation(id);
+    await waitFor(() => userMessages(view(id)).length === 1);
+    expect(userMessages(view(id))).toEqual(["Go."]);
+    expect(waitingIds(threads())).toEqual([elsewhere]);
+  });
+
+  test("refuses an anchor it cannot place, and keeps the part of one that fits", async () => {
+    const { server } = await start();
+    const { workspaces, comments, threads } = await client(server);
+    const workspaceId = await workspaces.add({ path: tmpdir() }, context);
+    const place = (patch: Record<string, unknown>) =>
+      comments.start({ workspaceId, anchor: { ...anchor, ...patch }, text: "One." } as never, context);
+    await expect(place({ path: "" })).rejects.toThrow(/relative/);
+    await expect(place({ path: "a".repeat(4097) })).rejects.toThrow(/relative/);
+    await expect(place({ line: 1.5 })).rejects.toThrow(/line/);
+    await expect(place({ line: "3" })).rejects.toThrow(/line/);
+    await expect(place({ side: "sideways" })).rejects.toThrow(/side/);
+    await expect(place({ quote: 3 })).rejects.toThrow(/quote/);
+    await expect(place({ before: "x" })).rejects.toThrow(/list of lines/);
+    await expect(place({ after: ["a", 1] })).rejects.toThrow(/list of lines/);
+    await expect(comments.start({ workspaceId: "1", anchor, text: "One." } as never, context)).rejects.toThrow(
+      /does not exist/,
+    );
+    expect(threads()).toEqual([]);
+
+    // The longest path and the longest comment that are kept; lines are cut, and only the nearest ones stay.
+    const long = "y".repeat(MAX_COMMENT_LINE_LENGTH + 1);
+    const near = Array.from({ length: COMMENT_CONTEXT_LINES + 2 }, (_, index) => `line ${index}`);
+    const path = "a".repeat(4096);
+    await comments.start(
+      {
+        workspaceId,
+        anchor: { path, line: 1, side: "deletions", quote: long, before: near, after: [...near, long] },
+        text: "x".repeat(MAX_COMMENT_LENGTH),
+      },
+      context,
+    );
+    await comments.start({ workspaceId, anchor, text: "No side." }, context);
+    await waitFor(() => threads().length === 2);
+    expect(threads()[0]?.anchor).toEqual({
+      path,
+      line: 1,
+      side: "deletions",
+      quote: long.slice(0, MAX_COMMENT_LINE_LENGTH),
+      before: near.slice(-COMMENT_CONTEXT_LINES),
+      after: near.slice(0, COMMENT_CONTEXT_LINES),
+    });
+    expect(threads()[1]?.anchor).not.toHaveProperty("side");
+  });
+
+  test("a project holds a limited number of threads, and a thread a limited number of messages", async () => {
+    const { server } = await start();
+    const { workspaces, comments, threads } = await client(server);
+    const workspaceId = await workspaces.add({ path: tmpdir() }, context);
+    const other = await workspaces.add({ path: await mkdtemp(join(tmpdir(), "tandem-other-")) }, context);
+    let threadId = 0;
+    for (let index = 0; index < MAX_COMMENT_THREADS; index += 1)
+      threadId = await comments.start({ workspaceId, anchor, text: `Note ${index}.` }, context);
+    await expect(comments.start({ workspaceId, anchor, text: "Too many." }, context)).rejects.toThrow(
+      `at most ${MAX_COMMENT_THREADS} comment threads`,
+    );
+    // The limit is the project's own.
+    const elsewhere = await comments.start({ workspaceId: other, anchor, text: "Room here." }, context);
+
+    for (let index = 1; index < MAX_THREAD_MESSAGES; index += 1)
+      await comments.reply({ threadId: elsewhere, text: `Reply ${index}.` }, context);
+    await expect(comments.reply({ threadId: elsewhere, text: "Too many." }, context)).rejects.toThrow(
+      `at most ${MAX_THREAD_MESSAGES} messages`,
+    );
+    await waitFor(() => threads().length === MAX_COMMENT_THREADS + 1);
+    expect(threads().find((thread) => thread.id === elsewhere)?.messages).toHaveLength(MAX_THREAD_MESSAGES);
+    // A thread that is not full still takes one.
+    await comments.reply({ threadId, text: "Still room." }, context);
+  });
+
+  test("taking back one message or deleting one thread leaves the others", async () => {
+    const { server } = await start();
+    const { workspaces, comments, threads } = await client(server);
+    const workspaceId = await workspaces.add({ path: tmpdir() }, context);
+    const first = await comments.start({ workspaceId, anchor, text: "One." }, context);
+    const second = await comments.start({ workspaceId, anchor: { ...anchor, line: 7 }, text: "Other." }, context);
+    const third = await comments.start({ workspaceId, anchor: { ...anchor, line: 9 }, text: "Third." }, context);
+    await comments.reply({ threadId: first, text: "Two." }, context);
+    await waitFor(() => threads().find((thread) => thread.id === first)?.messages.length === 2);
+    const thread = (id: number) => threads().find((candidate) => candidate.id === id);
+    const messages = (id: number) => thread(id)?.messages.map((message) => message.text);
+
+    // Taking back one of two messages keeps the thread and the other message.
+    const twoId = thread(first)?.messages[1]?.id as number;
+    await comments.withdraw({ threadId: first, messageId: twoId }, context);
+    await waitFor(() => messages(first)?.length === 1);
+    expect(messages(first)).toEqual(["One."]);
+    expect(threads()).toHaveLength(3);
+    await expect(comments.withdraw({ threadId: first, messageId: twoId }, context)).rejects.toThrow(/does not exist/);
+
+    // Taking back the only message of a thread drops that thread alone.
+    await comments.withdraw({ threadId: second, messageId: thread(second)?.messages[0]?.id as number }, context);
+    await waitFor(() => threads().length === 2);
+    expect(threads().map((candidate) => candidate.id)).toEqual([first, third]);
+
+    // Deleting a thread whole leaves the rest.
+    await comments.remove(first, context);
+    await waitFor(() => threads().length === 1);
+    expect(messages(third)).toEqual(["Third."]);
+    await expect(comments.remove(first, context)).rejects.toThrow(/does not exist/);
   });
 });
 
