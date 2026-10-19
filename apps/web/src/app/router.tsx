@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import { PageError } from "@/components/error-boundary.tsx";
 import { ConversationPage, HomePage, NewConversationPage, NotFoundPage, PairPage } from "./pages.tsx";
 
-export interface RouterContext {
+interface RouterContext {
   /** The pairing code the page was opened with, taken from its address before anything rendered. */
   pairCode: string | undefined;
 }

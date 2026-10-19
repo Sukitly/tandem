@@ -92,7 +92,7 @@ export const ANTIGRAVITY_ROUTING: Record<string, AntigravityRouting> = {
   },
 };
 
-export const RUNTIME_MAX_OUTPUT_TOKENS: Record<string, number> = {
+const RUNTIME_MAX_OUTPUT_TOKENS: Record<string, number> = {
   "gemini-3.8-flash": 65536,
   "gemini-3.8-flash-low": 65536,
   "gemini-3.8-flash-medium": 65536,
@@ -311,10 +311,6 @@ export function registerDiscoveredModelEnums(models: Record<string, { model?: un
       registerModelEnum(id, info.model);
     }
   }
-}
-
-export function getModelEnum(runtimeId: string): string | undefined {
-  return dynamicModelEnums.get(runtimeId);
 }
 
 export function getAntigravityRequestModelId(modelId: string, effort: ThinkingEffort | string = "off"): string {

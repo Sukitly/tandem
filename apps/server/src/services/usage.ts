@@ -142,7 +142,7 @@ export class UsageBoard {
 }
 
 /** Read one provider's usage; `null` for a provider with no usage endpoint. */
-export async function fetchUsage(provider: string, token: string): Promise<UsageRead | null> {
+async function fetchUsage(provider: string, token: string): Promise<UsageRead | null> {
   if (provider === "anthropic") return fetchAnthropicUsage(token);
   if (provider === "openai-codex") return fetchCodexUsage(token);
   if (provider === "antigravity") return fetchAntigravityUsage(token);
@@ -234,7 +234,7 @@ function resetOf(resetsAt: string | null): { resetsAt?: string } {
 }
 
 /** `7d`, `5h`, `30m`, `45s`: the window's length, when the provider names its own. */
-export function formatWindowDuration(seconds: number): string {
+function formatWindowDuration(seconds: number): string {
   if (seconds >= DAY_SECONDS && seconds % DAY_SECONDS === 0) return `${seconds / DAY_SECONDS}d`;
   if (seconds >= HOUR_SECONDS && seconds % HOUR_SECONDS === 0) return `${seconds / HOUR_SECONDS}h`;
   if (seconds >= 60 && seconds % 60 === 0) return `${seconds / 60}m`;

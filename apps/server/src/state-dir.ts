@@ -7,7 +7,7 @@ import { createToken } from "./auth.ts";
 import { writeJsonFile } from "./json-file.ts";
 
 /** Stable installation identity and a local master key that is never distributed to browsers. */
-export interface ServerIdentity {
+interface ServerIdentity {
   serverId: string;
   token: string;
 }

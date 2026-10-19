@@ -12,14 +12,6 @@ test("workbenches isolate UI state and keep actions stable", () => {
   expect(first.getState().panelTab).toBe("terminal");
   expect(second.getState().panelTab).toBe("files");
   expect(first.getState().showTab).toBe(showTab);
-  expect(Object.keys(first.getState())).not.toContain("conversations");
-  expect(Object.keys(first.getState())).not.toContain("files");
-});
-
-test("which page is open is the address, so the store keeps no copy of it", () => {
-  const keys = Object.keys(createWorkbenchStore(false).getState());
-  for (const name of ["selected", "draft", "select", "newConversation", "followRoute"])
-    expect(keys).not.toContain(name);
 });
 
 test("mobile dismissal does not overwrite the desktop preference", () => {

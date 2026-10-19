@@ -4,7 +4,7 @@ import type { FileEntry } from "@tandem/contracts";
  * How many entries of one directory to render before cutting off and offering to show more. A huge directory (thousands
  * of files) in a non-virtualized tree balloons DOM node count and degrades layout across the whole page.
  */
-export const DIRECTORY_ENTRY_LIMIT = 300;
+const DIRECTORY_ENTRY_LIMIT = 300;
 
 export interface TruncatedEntries {
   shown: readonly FileEntry[];

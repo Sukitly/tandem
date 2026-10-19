@@ -53,7 +53,7 @@ export function createFauxProvider(options: FauxOptions = {}): Provider {
 }
 
 /** A reply that exercises the transcript's rendering: Markdown, a list, and a code block. */
-export function demoReply(text: string): string {
+function demoReply(text: string): string {
   return [
     `You said: **${text}**`,
     "",

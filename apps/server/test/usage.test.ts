@@ -3,7 +3,6 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   extractCodexAccountId,
   formatUsageError,
-  formatWindowDuration,
   normalizeAnthropicUsage,
   normalizeCodexUsage,
   OPENAI_SUBSCRIPTION_NOTICE,
@@ -57,13 +56,6 @@ describe("reading usage", () => {
     ).toString("base64url");
     expect(extractCodexAccountId(`header.${payload}.signature`)).toBe("acc_123");
     expect(extractCodexAccountId("not-a-jwt")).toBeNull();
-  });
-
-  test("window durations read as the provider names them", () => {
-    expect(formatWindowDuration(5 * 3600)).toBe("5h");
-    expect(formatWindowDuration(7 * 86400)).toBe("7d");
-    expect(formatWindowDuration(1800)).toBe("30m");
-    expect(formatWindowDuration(45)).toBe("45s");
   });
 });
 

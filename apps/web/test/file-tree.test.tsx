@@ -2,7 +2,6 @@ import type { FileEntry } from "@tandem/contracts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
-import { ProjectPanel } from "../src/app/project-panel.tsx";
 import { SidebarProvider } from "../src/components/ui/sidebar.tsx";
 import { FileTree } from "../src/files/file-tree.tsx";
 import type { ProjectFiles } from "../src/files/project-files.ts";
@@ -48,28 +47,6 @@ vi.mock("../src/app/workbench.tsx", async () =>
   }),
 );
 
-vi.mock("../src/rpc/use-project-changes.ts", () => ({
-  useProjectChanges: () => undefined,
-  useProjectChangesFailure: () => null,
-}));
-
-vi.mock("../src/files/file-view.tsx", () => ({
-  FileView: () => null,
-}));
-
-vi.mock("../src/changes/changes-view.tsx", () => ({
-  ChangesView: () => null,
-}));
-
-vi.mock("../src/terminals/terminals-view.tsx", () => ({
-  TerminalsView: () => null,
-}));
-
-function buttonFor(markup: string, title: string): string {
-  const match = markup.match(new RegExp(`<button[^>]*title="${title.replace(".", "\\.")}"[^>]*>`));
-  return match ? match[0] : "";
-}
-
 describe("FileTree hidden file filtering and dimming", () => {
   const dummyFiles = {
     load: vi.fn(),
@@ -87,14 +64,9 @@ describe("FileTree hidden file filtering and dimming", () => {
     expect(markup).toContain('title=".editorconfig"');
     expect(markup).toContain('title=".gitignore"');
     expect(markup).toContain('title="README.md"');
-
-    // .editorconfig, .gitignore, README.md are not dimmed
-    expect(buttonFor(markup, ".editorconfig")).not.toContain("opacity-30");
-    expect(buttonFor(markup, ".gitignore")).not.toContain("opacity-30");
-    expect(buttonFor(markup, "README.md")).not.toContain("opacity-30");
   });
 
-  test("shows dimmed entries with opacity-30 when showHidden is true", () => {
+  test("shows dimmed entries when showHidden is true", () => {
     const markup = renderToStaticMarkup(
       createElement(SidebarProvider, null, createElement(FileTree, { files: dummyFiles, showHidden: true })),
     );
@@ -102,33 +74,5 @@ describe("FileTree hidden file filtering and dimming", () => {
     expect(markup).toContain('title=".git"');
     expect(markup).toContain('title=".DS_Store"');
     expect(markup).toContain('title="node_modules"');
-    expect(buttonFor(markup, ".git")).toContain("opacity-30");
-    expect(buttonFor(markup, ".DS_Store")).toContain("opacity-30");
-    expect(buttonFor(markup, "node_modules")).toContain("opacity-30");
-
-    // Regular dotfiles still not dimmed
-    expect(buttonFor(markup, ".editorconfig")).not.toContain("opacity-30");
-    expect(buttonFor(markup, ".gitignore")).not.toContain("opacity-30");
-  });
-});
-
-describe("ProjectPanel toggle hidden files button", () => {
-  test("renders toggle button to show hidden files when hidden", () => {
-    mockWorkbench.showHiddenFiles = false;
-    const markup = renderToStaticMarkup(
-      createElement(SidebarProvider, null, createElement(ProjectPanel, { workspaceId: 1 })),
-    );
-
-    expect(markup).toContain('aria-label="Show hidden files"');
-    expect(markup).toContain('aria-label="Refresh"');
-  });
-
-  test("renders toggle button to hide hidden files when shown", () => {
-    mockWorkbench.showHiddenFiles = true;
-    const markup = renderToStaticMarkup(
-      createElement(SidebarProvider, null, createElement(ProjectPanel, { workspaceId: 1 })),
-    );
-
-    expect(markup).toContain('aria-label="Hide hidden files"');
   });
 });

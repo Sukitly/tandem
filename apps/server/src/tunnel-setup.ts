@@ -17,7 +17,7 @@ import { checkedPublicUrl, saveTunnelConfig } from "./tunnel-config.ts";
 import { credentialsPath, originCertPath, tunnelFileYaml, tunnelFileYamlPath } from "./tunnel-file.ts";
 
 /** The name the tunnel is created under, and the name it is found by on a second run. */
-export const TUNNEL_NAME = "tandem";
+const TUNNEL_NAME = "tandem";
 
 /** What either role needs: where it is published, and how to talk about it. */
 export interface TunnelSetupOptions {

@@ -1,7 +1,7 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import type { CommentThread } from "@tandem/contracts";
 import { expect, test, vi } from "vitest";
-import { diffLine, diffLineCount, diffLines } from "../src/changes/diff-lines.ts";
+import { diffLineCount, diffLines } from "../src/changes/diff-lines.ts";
 import { placeThreads, threadsByLine } from "../src/comments/comment-anchor.ts";
 
 const thread: CommentThread = {
@@ -10,6 +10,35 @@ const thread: CommentThread = {
   anchor: { path: "file.ts", line: 2, quote: "new", before: [], after: [] },
   messages: [],
 };
+
+test("a diff's lines are numbered as each side numbers them, and end where the hunk does", () => {
+  const patch = [
+    "diff --git a/src/app.ts b/src/app.ts",
+    "--- a/src/app.ts",
+    "+++ b/src/app.ts",
+    "@@ -1,3 +1,4 @@",
+    " const one = 1;",
+    "-const two = 2;",
+    "+const two = 22;",
+    "+const extra = 0;",
+    " const three = 3;",
+  ].join("\n");
+  const file = parsePatchFiles(patch).flatMap((entry) => entry.files)[0];
+  if (file === undefined) throw new Error("Patch did not parse");
+  expect([...diffLines(file, "additions")]).toEqual([
+    [1, "const one = 1;"],
+    [2, "const two = 22;"],
+    [3, "const extra = 0;"],
+    [4, "const three = 3;"],
+  ]);
+  expect([...diffLines(file, "deletions")]).toEqual([
+    [1, "const one = 1;"],
+    [2, "const two = 2;"],
+    [3, "const three = 3;"],
+  ]);
+  expect(diffLineCount(file, "additions")).toBe(4);
+  expect(diffLineCount(file, "deletions")).toBe(3);
+});
 
 test("a hunk at a billion lines is indexed by patch size, on both sides", () => {
   const patch = [
@@ -27,7 +56,6 @@ test("a hunk at a billion lines is indexed by patch size, on both sides", () => 
   for (const side of ["additions", "deletions"] as const) {
     const lines = diffLines(file, side);
     expect(lines.size).toBe(3);
-    for (const [line, text] of lines) expect(text).toBe(diffLine(file, side, line));
     expect(lines.get(1)).toBeUndefined();
     const lineAt = vi.fn((line: number) => {
       if (lineAt.mock.calls.length > 20) throw new Error("Scanned a missing range");

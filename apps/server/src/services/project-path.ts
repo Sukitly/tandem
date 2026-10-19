@@ -44,7 +44,7 @@ export class ProjectPaths {
 }
 
 /** A path from the project's directory, without `.` segments or a trailing `/`. `..` is refused. */
-export function relativePath(input: unknown): string {
+function relativePath(input: unknown): string {
   if (typeof input !== "string") throw invalidInput("path must be a string");
   if (input.startsWith("/") || input.includes("\0")) throw invalidInput("path must be relative to the project");
   const segments = input.split("/").filter((segment) => segment !== "" && segment !== ".");

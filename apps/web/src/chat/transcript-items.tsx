@@ -15,7 +15,6 @@ import { TranscriptImages } from "./transcript-images.tsx";
 
 export { ChatError } from "./chat-error.tsx";
 export { toolDescription } from "./tool-description.ts";
-export { WaitingDots } from "./waiting-dots.tsx";
 
 export function TranscriptEntry({ item }: { item: TranscriptItem }) {
   switch (item.kind) {

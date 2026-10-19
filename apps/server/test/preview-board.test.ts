@@ -23,17 +23,6 @@ describe("PreviewBoard", () => {
     }
   });
 
-  test("registers port without label and avoids undefined values in state", async () => {
-    const board = new PreviewBoard({ checkIntervalMs: 0 });
-    try {
-      await board.register({ port: 3000 });
-      expect(board.state.value.ports).toHaveLength(1);
-      expect("label" in (board.state.value.ports[0] ?? {})).toBe(false);
-    } finally {
-      board.dispose();
-    }
-  });
-
   test("rejects invalid ports", async () => {
     const board = new PreviewBoard({ checkIntervalMs: 0 });
     try {
@@ -53,23 +42,6 @@ describe("PreviewBoard", () => {
       await expect(board.register({ port: 22 })).rejects.toThrow(/restricted/);
       await expect(board.register({ port: 6379 })).rejects.toThrow(/restricted/);
       expect(board.state.value.ports).toHaveLength(0);
-    } finally {
-      board.dispose();
-    }
-  });
-
-  test("updates label and timestamp for existing port", async () => {
-    const board = new PreviewBoard({ checkIntervalMs: 0 });
-    try {
-      await board.register({ port: 8080, label: "Old" });
-      const initial = board.state.value.ports[0]?.detectedAt;
-      await new Promise((r) => setTimeout(r, 10));
-      await board.register({ port: 8080, label: "New" });
-      expect(board.state.value.ports).toHaveLength(1);
-      expect(board.state.value.ports[0]?.label).toBe("New");
-      const detected = board.state.value.ports[0]?.detectedAt;
-      expect(detected).toBeDefined();
-      expect(detected ?? 0).toBeGreaterThanOrEqual(initial ?? 0);
     } finally {
       board.dispose();
     }

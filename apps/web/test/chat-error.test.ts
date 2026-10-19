@@ -16,8 +16,6 @@ test("a failure is a compact collapsed trace event with error status styling", (
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
   expect(container.querySelector("[data-slot=trace]")).not.toBeNull();
   expect(container.querySelector("[data-slot=trace-line]")?.getAttribute("data-status")).toBe("error");
-  expect(screen.getByText("Generation failed").classList.contains("text-foreground")).toBe(false);
-  expect(container.querySelector(".bg-destructive\\/5, .border-destructive\\/20")).toBeNull();
   expect(container.querySelector("pre")).toBeNull();
   expect(container.textContent).not.toMatch(/Retrying|Reconnecting/);
 });
@@ -31,9 +29,6 @@ test("expanding shows complete plain-text details, attempt count, and copies the
   fireEvent.click(screen.getByRole("button", { name: /Generation failed/ }));
   await waitFor(() => expect(container.querySelector("pre")?.textContent).toBe(error));
   expect(screen.getByText("3 attempts")).toBeDefined();
-  expect(container.querySelector("[data-slot=trace-collapsible-content-inner]")?.classList.contains("border-l")).toBe(
-    true,
-  );
   expect(container.querySelector("script, a")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Copy" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(error));

@@ -6,8 +6,6 @@ import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ProviderDetail } from "./provider-detail.tsx";
 import { ProviderSearch } from "./provider-search.tsx";
 
-export { sourceLabel } from "./provider-search.tsx";
-
 interface ProvidersDialogControl {
   /** Open the dialog, optionally on one provider. */
   open(providerId?: string): void;

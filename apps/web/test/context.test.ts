@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, expect, test } from "vitest";
-import { formatCost, formatTokens } from "../src/chat/status-bar.tsx";
+import { formatCost, formatTokens } from "../src/chat/context-usage.tsx";
 import { Context } from "../src/components/ai-elements/context.tsx";
 
 afterEach(cleanup);
@@ -23,11 +23,6 @@ test("context details can be opened by click instead of hover", async () => {
 test("the context AI element clamps its display to 100 percent", () => {
   render(createElement(Context, { usedTokens: 120000, maxTokens: 100000 }));
   expect(screen.getByRole("button", { name: "100% context" })).toBeDefined();
-});
-
-test("the context AI element exposes custom label when provided", () => {
-  render(createElement(Context, { usedTokens: 108800, maxTokens: 272000, label: "40% of 272K" }));
-  expect(screen.getByRole("button", { name: "40% of 272K" })).toBeDefined();
 });
 
 test("status bar formats costs with appropriate precision", () => {

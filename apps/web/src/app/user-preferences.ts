@@ -1,18 +1,17 @@
 import { choicePreference, flagPreference } from "@/lib/preferences.ts";
 
-export const THEME_CHOICES = ["system", "light", "dark"] as const;
+const THEME_CHOICES = ["system", "light", "dark"] as const;
 export type ThemeChoice = (typeof THEME_CHOICES)[number];
 
-export const KEYBOARD_MODES = ["platform", "emacs"] as const;
+const KEYBOARD_MODES = ["platform", "emacs"] as const;
 export type KeyboardMode = (typeof KEYBOARD_MODES)[number];
 
-export const SEND_MODES = ["steer", "followUp"] as const;
+const SEND_MODES = ["steer", "followUp"] as const;
 export type SendMode = (typeof SEND_MODES)[number];
 
-export const DIFF_STYLES = ["unified", "split"] as const;
-export type DiffStyle = (typeof DIFF_STYLES)[number];
+const DIFF_STYLES = ["unified", "split"] as const;
 
-export const PANEL_TABS = ["files", "changes", "terminal", "preview"] as const;
+const PANEL_TABS = ["files", "changes", "terminal", "preview"] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 
 /**

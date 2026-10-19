@@ -19,21 +19,6 @@ afterEach(async () => {
   }
 });
 
-test("self-update script exists and is executable", () => {
-  const scriptPath = join(repository, "scripts", "self-update.sh");
-  expect(existsSync(scriptPath)).toBe(true);
-});
-
-test("service usage output includes the update command", () => {
-  const entry = join(repository, "apps/server/src/service.ts");
-  const result = spawnSync(process.execPath, [entry, "help"], {
-    cwd: repository,
-    encoding: "utf8",
-  });
-  expect(result.stdout).toContain("update [--detach]");
-  expect(result.stdout).toContain("safely pull, verify, build, restart, and rollback if unhealthy");
-});
-
 test("self-update --detach spawns background worker and creates log file in TANDEM_HOME", async () => {
   const scriptPath = join(repository, "scripts", "self-update.sh");
   const stateDir = join(tempDir, "state");

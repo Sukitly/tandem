@@ -208,7 +208,7 @@ export async function imagesFor(
 }
 
 /** Submit a message. The answer arrives in the view; a message that gets none leaves a notice saying why. */
-export async function submitMessage(
+async function submitMessage(
   conversation: HarnessConversation,
   notices: NoticeBoard,
   { text, images = [], whenBusy }: MessageInput,

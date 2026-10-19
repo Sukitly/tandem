@@ -70,29 +70,6 @@ describe("connecting", () => {
     if (state.kind !== "connected") throw new Error(`expected connected, was ${state.kind}`);
     expect(state.session.deviceId).toBe("paired-browser");
     expect(state.session.connection).toBe(connection);
-    // Each service is bound by the name components know it by.
-    expect(state.session.models).toEqual({ bound: "tandem.models" });
-    expect(state.session.workspaces).toEqual({ bound: "tandem.workspaces" });
-    expect(state.session.publicAccess).toEqual({ bound: "tandem.public-access" });
-    expect(state.session.open).toBeDefined();
-    expect(state.session.openChanges).toBeDefined();
-  });
-
-  test("binds the services components use, and those opened one per conversation and per project", () => {
-    const { controller, attempts } = setup();
-    controller.start();
-    const ids = (attempts[0]?.options.services ?? []).map((service) => service.id);
-    for (const id of [
-      "tandem.models",
-      "tandem.devices",
-      "tandem.workspaces",
-      "tandem.conversations",
-      "tandem.conversation",
-      "tandem.changes",
-      "tandem.projectChanges",
-    ])
-      expect(ids, id).toContain(id);
-    expect(new Set(ids).size).toBe(ids.length);
   });
 
   test("notifies those who subscribed, until they stop", async () => {

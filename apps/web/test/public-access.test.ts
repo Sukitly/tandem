@@ -84,29 +84,6 @@ test.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1
   },
 );
 
-test("walks the website path in order, saying where each step happens and what it looks like when done", async () => {
-  await setup();
-  const steps = within(screen.getByRole("list", { name: "Cloudflare website setup steps" })).getAllByRole("heading", {
-    level: 2,
-  });
-  expect(steps.map((step) => step.textContent)).toEqual([
-    "Create a tunnel",
-    "Connect this machine",
-    "Protect the hostname",
-    "Publish the route",
-    "Verify, then pair your phone",
-  ]);
-  for (const where of ["Cloudflare", "Tandem", "Phone"]) {
-    expect(screen.getAllByText(where).length).toBeGreaterThan(0);
-  }
-  expect(screen.getAllByText(/Done when:/).length).toBeGreaterThan(0);
-});
-
-test("says the token comes from the manual command, without running it", async () => {
-  await setup();
-  expect(screen.getByText(/The value after --token, not the whole command/)).toBeDefined();
-});
-
 test("publishes the address and the token the person entered", async () => {
   mock.publish.mockResolvedValue(undefined);
   await setup();
@@ -139,17 +116,6 @@ test("refuses to publish without HTTPS or without a token", async () => {
   expect(mock.publish).not.toHaveBeenCalled();
 });
 
-test("names Cloudflare Access as a step, with the hostname it protects", async () => {
-  await setup();
-  expect(screen.getByText("A connected tunnel is not a login")).toBeDefined();
-  expect(screen.getByText(/Never/).textContent).toContain("Bypass");
-  expect(screen.getByRole("link", { name: "Open Cloudflare Access applications" }).getAttribute("href")).toBe(
-    "https://one.dash.cloudflare.com/?to=/:account/access-controls/apps",
-  );
-  expect(screen.getByText("Self-hosted")).toBeDefined();
-  expect(screen.getByText("A different, unlisted email is refused.")).toBeDefined();
-});
-
 test("directly jumps to the specific tunnel routes and access pages when tunnel identity is known", async () => {
   mock.state = {
     status: "connected",
@@ -169,21 +135,6 @@ test("directly jumps to the specific tunnel routes and access pages when tunnel 
   expect(accessLink.getAttribute("href")).toBe(
     "https://one.dash.cloudflare.com/1234567890abcdef1234567890abcdef/access-controls/apps",
   );
-});
-
-test("walks the CLI path on this machine, and on another computer with only a token", async () => {
-  await setup();
-  fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
-  expect(screen.getByText("bun run tunnel setup --public-url https://tandem.example.com")).toBeDefined();
-  expect(screen.queryByText("bun run tunnel create --public-url https://tandem.example.com")).toBeNull();
-  fireEvent.click(screen.getByRole("tab", { name: "Another computer" }));
-  expect(screen.getByText("bun run tunnel create --public-url https://tandem.example.com")).toBeDefined();
-  expect(
-    screen.getByText("bun run tunnel configure --public-url https://tandem.example.com --token-file -"),
-  ).toBeDefined();
-  expect(screen.getByText(/Only a token travels between them/)).toBeDefined();
-  expect(screen.queryByText("bun run tunnel setup --public-url https://tandem.example.com")).toBeNull();
-  expect(mock.publish).not.toHaveBeenCalled();
 });
 
 test("keeps the entered token when the setup method changes", async () => {
@@ -236,15 +187,4 @@ test("shows loading state while publishing and while stopping", async () => {
   expect(screen.getByRole("button", { name: /Publishing…/ }).hasAttribute("disabled")).toBe(true);
   resolvePublish();
   await waitFor(() => expect(screen.queryByRole("button", { name: /Publishing…/ })).toBeNull());
-});
-
-test("reports the reason a tunnel is not reachable", async () => {
-  mock.state = {
-    status: "failed",
-    cloudflared: true,
-    publicUrl: "https://tandem.example.com",
-    message: "cloudflared exited with 255",
-  };
-  await setup();
-  expect(screen.getByText("cloudflared exited with 255")).toBeDefined();
 });

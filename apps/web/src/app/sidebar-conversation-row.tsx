@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner.tsx";
 import { cn } from "@/lib/utils.ts";
 import { useCloseSidebarOnNavigate } from "./sidebar-navigation.ts";
 
-export const CONVERSATION_ACTION_CLASS =
+const CONVERSATION_ACTION_CLASS =
   "opacity-0 group-hover/conv-row:opacity-100 group-focus-within/conv-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
 
 /** Conversation entry in a project sub-list. */

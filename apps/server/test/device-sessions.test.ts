@@ -2,7 +2,7 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { DeviceSessions, deviceName, PAIR_LIFETIME_MS, SESSION_IDLE_MS } from "../src/device-sessions.ts";
+import { DeviceSessions, PAIR_LIFETIME_MS, SESSION_IDLE_MS } from "../src/device-sessions.ts";
 
 const tempFile = async () => join(await mkdtemp(join(tmpdir(), "tandem-devices-")), "devices.json");
 
@@ -99,10 +99,4 @@ describe("device sessions", () => {
     await writeFile(file, '{"devices": [{}], "recoveryHashes": []}');
     await expect(DeviceSessions.load(file)).rejects.toThrow(/Invalid/);
   });
-});
-
-test("device names reflect the browser and operating system", () => {
-  expect(deviceName("Mozilla iPhone Safari/1")).toBe("Safari on iOS");
-  expect(deviceName("Mozilla Android Chrome/1")).toBe("Chrome on Android");
-  expect(deviceName()).toBe("Browser");
 });

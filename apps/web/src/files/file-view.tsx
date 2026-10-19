@@ -26,7 +26,7 @@ export function countLines(text: string): number {
   return count;
 }
 
-export function formatLines(count: number): string {
+function formatLines(count: number): string {
   return `${count.toLocaleString()} L`;
 }
 
