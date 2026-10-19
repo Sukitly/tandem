@@ -17,6 +17,8 @@ export interface ToolProps {
   name: string;
   description?: ReactNode;
   input?: Record<string, unknown>;
+  /** The heading over `children`; `null` for none, when they say what they are themselves. */
+  outputLabel?: ReactNode | null;
   icon?: ReactNode;
   status?: "pending" | "running" | "done" | "error" | "failed" | "cancelled";
   open?: boolean;
@@ -33,6 +35,7 @@ export function Tool({
   name,
   description,
   input,
+  outputLabel = "Output",
   icon = <CheckIcon />,
   status,
   open: controlledOpen,
@@ -88,7 +91,7 @@ export function Tool({
           )}
           {hasOutput && (
             <div className="grid min-w-0 gap-1">
-              <div className="text-xs font-medium">Output</div>
+              {outputLabel !== null && <div className="text-xs font-medium">{outputLabel}</div>}
               {children}
             </div>
           )}

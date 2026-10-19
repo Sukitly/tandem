@@ -19,8 +19,6 @@ function entry(name: string, args: Record<string, unknown>, output = "") {
 
 const cases = [
   { name: "read", args: { path: "src/app.ts", offset: 10, limit: 20 } },
-  { name: "edit", args: { path: "src/app.ts", edits: [{ oldText: "old\ntext", newText: "new\ntext" }] } },
-  { name: "write", args: { path: "src/new.ts", content: "const message = 'hello';\n".repeat(100) } },
   { name: "reply_to_comment", args: { threadId: 42, text: "A full reply" } },
   { name: "new_backend_tool", args: { options: { values: [1, true, null, "<script>alert(1)</script>"] } } },
 ];

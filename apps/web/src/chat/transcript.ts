@@ -21,8 +21,10 @@ export type AssistantPart =
       output: string;
       /** Images the result holds, such as an image file `read` returned. */
       images: PageImageBlock[];
-      /** The edit tool's diff of the change it made. */
+      /** The edit tool's diff of the change it made, as lines to show. */
       diff?: string;
+      /** The same change as a unified patch; results recorded before the tool kept it have only `diff`. */
+      patch?: string;
     };
 
 /** What the transcript shows, in order. */
@@ -218,7 +220,7 @@ function partsOf(
       case "toolCall": {
         const result = tool.results.get(block.id);
         const slot = tool.slots.get(block.id);
-        const details = result?.details as { diff?: unknown } | undefined;
+        const details = result?.details as { diff?: unknown; patch?: unknown } | undefined;
         let status: ToolStatus;
         if (result !== undefined) status = result.isError ? "failed" : "done";
         else if (slot !== undefined) status = slot.status === "done" ? "done" : slot.status;
@@ -233,6 +235,7 @@ function partsOf(
             output: result !== undefined ? textOf(result.content) : (slot?.output ?? ""),
             images: result === undefined ? [] : imagesOf(result.content),
             ...(typeof details?.diff === "string" ? { diff: details.diff } : {}),
+            ...(typeof details?.patch === "string" ? { patch: details.patch } : {}),
           },
         ];
       }

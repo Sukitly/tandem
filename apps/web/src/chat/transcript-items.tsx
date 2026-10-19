@@ -7,6 +7,7 @@ import { Message, MessageContent, MessageFooter } from "@/components/ui/message.
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { Trace } from "@/components/ui/trace.tsx";
 import { ChatError, CopyAction } from "./chat-error.tsx";
+import { fileToolBody, isFileTool } from "./file-tool-body.tsx";
 import { Markdown } from "./markdown.tsx";
 import { ToolDiff, toolDescription } from "./tool-diff.tsx";
 import type { AssistantPart, TranscriptItem } from "./transcript.ts";
@@ -125,6 +126,20 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
                         output={step.output}
                         status={step.status}
                       />
+                    );
+                  }
+                  if (isFileTool(step)) {
+                    // What the call changed is shown instead of its arguments, which hold the same text as JSON.
+                    return (
+                      <Tool
+                        key={step.callId}
+                        name={step.name}
+                        description={toolDescription(step.args)}
+                        status={step.status}
+                        outputLabel={null}
+                      >
+                        {fileToolBody(step)}
+                      </Tool>
                     );
                   }
                   const hasDetail = step.images.length > 0 || step.diff !== undefined || step.output !== "";
