@@ -20,6 +20,8 @@ export interface ToolProps {
   /** The heading over `children`; `null` for none, when they say what they are themselves. */
   outputLabel?: ReactNode | null;
   icon?: ReactNode;
+  /** Replaces the status word shown for failed and cancelled steps, e.g. to add an exit code. */
+  statusLabel?: ReactNode;
   status?: "pending" | "running" | "done" | "error" | "failed" | "cancelled";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -37,6 +39,7 @@ export function Tool({
   input,
   outputLabel = "Output",
   icon = <CheckIcon />,
+  statusLabel,
   status,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
@@ -65,7 +68,7 @@ export function Tool({
         <span className="truncate">{name}</span>
       </Badge>
       {description !== undefined && <TraceTitle className="shimmer-none!">{description}</TraceTitle>}
-      {(failed || status === "cancelled") && <TraceDescription>{status}</TraceDescription>}
+      {(failed || status === "cancelled") && <TraceDescription>{statusLabel ?? status}</TraceDescription>}
     </TraceLine>
   );
 
