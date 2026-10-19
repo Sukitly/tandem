@@ -55,7 +55,9 @@ export function NotFoundPage() {
           <EmptyMedia variant="icon">
             <FileQuestionIcon />
           </EmptyMedia>
-          <EmptyTitle>Page not found</EmptyTitle>
+          <EmptyTitle role="heading" aria-level={1}>
+            Page not found
+          </EmptyTitle>
           <EmptyDescription>There is nothing at this address.</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>

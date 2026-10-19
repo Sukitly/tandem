@@ -40,7 +40,7 @@ export function Step({
       </div>
       <div className={last ? "min-w-0 space-y-3" : "min-w-0 space-y-3 pb-8"}>
         <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1">
-          <h3 className={done ? "font-medium text-muted-foreground" : "font-medium"}>{title}</h3>
+          <h2 className={done ? "font-medium text-muted-foreground" : "font-medium"}>{title}</h2>
           <Badge variant="outline" className="font-normal text-muted-foreground">
             {where}
           </Badge>

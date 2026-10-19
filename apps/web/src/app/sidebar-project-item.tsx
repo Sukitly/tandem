@@ -54,7 +54,7 @@ export function ProjectItem({
       <div className="group/project-row relative">
         <CollapsibleTrigger
           render={
-            <SidebarMenuButton title={project.path} className="group-has-data-[sidebar=menu-action]/menu-item:pr-14" />
+            <SidebarMenuButton title={project.path} className="group-has-data-[sidebar=menu-action]/menu-item:pr-16" />
           }
         >
           {open ? <FolderOpenIcon /> : <FolderIcon />}
@@ -62,7 +62,7 @@ export function ProjectItem({
         </CollapsibleTrigger>
         <SidebarMenuAction
           render={<Link to="/p/$workspaceId/new" params={{ workspaceId: String(project.id) }} />}
-          className={`${PROJECT_ACTION_CLASS} right-7`}
+          className={`${PROJECT_ACTION_CLASS} right-8`}
           title={`New conversation in ${project.name}`}
           aria-label={`New conversation in ${project.name}`}
           onClick={closeNavigation}

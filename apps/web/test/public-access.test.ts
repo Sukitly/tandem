@@ -87,7 +87,7 @@ test.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1
 test("walks the website path in order, saying where each step happens and what it looks like when done", async () => {
   await setup();
   const steps = within(screen.getByRole("list", { name: "Cloudflare website setup steps" })).getAllByRole("heading", {
-    level: 3,
+    level: 2,
   });
   expect(steps.map((step) => step.textContent)).toEqual([
     "Create a tunnel",

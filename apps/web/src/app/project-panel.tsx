@@ -66,7 +66,7 @@ export function ProjectPanel({
       className="@container/project-panel h-full min-h-0 min-w-0 gap-0"
     >
       {/* As tall as the conversation's header beside it, so that their borders line up. */}
-      <header data-panel-toolbar className="flex min-h-13 shrink-0 flex-wrap items-center gap-1 border-b px-2 py-1">
+      <div data-panel-toolbar className="flex min-h-13 shrink-0 flex-wrap items-center gap-1 border-b px-2 py-1">
         <TabsList variant="line" className="min-w-max flex-1">
           {PANEL_TABS.map(({ value, label, icon: Icon }) => (
             <TabsTrigger key={value} value={value} aria-label={label}>
@@ -119,7 +119,7 @@ export function ProjectPanel({
             </Button>
           )}
         </div>
-      </header>
+      </div>
       <RetainedTab value="files" label="Files" visited={visited}>
         <FilesPanel
           files={files}

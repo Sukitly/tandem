@@ -41,7 +41,7 @@ export function AppSidebar() {
   const names = new Map(projects.map((project) => [project.id, project.name]));
 
   return (
-    <Sidebar collapsible="icon" variant="inset">
+    <Sidebar collapsible="icon" variant="inset" role="navigation" aria-label="Projects and conversations">
       <SidebarHeader>
         <SidebarBrand />
       </SidebarHeader>

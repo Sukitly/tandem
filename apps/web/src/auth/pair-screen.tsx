@@ -67,10 +67,12 @@ export function PairScreen({ initialCode, onPaired = enterTandem }: { initialCod
     if (!busy) void pair(() => redeemCode(code));
   };
   return (
-    <div className="flex min-h-dvh items-center justify-center p-4">
+    <main className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Pair this device</CardTitle>
+          <CardTitle role="heading" aria-level={1}>
+            Pair this device
+          </CardTitle>
           <CardDescription>
             On the computer running Tandem, run <code>bun run service pair</code> and open the printed link. You can
             also choose Add device on a paired browser, or enter a recovery code from your password manager.
@@ -96,6 +98,6 @@ export function PairScreen({ initialCode, onPaired = enterTandem }: { initialCod
           </form>
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 }

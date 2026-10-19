@@ -15,7 +15,9 @@ export function EmptyWorkspace({ empty, addProject }: { empty: boolean; addProje
             <EmptyMedia variant="icon">
               <FolderPlusIcon />
             </EmptyMedia>
-            <EmptyTitle>Add a project</EmptyTitle>
+            <EmptyTitle role="heading" aria-level={1}>
+              Add a project
+            </EmptyTitle>
             <EmptyDescription>A project is a directory on this machine. Its conversations work in it.</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
@@ -28,7 +30,9 @@ export function EmptyWorkspace({ empty, addProject }: { empty: boolean; addProje
             <EmptyMedia variant="icon">
               <MessageSquareIcon />
             </EmptyMedia>
-            <EmptyTitle>No conversation open</EmptyTitle>
+            <EmptyTitle role="heading" aria-level={1}>
+              No conversation open
+            </EmptyTitle>
             <EmptyDescription>Choose a conversation in the sidebar, or start a new one.</EmptyDescription>
           </EmptyHeader>
         </Empty>

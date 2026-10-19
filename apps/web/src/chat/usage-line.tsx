@@ -10,9 +10,9 @@ import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 const DAY_SECONDS = 24 * 60 * 60;
 
 /** Over the pace: the window is being spent faster than time passes. */
-const AHEAD_COLOR = "text-red-600 dark:text-red-400";
+const AHEAD_COLOR = "text-red-700 dark:text-red-400";
 /** Under the pace: the window is being spent slower than time passes. */
-const BEHIND_COLOR = "text-emerald-600 dark:text-emerald-400";
+const BEHIND_COLOR = "text-emerald-700 dark:text-emerald-400";
 
 /**
  * Select the appropriate quota windows when a provider defines distinct model-pool groups (e.g. Antigravity).
