@@ -10,9 +10,13 @@ vi.mock("../src/app/workbench.tsx", async () =>
   (await import("./workbench-mock.ts")).workbenchMock(() => ({ openChange: vi.fn() })),
 );
 
-vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => false }));
+const viewport = vi.hoisted(() => ({ mobile: false }));
+vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => viewport.mobile }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  viewport.mobile = false;
+});
 
 test("a successful send preserves edits made while waiting for the server", async () => {
   let finish!: () => void;
@@ -77,5 +81,19 @@ describe("queued chat messages", () => {
     expect(screen.getByText("Second message")).toBeDefined();
     rerender(createElement(ChatComposer, { ...props, queued: [] }));
     expect(screen.queryByRole("list", { name: "Queued messages" })).toBeNull();
+  });
+  test.each([false, true])("shows queued messages directly, without a collapsed summary (mobile: %s)", (mobile) => {
+    viewport.mobile = mobile;
+    render(
+      createElement(ChatComposer, {
+        busy: true,
+        queued: [{ id: 1, mode: "followUp", text: "Later", imageCount: 0 }],
+        onSend: vi.fn(),
+        onStop: vi.fn(),
+        imageSupport: { kind: "accepted" },
+      }),
+    );
+    expect(screen.getByText("Later")).toBeDefined();
+    expect(screen.queryByText(/queued messages ·/)).toBeNull();
   });
 });
