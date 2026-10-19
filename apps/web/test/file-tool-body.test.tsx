@@ -37,30 +37,30 @@ function entry(step: Partial<Step> & Pick<Step, "name" | "args">) {
 
 const patch = "--- a.ts\n+++ a.ts\n@@ -1 +1 @@\n-old\n+new\n";
 
-test("an edit expands to its patch, not to its arguments as JSON", () => {
+test("an edit expands to its patch, not to its arguments as JSON", async () => {
   const args = { path: "a.ts", edits: [{ oldText: "old", newText: "new" }] };
   render(entry({ name: "edit", args, output: "Successfully replaced 1 block(s) in a.ts.", patch }));
   fireEvent.click(screen.getByRole("button"));
-  expect(screen.getByTestId("patch").textContent).toBe(patch);
+  expect((await screen.findByTestId("patch")).textContent).toBe(patch);
   expect(screen.queryByText("Input")).toBeNull();
   expect(screen.queryByText("Output")).toBeNull();
   expect(screen.queryByText(/oldText/)).toBeNull();
   expect(screen.queryByText(/Successfully replaced/)).toBeNull();
 });
 
-test("a write expands to the content it wrote, named for the file, not to its arguments as JSON", () => {
+test("a write expands to the content it wrote, named for the file, not to its arguments as JSON", async () => {
   const content = "const message = 'hello';\n";
   render(entry({ name: "write", args: { path: "src/new.ts", content }, output: "Successfully wrote to src/new.ts" }));
   fireEvent.click(screen.getByRole("button"));
+  expect((await screen.findByTestId("file")).textContent).toBe(content);
   expect(shown.file).toEqual({ name: "src/new.ts", contents: content });
-  expect(screen.getByTestId("file").textContent).toBe(content);
   expect(screen.queryByText("Input")).toBeNull();
   expect(screen.queryByText("Output")).toBeNull();
   expect(screen.queryByText(/"content"/)).toBeNull();
   expect(screen.queryByText(/Successfully wrote/)).toBeNull();
 });
 
-test("a failed edit shows its error, and a failed write shows its error under the content", () => {
+test("a failed edit shows its error, and a failed write shows its error under the content", async () => {
   const { unmount } = render(
     entry({ name: "edit", args: { path: "a.ts" }, status: "failed", output: "Could not find the text in a.ts." }),
   );
@@ -78,7 +78,7 @@ test("a failed edit shows its error, and a failed write shows its error under th
     }),
   );
   fireEvent.click(screen.getByRole("button"));
-  expect(screen.getByTestId("file")).toBeDefined();
+  expect(await screen.findByTestId("file")).toBeDefined();
   expect(screen.getByText("Could not write file: a.ts.")).toBeDefined();
 });
 

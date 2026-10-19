@@ -1,18 +1,22 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { exitLabel, MAX_TERMINALS_PER_PROJECT, type TerminalSummary } from "@tandem/contracts";
 import { PlusIcon, SquareTerminalIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { IconAction } from "@/components/icon-action.tsx";
+import { LoadingView } from "@/components/loading-view.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { useCommand } from "@/hooks/use-command.ts";
 import { reportFailure } from "@/lib/errors.ts";
+import { lazyExport } from "@/lib/lazy-export.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { CloseTerminalDialog } from "./close-terminal-dialog.tsx";
-import { TerminalView } from "./terminal-view.tsx";
+
+/** A terminal draws with xterm, which is loaded when the first one is drawn. */
+const TerminalView = lazyExport(() => import("./terminal-view.tsx"), "TerminalView");
 
 /**
  * The terminals of a project, one tab each. They are the server's: every page shows the same ones, and they keep
@@ -94,11 +98,13 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
       </div>
       {list.map((summary) => (
         <TabsContent key={summary.id} value={summary.id} keepMounted className="min-h-0">
-          <TerminalView
-            id={summary.id}
-            active={active && summary.id === current.id}
-            ended={summary.exit !== undefined}
-          />
+          <Suspense fallback={<LoadingView />}>
+            <TerminalView
+              id={summary.id}
+              active={active && summary.id === current.id}
+              ended={summary.exit !== undefined}
+            />
+          </Suspense>
         </TabsContent>
       ))}
       <CloseTerminalDialog

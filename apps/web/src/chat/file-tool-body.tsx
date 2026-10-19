@@ -1,8 +1,12 @@
-import { File, PatchDiff } from "@pierre/diffs/react";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
+import { LoadingView } from "@/components/loading-view.tsx";
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block.tsx";
-import { useTheme } from "@/theme.tsx";
+import { lazyExport } from "@/lib/lazy-export.ts";
 import type { AssistantPart } from "./transcript.ts";
+
+/** The views of a change draw with `@pierre/diffs`, which is loaded when the first one is drawn. */
+const ToolPatch = lazyExport(() => import("./tool-code.tsx"), "ToolPatch");
+const ToolFile = lazyExport(() => import("./tool-code.tsx"), "ToolFile");
 
 type ToolPart = Extract<AssistantPart, { kind: "tool" }>;
 
@@ -35,50 +39,19 @@ export function fileToolBody(step: ToolPart): ReactNode | undefined {
 
 function changeOf(step: ToolPart): ReactNode | undefined {
   if (step.name === "edit") {
-    return step.patch === undefined ? undefined : <ToolPatch patch={step.patch} />;
+    return step.patch === undefined ? undefined : (
+      <Suspense fallback={<LoadingView />}>
+        <ToolPatch patch={step.patch} />
+      </Suspense>
+    );
   }
   const { path, content } = step.args;
   if (step.name === "write" && typeof path === "string" && typeof content === "string") {
-    return <ToolFile path={path} content={content} />;
+    return (
+      <Suspense fallback={<LoadingView />}>
+        <ToolFile path={path} content={content} />
+      </Suspense>
+    );
   }
   return undefined;
-}
-
-const BOX = "max-h-80 min-w-0 overflow-auto rounded-lg border border-border/70 text-xs";
-
-/** An edit's change as a patch, drawn the way the Changes panel draws a file's diff. */
-function ToolPatch({ patch }: { patch: string }) {
-  const { choice } = useTheme();
-  return (
-    <div className={BOX}>
-      <PatchDiff
-        patch={patch}
-        options={{
-          theme: { dark: "github-dark", light: "github-light" },
-          themeType: choice,
-          diffStyle: "unified",
-          disableFileHeader: true,
-          overflow: "scroll",
-        }}
-      />
-    </div>
-  );
-}
-
-/** What a write put in the file, highlighted by the file's extension. */
-function ToolFile({ path, content }: { path: string; content: string }) {
-  const { choice } = useTheme();
-  return (
-    <div className={BOX}>
-      <File
-        file={{ name: path, contents: content }}
-        options={{
-          theme: { dark: "github-dark", light: "github-light" },
-          themeType: choice,
-          disableFileHeader: true,
-          overflow: "scroll",
-        }}
-      />
-    </div>
-  );
 }

@@ -1,8 +1,10 @@
 import type { ChangedFile, FilePatch } from "@tandem/contracts";
 import { AlertCircleIcon, Columns2Icon, Rows2Icon } from "lucide-react";
+import { Suspense } from "react";
 import { userPreferences } from "@/app/user-preferences.ts";
 import type { ProjectComments } from "@/comments/project-comments.ts";
 import { IconAction } from "@/components/icon-action.tsx";
+import { LoadingView } from "@/components/loading-view.tsx";
 import {
   ReaderBody,
   ReaderCloseButton,
@@ -16,10 +18,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.tsx";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
+import { lazyExport } from "@/lib/lazy-export.ts";
 import { usePreference } from "@/lib/preferences.ts";
-import { ChangeDiff, type DiffReadingState } from "./change-diff.tsx";
+import type { DiffReadingState } from "./change-diff.tsx";
 import { ADDITIONS_COLOR, countParts, DELETIONS_COLOR, statusLabel } from "./change-status.ts";
 import type { ChangeTarget } from "./change-target.ts";
+
+/** The diff draws with `@pierre/diffs`, which is loaded when the first one is drawn. */
+const ChangeDiff = lazyExport(() => import("./change-diff.tsx"), "ChangeDiff");
 
 /** The selected file's patch, with the controls that change how it is shown. */
 export function ChangeView({
@@ -96,16 +102,18 @@ export function ChangeView({
             </EmptyHeader>
           </Empty>
         ) : (
-          <ChangeDiff
-            reading={reading}
-            key={file.path}
-            path={file.path}
-            patch={patch}
-            style={styled}
-            wrap={wrap}
-            comments={comments}
-            reveal={reveal}
-          />
+          <Suspense fallback={<LoadingView />}>
+            <ChangeDiff
+              reading={reading}
+              key={file.path}
+              path={file.path}
+              patch={patch}
+              style={styled}
+              wrap={wrap}
+              comments={comments}
+              reveal={reveal}
+            />
+          </Suspense>
         )}
       </ReaderBody>
     </>

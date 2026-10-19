@@ -1,19 +1,19 @@
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
 import { Children, type ComponentProps, createElement, isValidElement, memo, type ReactNode } from "react";
 import remarkBreaks from "remark-breaks";
 import { type Components, defaultComponents, defaultRehypePlugins, defaultRemarkPlugins, Streamdown } from "streamdown";
 import { parseFileLink } from "@/files/file-link.ts";
 import { FileLink } from "@/files/file-link-button.tsx";
 import { FencedCode } from "./fenced-code.tsx";
+import { lazyMermaid } from "./lazy-mermaid.ts";
 import { texDelimiters } from "./tex-delimiters.ts";
 import { untrustedMarkdown } from "./untrusted-markdown.ts";
 
 export { formatCodeBlockTitle, parseFencedInfo } from "./fenced-code.tsx";
 
-const plugins = { cjk, code, math, mermaid };
+const plugins = { cjk, code, math, mermaid: lazyMermaid };
 // A single newline is a line break, as a person writing in a message box expects.
 const remarkPlugins = [...Object.values(defaultRemarkPlugins), remarkBreaks, texDelimiters, untrustedMarkdown];
 // Raw HTML is text by now, and links and images are checked by `untrustedMarkdown`; sanitizing stays.

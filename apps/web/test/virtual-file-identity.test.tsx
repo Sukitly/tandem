@@ -30,7 +30,7 @@ vi.mock("../src/comments/project-comments.ts", () => {
 vi.mock("../src/comments/use-comment-width.ts", () => ({ useCommentWidth: () => undefined }));
 afterEach(cleanup);
 
-test("annotations advance the renderer revision without replacing the prepared file object", () => {
+test("annotations advance the renderer revision without replacing the prepared file object", async () => {
   const text = Array.from({ length: 3001 }, (_, index) => `line ${index}`).join("\n");
   const files = {
     opened: { path: "large.ts" },
@@ -38,8 +38,9 @@ test("annotations advance the renderer revision without replacing the prepared f
     subscribe: () => () => {},
   } as unknown as ProjectFiles;
   render(<FileView files={files} comments={{ workspaceId: 1 } as ProjectComments} />);
+  const button = await screen.findByRole("button", { name: "Comment in renderer" });
   const first = captured.item;
-  fireEvent.click(screen.getByRole("button", { name: "Comment in renderer" }));
+  fireEvent.click(button);
   expect(captured.item?.file).toBe(first?.file);
   expect(captured.item?.version).not.toBe(first?.version);
   expect(captured.item?.annotations).toHaveLength(1);

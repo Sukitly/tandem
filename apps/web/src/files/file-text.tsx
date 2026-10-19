@@ -1,15 +1,19 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { HighlightedLine, languageOfFile, useHighlighted } from "@/chat/highlight.tsx";
 import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
 import { placeThreads, revealedLine, threadsByLine } from "@/comments/comment-anchor.ts";
 import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { useCommentDrafts } from "@/comments/use-comment-drafts.ts";
+import { LoadingView } from "@/components/loading-view.tsx";
+import { lazyExport } from "@/lib/lazy-export.ts";
 import { cn } from "@/lib/utils.ts";
 import type { OpenedFile } from "./project-files.ts";
-import { VirtualFile } from "./virtual-file.tsx";
 
 const MAX_HIGHLIGHTED_LINES = 3000;
+
+/** A long file draws with `@pierre/diffs`, which is loaded when the first one is drawn. */
+const VirtualFile = lazyExport(() => import("./virtual-file.tsx"), "VirtualFile");
 
 /**
  * The text with line numbers, highlighted unless it is long; the asked-for line is marked and scrolled to.
@@ -68,17 +72,19 @@ export function FileText({
 
   if (virtual) {
     return (
-      <VirtualFile
-        text={text}
-        lines={lines}
-        opened={opened}
-        comments={comments}
-        placed={placed}
-        above={above}
-        line={line}
-        wrap={wrap}
-        drafts={drafts}
-      />
+      <Suspense fallback={<LoadingView />}>
+        <VirtualFile
+          text={text}
+          lines={lines}
+          opened={opened}
+          comments={comments}
+          placed={placed}
+          above={above}
+          line={line}
+          wrap={wrap}
+          drafts={drafts}
+        />
+      </Suspense>
     );
   }
 
