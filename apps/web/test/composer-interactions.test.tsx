@@ -126,12 +126,62 @@ test("mobile follow-up can be selected and sent without a modifier key", async (
   vi.stubGlobal("innerWidth", 390);
   const { input, send } = setup();
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Queue follow-up" }));
+  // A touch screen chooses how a message is sent, not keyboard shortcuts.
+  expect(await screen.findByRole("menuitemradio", { name: "Steer current turn" })).toBeTruthy();
+  expect(screen.queryByRole("menuitemradio", { name: "Emacs editing" })).toBeNull();
+  expect(screen.queryByRole("menuitemradio", { name: "Platform defaults" })).toBeNull();
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Queue follow-up" }));
   fireEvent.change(input, { target: { value: "Later" } });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   expect(send).toHaveBeenCalledWith("Later", [], [], "followUp");
   expect(localStorage.getItem("tandem.sendMode")).toBe("followUp");
   await waitFor(() => expect(input.value).toBe(""));
+});
+test("the placeholder names Alt+Enter on desktop only, and follows the mobile send mode", async () => {
+  const desktop = setup();
+  expect(desktop.input.placeholder).toBe("Steer the agent, or Alt+Enter to queue a follow-up");
+  cleanup();
+
+  vi.stubGlobal("innerWidth", 390);
+  const mobile = setup();
+  expect(mobile.input.placeholder).toBe("Steer the agent");
+  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Queue follow-up" }));
+  await waitFor(() => expect(mobile.input.placeholder).toBe("Queue a follow-up"));
+  cleanup();
+
+  setup(false);
+  expect((screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement).placeholder).toBe("Ask the agent");
+});
+test("the action row stays on one line, with the status bar sharing it", () => {
+  vi.stubGlobal("innerWidth", 390);
+  render(
+    <ChatComposer
+      busy={false}
+      queued={[]}
+      imageSupport={{ kind: "accepted" }}
+      onSend={vi.fn()}
+      onStop={vi.fn()}
+      statusBar={<span>status</span>}
+      status={<button type="button">metrics</button>}
+    />,
+  );
+  // jsdom does not lay out; check the utilities that would wrap the row or give the status bar a row of its own.
+  const row = screen.getByRole("button", { name: "Send" }).closest('[data-slot="input-group-addon"]');
+  const status = screen.getByText("status").parentElement;
+  expect(row?.classList.contains("flex-wrap")).toBe(false);
+  expect(status?.classList.contains("basis-full")).toBe(false);
+  expect(status?.classList.contains("flex-1")).toBe(true);
+  // The row cannot wrap, so the column holding it must not grow to its width: an `auto` grid column would make the
+  // page wider than the screen and let it be dragged sideways.
+  expect(row?.closest("[data-composer]")?.className).toContain("grid-cols-[minmax(0,1fr)]");
+  // The metrics under the box are read-outs, which the touch-target rule in index.css leaves compact. They are shown
+  // on a phone as on desktop, not collapsed behind a toggle.
+  expect(screen.getByRole("button", { name: "metrics" }).closest("[data-dense]")).not.toBeNull();
+  expect(screen.queryByRole("button", { name: "Usage and run metrics" })).toBeNull();
+  // Everything in the row is a direct child of it: the attach button, the status bar, the options, and Send.
+  expect(row?.contains(screen.getByRole("button", { name: "Attach images" }))).toBe(true);
+  expect(row?.contains(screen.getByRole("button", { name: "Composer options" }))).toBe(true);
 });
 test("desktop ignores the saved mobile mode for Enter, slash commands, and the send button", async () => {
   localStorage.setItem("tandem.sendMode", "followUp");

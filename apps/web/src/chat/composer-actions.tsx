@@ -79,7 +79,9 @@ export function SubmitOrStop({
 }
 
 /** What the box asks for, by what the agent is doing and how a message would be sent. */
-export function placeholderOf(busy: boolean, sendMode: SendMode): string {
+export function placeholderOf(busy: boolean, sendMode: SendMode, mobile = false): string {
   if (!busy) return "Ask the agent";
-  return sendMode === "followUp" ? "Queue a follow-up" : "Steer the agent, or Alt+Enter to queue a follow-up";
+  if (sendMode === "followUp") return "Queue a follow-up";
+  // A phone has no Alt+Enter; its send mode is chosen in the composer options.
+  return mobile ? "Steer the agent" : "Steer the agent, or Alt+Enter to queue a follow-up";
 }

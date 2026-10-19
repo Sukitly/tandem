@@ -57,7 +57,7 @@ export function UsageText({ usage, modelId }: { usage: ProviderUsage; modelId?: 
   return (
     <div className="grid min-w-0 gap-0.5">
       {windows.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground sm:gap-x-5 sm:gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-0 text-xs text-muted-foreground sm:gap-x-5 sm:gap-y-2">
           {windows.map((window) => (
             <WindowText key={`${window.label}-${window.windowSeconds}`} window={window} />
           ))}
@@ -82,13 +82,13 @@ function WindowText({ window }: { window: UsageWindow }) {
     <Popover>
       <PopoverTrigger
         render={<Button variant="ghost" size="xs" />}
-        className="inline-flex max-w-full shrink-0 items-center gap-1.5 tabular-nums sm:gap-2"
+        className="inline-flex h-5 max-w-full shrink-0 items-center gap-1 px-1 tabular-nums sm:h-6 sm:gap-2 sm:px-2"
       >
         <span>{window.label}</span>
         <Progress
           value={Math.max(0, Math.min(100, window.utilization))}
           aria-label={`${window.label} quota used`}
-          className="w-16 sm:w-24"
+          className="w-10 sm:w-24"
         />
         <span>{window.utilization.toFixed(0)}%</span>
         {pace !== null && (

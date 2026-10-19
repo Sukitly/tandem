@@ -10,7 +10,7 @@ export function PromptInputTextarea({ className, ...props }: ComponentProps<type
   return (
     <InputGroupTextarea
       className={cn(
-        "min-h-14 p-3 leading-relaxed outline-none border-none shadow-none focus-visible:ring-0",
+        "min-h-12 p-3 leading-relaxed sm:min-h-14 outline-none border-none shadow-none focus-visible:ring-0",
         className,
       )}
       {...props}

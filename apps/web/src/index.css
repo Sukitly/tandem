@@ -226,10 +226,36 @@
 
 @media (pointer: coarse) {
   [data-composer] button,
-  .app-dialog button,
-  [data-slot="dropdown-menu-radio-item"] {
+  .app-dialog button {
     min-height: 44px;
     min-width: 44px;
+  }
+  /* Usage and run metrics are read-outs; their buttons only open a detail popover, and keep their compact size. */
+  [data-composer] [data-dense] button {
+    min-height: auto;
+    min-width: auto;
+  }
+  /*
+   * Menu rows are touch targets too. Rows, their labels, and the room kept for a checkmark share one rhythm, so a menu
+   * does not mix 44px rows with desktop-sized labels and text that touches the edge.
+   */
+  [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-checkbox-item"],
+  [data-slot="dropdown-menu-radio-item"] {
+    min-height: 44px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  [data-slot="dropdown-menu-checkbox-item"],
+  [data-slot="dropdown-menu-radio-item"] {
+    padding-right: 40px;
+  }
+  [data-slot="dropdown-menu-checkbox-item-indicator"],
+  [data-slot="dropdown-menu-radio-item-indicator"] {
+    right: 12px;
+  }
+  [data-slot="dropdown-menu-label"] {
+    padding: 10px 12px 4px;
   }
   [data-composer] textarea,
   .app-dialog input,

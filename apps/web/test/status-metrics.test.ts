@@ -38,10 +38,12 @@ test("run metrics preserve server values and offer details without hover", async
       },
     }),
   );
-  expect(screen.getByText("33.2 tok/s")).toBeDefined();
-  expect(screen.getByText("6.0s")).toBeDefined();
-  expect(screen.getByText("out 200")).toBeDefined();
-  expect(screen.queryByText(/cache hit/)).toBeNull();
+  const line = screen.getByRole("button", { name: "Run metrics details" }).textContent;
+  expect(line).toContain("33.2 tok/s");
+  expect(line).toContain("6.0s");
+  expect(line).toContain("out 200");
+  expect(line).not.toContain("cache");
+  expect(line).not.toContain("·");
   fireEvent.click(screen.getByRole("button", { name: "Run metrics details" }));
   expect(await screen.findByText("Assistant output tokens in the last run")).toBeDefined();
 });
