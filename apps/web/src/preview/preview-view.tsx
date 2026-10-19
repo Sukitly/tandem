@@ -2,23 +2,16 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { PREVIEW_SANDBOX_TOKENS, previewUrl } from "@tandem/contracts";
 import { ExternalLinkIcon, GlobeIcon, PlusIcon, RotateCwIcon, XIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useWorkbench } from "@/app/workbench.tsx";
 import { IconAction } from "@/components/icon-action.tsx";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
-import { type Connected, useOptionalConnected } from "@/rpc/connection.tsx";
+import { reportFailure } from "@/lib/errors.ts";
+import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddPortForm } from "./add-port-form.tsx";
 
 export function PreviewView({ active = true }: { active?: boolean }) {
-  const connected = useOptionalConnected();
-  if (connected === null) return null;
-  return <PreviewPanel connected={connected} active={active} />;
-}
-
-function PreviewPanel({ connected, active = true }: { connected: Connected; active?: boolean }) {
-  const { preview } = connected;
-  const { reportFailure } = useWorkbench((state) => ({ reportFailure: state.reportFailure }));
+  const { preview } = useConnected();
   const state = useReplicatedState(preview.state);
   const ports = useMemo(() => state?.ports ?? [], [state?.ports]);
 

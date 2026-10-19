@@ -1,6 +1,6 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type ConversationSummary, MAX_CONVERSATION_TITLE_LENGTH } from "@tandem/contracts";
 import { useEffect, useState } from "react";
-import { useWorkbench } from "@/app/workbench.tsx";
 import { ResponsiveDialogContent as DialogContent } from "@/components/responsive-dialog.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input.tsx";
 import { useCommand } from "@/hooks/use-command.ts";
 import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
+import { useConnected } from "@/rpc/connection.tsx";
 
 export function RenameConversationDialog({
   summary,
@@ -24,11 +25,10 @@ export function RenameConversationDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { renameConversation } = useWorkbench((state) => ({ renameConversation: state.renameConversation }));
+  const { conversations } = useConnected();
   const ime = useCompositionGuard();
   const [title, setTitle] = useState(summary.title);
-  // The workbench reports a failure to rename, so the command only keeps the dialog from being used meanwhile.
-  const rename = useCommand();
+  const rename = useCommand({ failure: "Could not rename the conversation" });
   const busy = rename.pending;
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export function RenameConversationDialog({
       onOpenChange(false);
       return;
     }
-    if (await rename.run(() => renameConversation(summary.id, trimmed))) onOpenChange(false);
+    if (await rename.run(() => conversations.rename(summary.id, trimmed, BACKGROUND_CONTEXT))) onOpenChange(false);
   };
 
   return (

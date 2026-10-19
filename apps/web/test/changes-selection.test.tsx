@@ -8,9 +8,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "./render.tsx";
 
 const mock = vi.hoisted(() => ({ state: undefined as ChangesState | undefined }));
 vi.mock("../src/rpc/use-replicated-state.ts", () => ({ useReplicatedState: () => mock.state }));
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({ openFile: () => {}, forgetChangeTarget: () => {} }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ openFile: () => {}, forgetChangeTarget: () => {} })),
+);
 vi.mock("../src/changes/change-diff.tsx", () => ({
   ChangeDiff: ({ path }: { path: string }) => <div data-testid="patch">{path}</div>,
 }));

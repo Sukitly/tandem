@@ -16,9 +16,9 @@ import {
 } from "@/components/ui/dialog";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
+import { errorMessage } from "@/lib/errors.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useProjectDirectory } from "@/rpc/use-project-directory.ts";
-import { errorMessage } from "./query-client.tsx";
 
 /** Chooses a directory on the server's machine without uploading its files. */
 export function AddProjectDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {

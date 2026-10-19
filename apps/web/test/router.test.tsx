@@ -42,7 +42,9 @@ vi.mock("../src/rpc/use-replicated-state.ts", () => ({
       () => state.values[key],
     ),
 }));
-vi.mock("../src/app/workbench.tsx", () => ({ useWorkbench: () => ({ addProject: state.addProject }) }));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ addProject: state.addProject })),
+);
 vi.mock("../src/app/sidebar-brand.tsx", () => ({ SidebarToggle: () => null }));
 vi.mock("../src/app/empty-workspace.tsx", () => ({
   EmptyWorkspace: ({ empty }: { empty: boolean }) => <p>{empty ? "No project" : "Choose a conversation"}</p>,

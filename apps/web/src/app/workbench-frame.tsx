@@ -6,12 +6,12 @@ import { ConnectionAlert } from "./connection-screen.tsx";
 import { useConversationId, useNewConversationWorkspaceId } from "./current-route.ts";
 import { AppSidebar } from "./sidebar.tsx";
 import { AppSidebarProvider } from "./sidebar-provider.tsx";
-import { useWorkbench, WorkbenchProvider } from "./workbench.tsx";
+import { useOpenWorkspaceId, WorkbenchProvider } from "./workbench.tsx";
 import { WithFiles } from "./workspace-layout.tsx";
 
 /** The sidebar, and beside it the open page with the panel of the project the page is about. */
 export function WorkbenchFrame() {
-  const workspaceId = useOpenWorkspaceId();
+  const workspaceId = useWorkspaceOfOpenPage();
   return (
     <WorkbenchProvider workspaceId={workspaceId}>
       <AppSidebarProvider>
@@ -26,7 +26,7 @@ export function WorkbenchFrame() {
 }
 
 /** The project the open page is about: the one a new conversation starts in, or the one the open conversation is in. */
-function useOpenWorkspaceId(): number | null {
+function useWorkspaceOfOpenPage(): number | null {
   const { conversations } = useConnected();
   const summaries = useReplicatedState(conversations.state)?.conversations;
   const conversationId = useConversationId();
@@ -37,7 +37,7 @@ function useOpenWorkspaceId(): number | null {
 function Pages() {
   const { workspaces } = useConnected();
   const listed = useReplicatedState(workspaces.state)?.workspaces;
-  const { workspaceId } = useWorkbench((state) => ({ workspaceId: state.workspaceId }));
+  const workspaceId = useOpenWorkspaceId();
   return (
     <WithFiles workspaceId={workspaceId} availableWorkspaceIds={listed?.map((workspace) => workspace.id)}>
       <Outlet />

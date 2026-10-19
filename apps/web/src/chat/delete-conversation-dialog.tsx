@@ -1,5 +1,5 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationSummary } from "@tandem/contracts";
-import { useWorkbench } from "@/app/workbench.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,6 +11,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog.tsx";
 import { useCommand } from "@/hooks/use-command.ts";
+import { useConnected } from "@/rpc/connection.tsx";
 
 export function DeleteConversationDialog({
   summary,
@@ -21,13 +22,13 @@ export function DeleteConversationDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { removeConversation } = useWorkbench((state) => ({ removeConversation: state.removeConversation }));
-  // The workbench reports a failure to delete, so the command only keeps the dialog from being used meanwhile.
-  const removal = useCommand();
+  const { conversations } = useConnected();
+  // A page about the conversation leaves by itself: the conversation is no longer there.
+  const removal = useCommand({ failure: "Could not delete the conversation" });
   const busy = removal.pending;
 
   const remove = async () => {
-    if (await removal.run(() => removeConversation(summary.id))) onOpenChange(false);
+    if (await removal.run(() => conversations.remove(summary.id, BACKGROUND_CONTEXT))) onOpenChange(false);
   };
 
   return (

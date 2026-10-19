@@ -9,9 +9,9 @@ import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 export function DevicePairing({ pair }: { pair: PairingCode }) {
   const [qr, setQr] = useState<string>();
   const [failure, setFailure] = useState<string>();
-  const connected = useConnected() as { publicAccess?: { state: Parameters<typeof useReplicatedState>[0] } };
-  const publicAccessState = useReplicatedState(connected.publicAccess?.state) as { publicUrl?: string } | undefined;
-  const activeOrigin = pair.publicUrl ?? publicAccessState?.publicUrl ?? window.location.origin;
+  const { publicAccess } = useConnected();
+  const publicUrl = useReplicatedState(publicAccess.state)?.publicUrl;
+  const activeOrigin = pair.publicUrl ?? publicUrl ?? window.location.origin;
   const url = new URL("/pair", activeOrigin);
   url.hash = pair.code;
   const href = url.href;
@@ -39,7 +39,7 @@ export function DevicePairing({ pair }: { pair: PairingCode }) {
       <p className="text-sm text-muted-foreground">
         Expires {new Date(pair.expiresAt).toLocaleTimeString()}. Anyone with this link can control Tandem.
       </p>
-      {pair.publicUrl === undefined && publicAccessState?.publicUrl === undefined && (
+      {pair.publicUrl === undefined && publicUrl === undefined && (
         <p className="text-sm text-muted-foreground">
           This address is local. Configure public access before pairing a remote device.
         </p>

@@ -1,8 +1,9 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { errorMessage, serviceKey } from "@/app/query-client.tsx";
+import { serviceKey } from "@/app/query-client.tsx";
 import { indexLines, type PlacedThread, relocate } from "@/comments/comment-anchor.ts";
+import { errorMessage } from "@/lib/errors.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 
 /** Missing patch context never proves an anchor is outdated. Verify it against a separately owned snapshot. */

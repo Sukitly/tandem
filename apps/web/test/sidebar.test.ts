@@ -28,14 +28,9 @@ vi.mock("../src/rpc/use-replicated-state.ts", () => ({
   useReplicatedState: (value: unknown) => value,
 }));
 
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({
-    addProject: vi.fn(),
-    removeProject: vi.fn(),
-    renameConversation: vi.fn(),
-    removeConversation: vi.fn(),
-  }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ addProject: vi.fn() })),
+);
 
 vi.mock("../src/models/providers-dialog.tsx", () => ({
   useProvidersDialog: () => ({ open: vi.fn() }),

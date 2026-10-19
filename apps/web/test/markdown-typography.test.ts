@@ -8,9 +8,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Markdown } from "../src/chat/markdown.tsx";
 
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({ workspaceId: 1, openFile: vi.fn() }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ workspaceId: 1, openFile: vi.fn() })),
+);
 vi.mock("../src/rpc/connection.tsx", () => ({
   useConnected: () => ({ workspaces: { state: {} } }),
 }));

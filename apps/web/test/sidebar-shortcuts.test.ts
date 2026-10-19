@@ -9,9 +9,9 @@ import { ChatComposer } from "../src/chat/chat-composer.tsx";
 import { SidebarTrigger, useSidebar } from "../src/components/ui/sidebar.tsx";
 
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => false }));
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({ openChange: vi.fn() }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ openChange: vi.fn() })),
+);
 
 afterEach(() => {
   cleanup();

@@ -3,7 +3,8 @@ import type { FileContent, FileEntry, Files } from "@tandem/contracts";
 import type { QueryClient, QueryKey, QueryState } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { createStore } from "zustand/vanilla";
-import { createQueryClient, errorMessage, serviceKey } from "@/app/query-client.tsx";
+import { createQueryClient, serviceKey } from "@/app/query-client.tsx";
+import { errorMessage } from "@/lib/errors.ts";
 
 export type Loaded<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "failed"; message: string };
 const LOADING = { status: "loading" } as const;

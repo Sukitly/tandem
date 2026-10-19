@@ -6,7 +6,6 @@ import { TerminalsView } from "../src/terminals/terminals-view.tsx";
 const mock = vi.hoisted(() => ({ create: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: mock.error } }));
 vi.mock("../src/terminals/terminal-view.tsx", () => ({ TerminalView: () => null }));
-vi.mock("../src/app/workbench.tsx", () => ({ useWorkbench: () => ({ reportFailure: vi.fn() }) }));
 vi.mock("../src/rpc/connection.tsx", () => ({
   useConnected: () => ({ terminals: { state: { terminals: [] }, create: mock.create } }),
 }));

@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { RenameConversationDialog } from "../src/chat/conversation-menu.tsx";
 
 const rename = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock("../src/app/workbench.tsx", () => ({ useWorkbench: () => ({ renameConversation: rename }) }));
+vi.mock("../src/rpc/connection.tsx", () => ({ useConnected: () => ({ conversations: { rename } }) }));
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -28,5 +28,5 @@ test("IME confirmation and Safari's trailing Enter do not rename a conversation"
   expect(rename).not.toHaveBeenCalled();
   time.mockReturnValue(1020);
   fireEvent.keyDown(input, { key: "Enter" });
-  await waitFor(() => expect(rename).toHaveBeenCalledWith(1, "新的标题"));
+  await waitFor(() => expect(rename).toHaveBeenCalledWith(1, "新的标题", expect.anything()));
 });

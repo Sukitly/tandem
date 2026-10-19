@@ -1,3 +1,4 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationSummary, WorkspaceSummary } from "@tandem/contracts";
 import { Link } from "@tanstack/react-router";
 import { EllipsisIcon, FolderIcon, FolderMinusIcon, FolderOpenIcon, PlusIcon } from "lucide-react";
@@ -20,11 +21,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.tsx";
 import { SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub } from "@/components/ui/sidebar.tsx";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ProjectConversationItem } from "./sidebar-conversation-row.tsx";
 import { useCloseSidebarOnNavigate } from "./sidebar-navigation.ts";
-import { useWorkbench } from "./workbench.tsx";
 
 export const PROJECT_ACTION_CLASS =
   "opacity-0 group-hover/project-row:opacity-100 group-focus-within/project-row:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100";
@@ -39,9 +40,10 @@ export function ProjectItem({
   conversations: ConversationSummary[];
   selected: number | null;
 }) {
-  const { removeProject } = useWorkbench((state) => ({ removeProject: state.removeProject }));
+  // A page about the project leaves by itself: the project is no longer there.
+  const removal = useCommand({ failure: "Could not remove the project" });
   const closeNavigation = useCloseSidebarOnNavigate();
-  const { terminals } = useConnected();
+  const { terminals, workspaces } = useConnected();
   const running = (useReplicatedState(terminals.state)?.terminals ?? []).filter(
     (summary) => summary.workspaceId === project.id && summary.exit === undefined,
   );
@@ -109,7 +111,7 @@ export function ProjectItem({
               variant="destructive"
               onClick={() => {
                 setConfirming(false);
-                removeProject(project.id);
+                void removal.run(() => workspaces.remove(project.id, BACKGROUND_CONTEXT));
               }}
             >
               Remove

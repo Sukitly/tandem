@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { panelTabOf, useWorkbench } from "@/app/workbench.tsx";
+import { panelTabOf, useProjectResources, useWorkbench } from "@/app/workbench.tsx";
 import { ChangesView } from "@/changes/changes-view.tsx";
 import { IconAction } from "@/components/icon-action.tsx";
 import { RetainedTab, useVisitedTabs } from "@/components/retained-tabs.tsx";
@@ -49,13 +49,12 @@ export function ProjectPanel({
     changeTarget: state.changeTarget,
     showHiddenFiles: state.showHiddenFiles,
     setShowHiddenFiles: state.setShowHiddenFiles,
-    projectFiles: state.projectFiles,
-    comments: state.comments,
   }));
+  const resources = useProjectResources();
   const [refreshing, setRefreshing] = useState(false);
   const { panelTab, showTab, changeTarget, showHiddenFiles = false, setShowHiddenFiles } = workbench;
-  const files = workbench.projectFiles(workspaceId);
-  const comments = workbench.comments(workspaceId);
+  const files = resources.files(workspaceId);
+  const comments = resources.comments(workspaceId);
   // Retained projects create expensive tabs only after the user visits them.
   const visited = useVisitedTabs(panelTab, active);
   const changes = useProjectChanges(workspaceId, active && visited.has("changes"));

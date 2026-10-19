@@ -21,6 +21,7 @@ const mock = vi.hoisted(() => {
 vi.mock("../src/rpc/connection.tsx", () => ({
   useConnected: () => ({
     deviceId: "self",
+    publicAccess: { state: {} },
     devices: {
       state: mock.value,
       addDevice: mock.addDevice,

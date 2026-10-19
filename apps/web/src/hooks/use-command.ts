@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { errorMessage } from "@/app/query-client.tsx";
+import { errorMessage, reportFailure } from "@/lib/errors.ts";
 
 export interface Command {
   /**
@@ -58,7 +57,7 @@ export function useCommand(options: CommandOptions = {}): Command {
       await action();
       return true;
     } catch (cause) {
-      if (failure.current !== undefined) toast.error(failure.current, { description: errorMessage(cause) });
+      if (failure.current !== undefined) reportFailure(failure.current, cause);
       else if (mounted.current) setError(errorMessage(cause));
       return false;
     } finally {

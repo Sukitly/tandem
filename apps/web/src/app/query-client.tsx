@@ -38,7 +38,3 @@ export function serviceKey(service: object): number {
   }
   return id;
 }
-
-export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}

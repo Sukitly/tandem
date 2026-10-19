@@ -8,7 +8,9 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "./render.tsx";
 const state = vi.hoisted(() => ({ files: { read: vi.fn() }, openFile: vi.fn(), threads: [] as CommentThread[] }));
 vi.mock("@pierre/diffs/react", () => ({ CodeView: () => null }));
 vi.mock("../src/rpc/connection.tsx", () => ({ useConnected: () => ({ files: state.files }) }));
-vi.mock("../src/app/workbench.tsx", () => ({ useWorkbench: () => ({ openFile: state.openFile }) }));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ openFile: state.openFile })),
+);
 vi.mock("../src/comments/project-comments.ts", () => ({ useCommentThreads: () => state.threads }));
 afterEach(cleanup);
 beforeEach(() => {

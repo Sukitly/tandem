@@ -1,14 +1,14 @@
 import type { ProjectChanges } from "@tandem/contracts";
 import { AlertCircleIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { errorMessage } from "@/app/query-client.tsx";
-import { useWorkbench } from "@/app/workbench.tsx";
+import { usePanelNavigation, useWorkbench } from "@/app/workbench.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
 import { Reader } from "@/components/reader.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.tsx";
 import { Empty, EmptyHeader, EmptyMedia } from "@/components/ui/empty.tsx";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { errorMessage } from "@/lib/errors.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import type { DiffReadingState } from "./change-diff.tsx";
 import type { ChangeTarget } from "./change-target.ts";
@@ -35,10 +35,8 @@ export function ChangesView({
   /** A place asked for—a comment of the review—to show as soon as the list holds its file. */
   reveal?: ChangeTarget;
 }) {
-  const { openFile, forgetChangeTarget } = useWorkbench((state) => ({
-    openFile: state.openFile,
-    forgetChangeTarget: state.forgetChangeTarget,
-  }));
+  const { openFile } = usePanelNavigation();
+  const { forgetChangeTarget } = useWorkbench((state) => ({ forgetChangeTarget: state.forgetChangeTarget }));
   const state = useReplicatedState(changes?.state);
   const [selected, setSelected] = useState<string | null>(() => state?.files[0]?.path ?? null);
   const initialized = useRef(selected !== null);

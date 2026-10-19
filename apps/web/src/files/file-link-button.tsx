@@ -1,15 +1,13 @@
 import type { ReactNode } from "react";
-import { useWorkbench } from "@/app/workbench.tsx";
+import { useOpenWorkspaceId, usePanelNavigation } from "@/app/workbench.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { type FileTarget, projectPath } from "./file-link.ts";
 
 /** A link in a message to a file of the current project: it opens the file in the files panel, at the line if given. */
 export function FileLink({ target, children }: { target: FileTarget; children: ReactNode }) {
-  const { workspaceId, openFile } = useWorkbench((state) => ({
-    workspaceId: state.workspaceId,
-    openFile: state.openFile,
-  }));
+  const workspaceId = useOpenWorkspaceId();
+  const { openFile } = usePanelNavigation();
   const { workspaces } = useConnected();
   const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
   const path = project === undefined ? undefined : projectPath(target.path, project.path);

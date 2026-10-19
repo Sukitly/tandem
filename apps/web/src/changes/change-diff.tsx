@@ -8,7 +8,7 @@ import {
 } from "@pierre/diffs/react";
 import type { FilePatch } from "@tandem/contracts";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useWorkbench } from "@/app/workbench.tsx";
+import { usePanelNavigation } from "@/app/workbench.tsx";
 import { CODE_COMMENT_CSS } from "@/comments/code-comment-style.ts";
 import { type PlacedThread, placeThreads, revealedLine } from "@/comments/comment-anchor.ts";
 import {
@@ -62,7 +62,7 @@ export function ChangeDiff({
   const { choice } = useTheme();
   const box = useRef<HTMLDivElement>(null);
   const view = useRef<CodeViewHandle<Annotation, undefined>>(null);
-  const { openFile } = useWorkbench((state) => ({ openFile: state.openFile }));
+  const { openFile } = usePanelNavigation();
   const text = patch.kind === "patch" ? patch.patch : "";
   const threads = useCommentThreads(comments);
 

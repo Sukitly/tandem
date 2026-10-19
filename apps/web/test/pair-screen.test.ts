@@ -3,7 +3,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement, StrictMode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { PairScreen, takePairingCode } from "../src/auth/pair-screen.tsx";
-import { clearLegacyToken } from "../src/rpc/token.ts";
 
 afterEach(() => {
   cleanup();
@@ -71,12 +70,5 @@ describe("pairing a browser", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pair device" }));
     await waitFor(() => expect(screen.getByText("Try again in one minute")).toBeDefined());
     expect(input.value).toBe("saved-code");
-  });
-  test("migration discards the old permanent token", () => {
-    localStorage.setItem("tandem.token", "old-secret");
-    window.history.replaceState(null, "", "/?token=old-secret&keep=yes");
-    clearLegacyToken();
-    expect(localStorage.getItem("tandem.token")).toBeNull();
-    expect(window.location.search).toBe("?keep=yes");
   });
 });

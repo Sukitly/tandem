@@ -2,13 +2,13 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { exitLabel, MAX_TERMINALS_PER_PROJECT, type TerminalSummary } from "@tandem/contracts";
 import { PlusIcon, SquareTerminalIcon, XIcon } from "lucide-react";
 import { useState } from "react";
-import { useWorkbench } from "@/app/workbench.tsx";
 import { IconAction } from "@/components/icon-action.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { useCommand } from "@/hooks/use-command.ts";
+import { reportFailure } from "@/lib/errors.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { CloseTerminalDialog } from "./close-terminal-dialog.tsx";
@@ -20,7 +20,6 @@ import { TerminalView } from "./terminal-view.tsx";
  */
 export function TerminalsView({ workspaceId, active }: { workspaceId: number; active: boolean }) {
   const { terminals } = useConnected();
-  const { reportFailure } = useWorkbench((state) => ({ reportFailure: state.reportFailure }));
   const all = useReplicatedState(terminals.state)?.terminals;
   const list = (all ?? []).filter((summary) => summary.workspaceId === workspaceId);
   const [selected, setSelected] = useState<string | null>(null);

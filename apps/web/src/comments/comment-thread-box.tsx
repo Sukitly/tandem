@@ -1,6 +1,5 @@
 import type { CommentThread } from "@tandem/contracts";
 import { type RefObject, useState } from "react";
-import { useWorkbench } from "@/app/workbench.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,6 +11,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog.tsx";
 import { Button } from "@/components/ui/button.tsx";
+import { reportFailure } from "@/lib/errors.ts";
 import { commentPlace } from "./comment-anchor.ts";
 import { COMMENT_SURFACE, CommentDraft, useCommentBox } from "./comment-draft.tsx";
 import type { ProjectComments } from "./project-comments.ts";
@@ -37,7 +37,6 @@ export function CommentThreadBox({
   const [editing, setEditing] = useState<number | null>(null);
   const [replying, setReplying] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const { reportFailure } = useWorkbench((state) => ({ reportFailure: state.reportFailure }));
   const box = useCommentBox(view);
 
   return (

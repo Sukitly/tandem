@@ -19,20 +19,9 @@ vi.mock("../src/rpc/connection.tsx", () => ({
       unregister: mock.unregister,
     },
   }),
-  useOptionalConnected: () => ({
-    preview: {
-      state: mock.state,
-      register: mock.register,
-      unregister: mock.unregister,
-    },
-  }),
 }));
 
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({
-    reportFailure: mock.reportFailure,
-  }),
-}));
+vi.mock("../src/lib/errors.ts", () => ({ reportFailure: mock.reportFailure }));
 
 vi.mock("../src/rpc/use-replicated-state.ts", () => ({
   useReplicatedState: () => mock.state,

@@ -18,7 +18,9 @@ vi.mock("../src/comments/project-comments.ts", () => {
   const threads: never[] = [];
   return { useCommentThreads: () => threads };
 });
-vi.mock("../src/app/workbench.tsx", () => ({ useWorkbench: () => ({ openFile: vi.fn() }) }));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ openFile: vi.fn() })),
+);
 afterEach(cleanup);
 const patch = (value: string) => `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+${value}\n`;
 

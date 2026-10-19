@@ -1,7 +1,5 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import type { ChangeTarget } from "@/changes/change-target.ts";
@@ -13,42 +11,59 @@ import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { AddProjectDialog } from "./add-project-dialog.tsx";
 import { ProjectResources } from "./project-resources.ts";
-import { errorMessage, SnapshotProvider } from "./query-client.tsx";
+import { SnapshotProvider } from "./query-client.tsx";
 import { createWorkbenchStore, type WorkbenchState, type WorkbenchStore } from "./workbench-store.ts";
 
 export { type PanelTab, panelTabOf } from "./workbench-store.ts";
 
-interface WorkbenchActions {
-  projectFiles(workspaceId: number): ProjectFiles;
+/** The files and comments of each project, kept as long as the project is listed. */
+interface ProjectResourceAccess {
+  files(workspaceId: number): ProjectFiles;
   comments(workspaceId: number): ProjectComments;
+}
+
+/** Ways to take the panel to a place: the file or the change a message or a comment is about. */
+interface PanelNavigation {
   openFile(path: string, place?: Omit<OpenedFile, "path">): void;
   openChange(target: Omit<ChangeTarget, "workspaceId">): void;
-  removeProject(workspaceId: number): void;
-  renameConversation(id: number, title: string): Promise<void>;
-  removeConversation(id: number): Promise<void>;
-  reportFailure(title: string, error: unknown): void;
 }
-type Workbench = WorkbenchState & WorkbenchActions & { workspaceId: number | null };
+
 const Context = createContext<{
   store: WorkbenchStore;
-  actions: WorkbenchActions;
+  resources: ProjectResourceAccess;
+  navigation: PanelNavigation;
   workspaceId: number | null;
 } | null>(null);
 
-/** Select only the state and actions a component uses. The context itself never carries a UI snapshot. */
-export function useWorkbench(): Workbench;
-export function useWorkbench<T>(select: (state: Workbench) => T): T;
-export function useWorkbench<T>(select?: (state: Workbench) => T): T | Workbench {
+function useWorkbenchContext() {
   const context = useContext(Context);
-  if (context === null) throw new Error("useWorkbench() must be used inside WorkbenchProvider");
-  const { store, actions, workspaceId } = context;
+  if (context === null) throw new Error("The workbench must be used inside WorkbenchProvider");
+  return context;
+}
+
+/** The workbench's own UI state: select only what a component uses. Nothing here is the server's, or the address's. */
+export function useWorkbench(): WorkbenchState;
+export function useWorkbench<T>(select: (state: WorkbenchState) => T): T;
+export function useWorkbench<T>(select?: (state: WorkbenchState) => T): T | WorkbenchState {
+  const { store } = useWorkbenchContext();
   return useStore(
     store,
-    useShallow((state) => {
-      const value = { ...state, ...actions, workspaceId };
-      return select === undefined ? value : select(value);
-    }),
+    useShallow((state) => (select === undefined ? state : select(state))),
   );
+}
+
+/** The files and comments of a project, which survive the project's panel being closed or its page being left. */
+export function useProjectResources(): ProjectResourceAccess {
+  return useWorkbenchContext().resources;
+}
+
+export function usePanelNavigation(): PanelNavigation {
+  return useWorkbenchContext().navigation;
+}
+
+/** The project the open page is about, if it is about one: what the panel beside the page shows. */
+export function useOpenWorkspaceId(): number | null {
+  return useWorkbenchContext().workspaceId;
 }
 
 /** `workspaceId` is the project the page that is open is about, which the workbench's panel shows. */
@@ -67,53 +82,41 @@ export function WorkbenchProvider({
 }
 
 function WorkbenchSession({ workspaceId, children }: { workspaceId: number | null; children: ReactNode }) {
-  const { workspaces, conversations, files, comments } = useConnected();
+  const { workspaces, files, comments } = useConnected();
   const client = useQueryClient();
   const mobile = useIsMobile();
   const [store] = useState(() => createWorkbenchStore(mobile));
-  const [resources] = useState(() => new ProjectResources(files, comments, client));
+  const [registry] = useState(() => new ProjectResources(files, comments, client));
   const listed = useReplicatedState(workspaces.state)?.workspaces;
 
   useEffect(() => store.getState().setMobile(mobile), [store, mobile]);
   useEffect(() => {
-    if (listed !== undefined) resources.retain(listed.map((workspace) => workspace.id));
-  }, [listed, resources]);
-  useDisposable(resources);
+    if (listed !== undefined) registry.retain(listed.map((workspace) => workspace.id));
+  }, [listed, registry]);
+  useDisposable(registry);
 
-  const actions = useMemo<WorkbenchActions>(() => {
-    const reportFailure = (title: string, error: unknown) => toast.error(title, { description: errorMessage(error) });
-    const command = async (title: string, run: () => Promise<void>) => {
-      try {
-        await run();
-      } catch (error) {
-        reportFailure(title, error);
-        throw error;
-      }
-    };
-    return {
-      projectFiles: (id) => resources.get(id).files,
-      comments: (id) => resources.get(id).comments,
-      reportFailure,
+  const resources = useMemo<ProjectResourceAccess>(
+    () => ({ files: (id) => registry.get(id).files, comments: (id) => registry.get(id).comments }),
+    [registry],
+  );
+  const navigation = useMemo<PanelNavigation>(
+    () => ({
       openFile(path, place) {
         if (workspaceId === null) return;
         store.getState().showFiles(true);
         store.getState().showTab("files");
-        resources.get(workspaceId).files.open(path, place);
+        registry.get(workspaceId).files.open(path, place);
       },
       openChange(target) {
         if (workspaceId !== null) store.getState().revealChange({ workspaceId, ...target });
       },
-      // A page about what is removed leaves by itself: the conversation or project is no longer there.
-      removeProject(id) {
-        void command("Could not remove the project", () => workspaces.remove(id, BACKGROUND_CONTEXT)).catch(() => {});
-      },
-      renameConversation: (id, title) =>
-        command("Could not rename the conversation", () => conversations.rename(id, title, BACKGROUND_CONTEXT)),
-      removeConversation: (id) =>
-        command("Could not delete the conversation", () => conversations.remove(id, BACKGROUND_CONTEXT)),
-    };
-  }, [resources, store, workspaceId, workspaces, conversations]);
-  const value = useMemo(() => ({ store, actions, workspaceId }), [store, actions, workspaceId]);
+    }),
+    [registry, store, workspaceId],
+  );
+  const value = useMemo(
+    () => ({ store, resources, navigation, workspaceId }),
+    [store, resources, navigation, workspaceId],
+  );
   return (
     <Context.Provider value={value}>
       {children}

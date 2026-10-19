@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { useWorkbench, WorkbenchProvider } from "../src/app/workbench.tsx";
+import { useProjectResources, useWorkbench, WorkbenchProvider } from "../src/app/workbench.tsx";
 import { useProjectChanges } from "../src/rpc/use-project-changes.ts";
 
 const mock = vi.hoisted(() => ({
@@ -37,8 +37,8 @@ afterEach(() => {
 });
 
 test("removed projects release file snapshots and cached comment wrappers", async () => {
-  const hook = renderHook(() => useWorkbench(), { wrapper: WorkbenchProvider });
-  const file = hook.result.current.projectFiles(1);
+  const hook = renderHook(() => useProjectResources(), { wrapper: WorkbenchProvider });
+  const file = hook.result.current.files(1);
   const comments = hook.result.current.comments(1);
   const close = vi.spyOn(file, "close");
   act(() => file.open("file.txt"));
@@ -47,7 +47,7 @@ test("removed projects release file snapshots and cached comment wrappers", asyn
   hook.rerender();
   expect(close).toHaveBeenCalledOnce();
   expect(file.opened).toBeNull();
-  expect(hook.result.current.projectFiles(1)).not.toBe(file);
+  expect(hook.result.current.files(1)).not.toBe(file);
   expect(hook.result.current.comments(1)).not.toBe(comments);
 });
 

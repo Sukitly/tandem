@@ -4,7 +4,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { MessageCircleDashedIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useDrafts, useMessageDraft } from "@/app/drafts.tsx";
-import { useWorkbench } from "@/app/workbench.tsx";
+import { useProjectResources } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
 import { Button, buttonVariants } from "@/components/ui/button.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
@@ -18,6 +18,7 @@ import {
   useMessageScroller,
 } from "@/components/ui/message-scroller.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
+import { reportFailure } from "@/lib/errors.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation, useConversationFailure } from "@/rpc/use-conversation.ts";
 import { usePrompts } from "@/rpc/use-prompts.ts";
@@ -88,11 +89,8 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
   const project = useReplicatedState(workspaces.state)?.workspaces.find((candidate) => candidate.id === workspaceId);
   const available = useReplicatedState(models.state);
   const navigate = useNavigate();
-  const { comments, reportFailure } = useWorkbench((state) => ({
-    comments: state.comments,
-    reportFailure: state.reportFailure,
-  }));
-  const projectComments = comments(workspaceId);
+  const resources = useProjectResources();
+  const projectComments = resources.comments(workspaceId);
   const threads = useCommentThreads(projectComments);
   const waiting = useMemo(() => waitingComments(threads), [threads]);
   const { commands } = usePrompts(workspaceId);
@@ -158,14 +156,11 @@ function OpenChat({ conversationId, conversation }: { conversationId: number; co
   const { scrollToEnd } = useMessageScroller();
   const { conversations, models } = useConnected();
   const available = useReplicatedState(models.state);
-  const { comments, reportFailure } = useWorkbench((state) => ({
-    comments: state.comments,
-    reportFailure: state.reportFailure,
-  }));
+  const resources = useProjectResources();
   const summary = useReplicatedState(conversations.state)?.conversations.find(
     (candidate) => candidate.id === conversationId,
   );
-  const projectComments = summary === undefined ? undefined : comments(summary.workspaceId);
+  const projectComments = summary === undefined ? undefined : resources.comments(summary.workspaceId);
   const threads = useCommentThreads(projectComments);
   const waiting = useMemo(() => waitingComments(threads), [threads]);
   const { commands } = usePrompts(summary?.workspaceId);

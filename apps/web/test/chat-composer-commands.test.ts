@@ -7,9 +7,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
 
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => window.innerWidth < 768 }));
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({ openChange: vi.fn() }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ openChange: vi.fn() })),
+);
 
 // The box scrolls the highlighted row into view itself; jsdom has no layout.
 Element.prototype.scrollIntoView = vi.fn();

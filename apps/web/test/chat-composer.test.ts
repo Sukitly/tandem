@@ -6,9 +6,9 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
 import type { QueuedMessage } from "../src/chat/transcript.ts";
 
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({ openChange: vi.fn() }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ openChange: vi.fn() })),
+);
 
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => false }));
 

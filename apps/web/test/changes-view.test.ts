@@ -16,9 +16,9 @@ vi.mock("../src/rpc/use-replicated-state.ts", () => ({
   useReplicatedState: () => state.changes,
 }));
 
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({ openFile: vi.fn(), forgetChangeTarget: vi.fn() }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ openFile: vi.fn(), forgetChangeTarget: vi.fn() })),
+);
 
 vi.mock("../src/changes/change-diff.tsx", () => ({
   ChangeDiff: () => null,

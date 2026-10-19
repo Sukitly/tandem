@@ -2,7 +2,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ProjectDirectory, Workspaces } from "@tandem/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { errorMessage, serviceKey } from "@/app/query-client.tsx";
+import { serviceKey } from "@/app/query-client.tsx";
+import { errorMessage } from "@/lib/errors.ts";
 
 export type ProjectDirectoryRead =
   | { status: "loading" }
