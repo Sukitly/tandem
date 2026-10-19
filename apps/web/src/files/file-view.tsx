@@ -1,5 +1,6 @@
 import { AlertCircleIcon, FileIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { userPreferences } from "@/app/user-preferences.ts";
 import { UnverifiedCommentDrafts } from "@/comments/anchored-comment-editor.tsx";
 import type { ProjectComments } from "@/comments/project-comments.ts";
 import {
@@ -14,7 +15,7 @@ import { ReaderWrapButton } from "@/components/reader-surface.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
-import { preferences } from "@/lib/preferences.ts";
+import { usePreference } from "@/lib/preferences.ts";
 import { FileText } from "./file-text.tsx";
 import { type ProjectFiles, useProjectFiles } from "./project-files.ts";
 
@@ -45,11 +46,8 @@ export function FileView({
     () => (content?.status === "ready" && content.value.kind === "text" ? countLines(content.value.text) : 0),
     [content],
   );
-  const [wrap, setWrap] = useState(() => preferences.getItem("tandem.fileWrap") === "true");
-  const toggleWrap = (): void => {
-    setWrap(!wrap);
-    preferences.setItem("tandem.fileWrap", String(!wrap));
-  };
+  const [wrap, setWrap] = usePreference(userPreferences.fileWrap);
+  const toggleWrap = (): void => setWrap(!wrap);
 
   if (opened === null) return null;
   return (

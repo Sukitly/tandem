@@ -1,11 +1,12 @@
 import { createStore } from "zustand/vanilla";
 import type { ChangeTarget } from "@/changes/change-target.ts";
-import { preferences } from "@/lib/preferences.ts";
+import { readPreference, writePreference } from "@/lib/preferences.ts";
 import { navigate, parseRoute, type Route, routeHash } from "./navigation.ts";
+import { type PanelTab, userPreferences } from "./user-preferences.ts";
 
-export type PanelTab = "files" | "changes" | "terminal" | "preview";
+export type { PanelTab } from "./user-preferences.ts";
 export function panelTabOf(value: unknown): PanelTab {
-  return value === "changes" || value === "terminal" || value === "preview" ? value : "files";
+  return userPreferences.panelTab.parse(typeof value === "string" ? value : null);
 }
 
 export interface WorkbenchState {
@@ -38,9 +39,9 @@ export function createWorkbenchStore(mobile: boolean, hash = "") {
     draft: null,
     adding: false,
     mobile,
-    filesShown: !mobile && preferences.getItem("tandem.filesShown") !== "false",
-    panelTab: panelTabOf(preferences.getItem("tandem.panelTab")),
-    showHiddenFiles: preferences.getItem("tandem.showHiddenFiles") === "true",
+    filesShown: !mobile && readPreference(userPreferences.filesShown),
+    panelTab: readPreference(userPreferences.panelTab),
+    showHiddenFiles: readPreference(userPreferences.showHiddenFiles),
     changeTarget: null,
     select(id) {
       set({ selected: id, draft: null });
@@ -56,18 +57,18 @@ export function createWorkbenchStore(mobile: boolean, hash = "") {
     },
     setMobile(mobile) {
       if (get().mobile === mobile) return;
-      set({ mobile, filesShown: !mobile && preferences.getItem("tandem.filesShown") !== "false" });
+      set({ mobile, filesShown: !mobile && readPreference(userPreferences.filesShown) });
     },
     showFiles(filesShown) {
-      if (!get().mobile) preferences.setItem("tandem.filesShown", String(filesShown));
+      if (!get().mobile) writePreference(userPreferences.filesShown, filesShown);
       set({ filesShown });
     },
     showTab(panelTab) {
-      preferences.setItem("tandem.panelTab", panelTab);
+      writePreference(userPreferences.panelTab, panelTab);
       set({ panelTab });
     },
     setShowHiddenFiles(showHiddenFiles) {
-      preferences.setItem("tandem.showHiddenFiles", String(showHiddenFiles));
+      writePreference(userPreferences.showHiddenFiles, showHiddenFiles);
       set({ showHiddenFiles });
     },
     addProject: () => set({ adding: true }),

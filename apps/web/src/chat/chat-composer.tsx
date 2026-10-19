@@ -1,8 +1,9 @@
 import type { ImageInput, ModelRef, ModelSummary, PromptTemplateSummary } from "@tandem/contracts";
 import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
-import { type FormEvent, type ReactNode, useState, useSyncExternalStore } from "react";
+import { type FormEvent, type ReactNode, useSyncExternalStore } from "react";
 import { useMessageDraft } from "@/app/drafts.tsx";
 import type { MessageDraft } from "@/app/message-draft.ts";
+import { userPreferences } from "@/app/user-preferences.ts";
 import type { WaitingComment } from "@/comments/project-comments.ts";
 import {
   PromptInput,
@@ -14,20 +15,12 @@ import {
 import { FieldError } from "@/components/ui/field";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
-import { preferences } from "@/lib/preferences.ts";
+import { usePreference } from "@/lib/preferences.ts";
 import { IMAGE_ACCEPT } from "./attached-images.ts";
 import { CommandSuggestions } from "./command-suggestions.tsx";
 import { ComposerAttachments } from "./composer-attachments.tsx";
 import { ComposerContext, ComposerDetails } from "./composer-context.tsx";
-import {
-  ComposerOptions,
-  KEYBOARD_MODE_KEY,
-  type KeyboardMode,
-  SEND_MODE_KEY,
-  type SendMode,
-  storedKeyboardMode,
-  storedSendMode,
-} from "./composer-options.tsx";
+import { ComposerOptions, type SendMode } from "./composer-options.tsx";
 import type { QueuedMessage } from "./transcript.ts";
 import { completeCommand, useCommandCompletion } from "./use-command-completion.ts";
 import { useComposerImages } from "./use-composer-images.ts";
@@ -110,18 +103,10 @@ export function ChatComposer({
   } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   const images = useComposerImages(draft, imageSupport);
   const { dragging, picker, attach, onPaste, onDragOver, onDrop } = images;
-  const [keyboardMode, setKeyboardMode] = useState(storedKeyboardMode);
+  const [keyboardMode, chooseKeyboard] = usePreference(userPreferences.keyboardMode);
   const mobile = useIsMobile();
-  const [mobileSendMode, setSendMode] = useState(storedSendMode);
-  const sendMode = mobile ? mobileSendMode : "steer";
-  const chooseSendMode = (mode: SendMode): void => {
-    setSendMode(mode);
-    preferences.setItem(SEND_MODE_KEY, mode);
-  };
-  const chooseKeyboard = (mode: KeyboardMode): void => {
-    setKeyboardMode(mode);
-    preferences.setItem(KEYBOARD_MODE_KEY, mode);
-  };
+  const [mobileSendMode, chooseSendMode] = usePreference(userPreferences.sendMode);
+  const sendMode: SendMode = mobile ? mobileSendMode : "steer";
   const menu = useCommandCompletion(text, commands, sending);
   const editor = useComposerText(
     (value) => {

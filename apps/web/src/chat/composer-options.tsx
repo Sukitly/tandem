@@ -1,4 +1,5 @@
 import { Settings2Icon } from "lucide-react";
+import type { KeyboardMode, SendMode } from "@/app/user-preferences.ts";
 import { PromptInputActionButton } from "@/components/ai-elements/prompt-input.tsx";
 import {
   DropdownMenu,
@@ -10,21 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { preferences } from "@/lib/preferences.ts";
 
-export type KeyboardMode = "platform" | "emacs";
-export type SendMode = "steer" | "followUp";
-export const KEYBOARD_MODE_KEY = "tandem.keyboardMode";
-// Narrow-layout send preference. Keep values written by earlier revisions of this PR.
-export const SEND_MODE_KEY = "tandem.sendMode";
-
-export function storedSendMode(): SendMode {
-  return preferences.getItem(SEND_MODE_KEY) === "followUp" ? "followUp" : "steer";
-}
-
-export function storedKeyboardMode(): KeyboardMode {
-  return preferences.getItem(KEYBOARD_MODE_KEY) === "emacs" ? "emacs" : "platform";
-}
+export type { KeyboardMode, SendMode };
 
 export function ComposerOptions({
   mobile,

@@ -1,6 +1,7 @@
 import { type ReactNode, useLayoutEffect, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
+import { PANEL_LAYOUT_KEY } from "@/app/user-preferences.ts";
 import { useWorkbench } from "@/app/workbench.tsx";
 import { AdaptivePanel, type PanelVisibility } from "@/components/adaptive-panel.tsx";
 import { ProjectPanel } from "./project-panel.tsx";
@@ -27,7 +28,7 @@ export function WithFiles({
     <AdaptivePanel
       label="Project panel"
       description="Project files, changes, terminals, and preview"
-      layoutKey="tandem.layout"
+      layoutKey={PANEL_LAYOUT_KEY}
       shown={shown}
       onShownChange={showFiles}
       renderPanel={(visibility) => (

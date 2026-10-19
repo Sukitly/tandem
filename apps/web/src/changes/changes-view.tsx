@@ -12,11 +12,9 @@ import { Spinner } from "@/components/ui/spinner.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import type { DiffReadingState } from "./change-diff.tsx";
 import type { ChangeTarget } from "./change-target.ts";
-import { ChangeView, storedDiffStyle, storedDiffWrap } from "./change-view.tsx";
+import { ChangeView } from "./change-view.tsx";
 import { ChangedFilesList } from "./changed-files-list.tsx";
 import { useChangePatch } from "./use-change-patch.ts";
-
-export { storedDiffStyle, storedDiffWrap } from "./change-view.tsx";
 
 /**
  * The changes of a project against its integration branch, as Git reports them, and the selected file's patch.
@@ -46,10 +44,6 @@ export function ChangesView({
   const initialized = useRef(selected !== null);
   const [reading] = useState<DiffReadingState>(() => ({ positions: new Map(), revealed: new WeakSet() }));
   const [revealed, setRevealed] = useState<ChangeTarget | null>(null);
-  const [inlineStyled, setInlineStyled] = useState<"split" | "unified">(() => storedDiffStyle("inline"));
-  const [zoomedStyled, setZoomedStyled] = useState<"split" | "unified">(() => storedDiffStyle("fullscreen"));
-  const [inlineWrap, setInlineWrap] = useState<boolean>(() => storedDiffWrap(false));
-  const [zoomedWrap, setZoomedWrap] = useState<boolean>(() => storedDiffWrap(true));
   const patch = useChangePatch(changes, state, selected);
 
   useEffect(() => {
@@ -125,14 +119,6 @@ export function ChangesView({
                   reveal={revealed ?? undefined}
                   patch={patch.data ?? null}
                   failure={patch.isError ? errorMessage(patch.error) : null}
-                  inlineStyled={inlineStyled}
-                  onInlineStyled={setInlineStyled}
-                  zoomedStyled={zoomedStyled}
-                  onZoomedStyled={setZoomedStyled}
-                  inlineWrap={inlineWrap}
-                  onInlineWrap={setInlineWrap}
-                  zoomedWrap={zoomedWrap}
-                  onZoomedWrap={setZoomedWrap}
                   comments={comments}
                   onClose={() => setSelected(null)}
                 />

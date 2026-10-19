@@ -238,6 +238,7 @@ Tandem stores all state in `$TANDEM_HOME` (default: `~/.tandem` for native runs;
 
 - **Navigation:** TanStack Router matches destinations while keeping the session shell mounted. The history adapter preserves existing `#42` and `#public-access` links.
 - **Client intent:** Scoped Zustand stores own workbench controls, visited views, and in-memory drafts. Components subscribe through selectors; server catalogs are never copied into these stores.
+- **Preferences:** Everything remembered between visits is declared once in `apps/web/src/app/user-preferences.ts`: its key, the values it takes, and its default. Components read and write one with `usePreference`, and every component showing it changes together. Storage that is unavailable or full falls back to page memory.
 - **Snapshots:** TanStack Query owns directory listings, file contents, patches, prompt suggestions, and comment-location checks. Keys isolate service identity and workspace. Session disposal clears the cache; project removal releases its file resources.
 - **Authoritative state:** Conversation, project, terminal, and other live state still render directly from RPC subscriptions. Mutations do not overwrite replicated state.
 - **Commands:** A component gives the server a command through `useCommand`, which owns the pending state, one run at a time, and the failure: shown beside the action when it can be corrected there, or as a toast. `useRefreshOnRun` keeps what the server reads on demand current while it is shown and after each agent run.
