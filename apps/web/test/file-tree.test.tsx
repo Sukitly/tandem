@@ -42,10 +42,11 @@ const mockWorkbench = vi.hoisted(() => ({
   comments: () => ({}),
 }));
 
-vi.mock("../src/app/workbench.tsx", () => ({
-  panelTabOf: (value: unknown) => (value === "changes" || value === "terminal" ? value : "files"),
-  useWorkbench: () => mockWorkbench,
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => mockWorkbench, {
+    panelTabOf: (value: unknown) => (value === "changes" || value === "terminal" ? value : "files"),
+  }),
+);
 
 vi.mock("../src/rpc/use-project-changes.ts", () => ({
   useProjectChanges: () => undefined,

@@ -145,6 +145,12 @@ The container runs in the background and continues running when you close the te
 
 ---
 
+## Composer keyboard behavior
+
+The composer defaults to platform editing and native undo/redo. Earlier versions always intercepted Emacs-style Ctrl shortcuts; upgrading without an explicit keyboard preference now uses platform defaults. Choose **Composer options → Keyboard shortcuts → Emacs editing** to restore Emacs shortcuts and their custom edit history.
+
+On desktop layouts, Enter and the Send button steer the current turn; Alt/Option+Enter queues a follow-up. Narrow layouts (under 768px) additionally offer a saved send-mode choice for on-screen sending. This preference does not change desktop sending. Keyboard-mode selection is available in both layouts. The layout breakpoint is not a test for physical keyboard availability.
+
 ## Development Commands
 
 | Task | Command |
@@ -193,7 +199,7 @@ Tandem supports secure remote access over the internet without port forwarding u
    - Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/) → **Networks** → **Tunnels**.
    - Create a tunnel (e.g. `tandem-remote`) and copy the connector token.
 2. **Connect Machine in Tandem:**
-   - In Tandem, navigate to **Public access** (`/#public-access`).
+   - In Tandem, navigate to **Public access** (`/public-access`).
    - Enter your public domain (e.g. `https://tandem.example.com`) and paste the connector token, then click **Publish**.
 3. **Protect Hostname with Cloudflare Access (Required):**
    - Go to **Access** → **Applications** → **Add an Application** → **Self-hosted**.
@@ -227,6 +233,20 @@ Tandem stores all state in `$TANDEM_HOME` (default: `~/.tandem` for native runs;
 | `apps/web` | `@tandem/web` | Frontend single-page app built with React, Vite, Tailwind CSS, and shadcn/ui |
 | `packages/contracts` | `@tandem/contracts` | Shared types, RPC interfaces, and constants (runtime-neutral) |
 | `packages/client` | `@tandem/client` | Client library for WebSocket RPC, service bindings, and terminal connections |
+
+### Frontend state and composition
+
+- **Navigation:** TanStack Router owns it, and the address is the one place that says which page is open and which conversation or project it is about: `/c/42`, `/p/3/new`, `/public-access`, and `/pair` outside the session, which stays mounted from page to page. The server answers a browser's request for any address that is not a file with the page, so every address can be opened or reloaded.
+- **Client intent:** Scoped Zustand stores own workbench controls, visited views, and in-memory drafts. Components subscribe through selectors with `useWorkbench`, which holds only that state; the files and comments of a project come from `useProjectResources`, and taking the panel to a file or change from `usePanelNavigation`. Server catalogs are never copied into these stores.
+- **Connection:** `ConnectionController` (`rpc/connection-controller.ts`) opens the page's first connection and opens it again while it cannot be reached, and is tested without React. It binds the services declared in one registry, and `useConnected()` gives a component the ones it uses by name.
+- **Preferences:** Everything remembered between visits is declared once in `apps/web/src/app/user-preferences.ts`: its key, the values it takes, and its default. Components read and write one with `usePreference`, and every component showing it changes together. Storage that is unavailable or full falls back to page memory.
+- **Snapshots:** TanStack Query owns directory listings, file contents, patches, prompt suggestions, and comment-location checks. Keys isolate service identity and workspace. Session disposal clears the cache; project removal releases its file resources.
+- **Authoritative state:** Conversation, project, terminal, and other live state still render directly from RPC subscriptions. Mutations do not overwrite replicated state.
+- **Commands:** A component gives the server a command through `useCommand`, which owns the pending state, one run at a time, and the failure: shown beside the action when it can be corrected there, or as a toast. `useRefreshOnRun` keeps what the server reads on demand current while it is shown and after each agent run.
+- **Composition:** `AdaptivePanel` owns layout, `Reader` owns expansion/focus, and their callers compose feature-specific content and actions. Comment presentation is shared across renderers. Composer completion, keyboard precedence, attachment handling, and context presentation have separate owners.
+- **Lifetimes:** Drafts live above connection/layout boundaries and never enter browser storage. Hidden visited views retain terminal and iframe identity; hidden projects release changes subscriptions. Virtual-file draft editors live outside the virtualized line window.
+
+Unit tests exercise these ownership boundaries.
 
 For contributing guidelines and architectural rules, see [AGENTS.md](AGENTS.md) and [SECURITY.md](SECURITY.md).
 

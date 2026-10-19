@@ -7,6 +7,7 @@ import {
   DEV_PORT,
   HEALTH_PATH,
   IMAGE_PATH,
+  PREVIEW_PATH,
   PTY_PATH,
   RPC_PATH,
 } from "@tandem/contracts";
@@ -32,6 +33,22 @@ export default defineConfig({
       [IMAGE_PATH]: backend,
       [RPC_PATH]: { target: backend, ws: true },
       [PTY_PATH]: { target: backend, ws: true },
+      [PREVIEW_PATH]: { target: backend, ws: true },
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes("node_modules/katex/")) return "vendor-katex";
+          // Mermaid is loaded when a diagram is first drawn (see `chat/lazy-mermaid.ts`). A manual chunk takes in what its
+          // modules import, so `@streamdown/mermaid` must stay out of this one, or mermaid's core loads at startup.
+          if (id.includes("node_modules/@streamdown/mermaid/")) return undefined;
+          if (id.includes("node_modules/streamdown/") || id.includes("node_modules/@streamdown/"))
+            return "vendor-streamdown";
+          if (id.includes("node_modules/@tanstack/")) return "vendor-tanstack";
+        },
+      },
     },
   },
 });

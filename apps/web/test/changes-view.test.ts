@@ -3,7 +3,8 @@ import type { ChangedFile, ChangesState } from "@tandem/contracts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ChangesView, storedDiffStyle, storedDiffWrap } from "../src/changes/changes-view.tsx";
+import { SnapshotProvider } from "../src/app/query-client.tsx";
+import { ChangesView } from "../src/changes/changes-view.tsx";
 import type { ProjectComments } from "../src/comments/project-comments.ts";
 import { SidebarProvider } from "../src/components/ui/sidebar.tsx";
 
@@ -15,9 +16,9 @@ vi.mock("../src/rpc/use-replicated-state.ts", () => ({
   useReplicatedState: () => state.changes,
 }));
 
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({ openFile: vi.fn(), forgetChangeTarget: vi.fn() }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ openFile: vi.fn(), forgetChangeTarget: vi.fn() })),
+);
 
 vi.mock("../src/changes/change-diff.tsx", () => ({
   ChangeDiff: () => null,
@@ -33,13 +34,17 @@ afterEach(() => vi.unstubAllGlobals());
 function changes(): string {
   return renderToStaticMarkup(
     createElement(
-      SidebarProvider,
+      SnapshotProvider,
       null,
-      createElement(ChangesView, {
-        changes: undefined,
-        failure: null,
-        comments: {} as ProjectComments,
-      }),
+      createElement(
+        SidebarProvider,
+        null,
+        createElement(ChangesView, {
+          changes: undefined,
+          failure: null,
+          comments: {} as ProjectComments,
+        }),
+      ),
     ),
   );
 }
@@ -133,32 +138,5 @@ describe("file type icons in the changed files list", () => {
     const markup = changes();
     expect(markup).toContain("+8");
     expect(markup).toContain("−3");
-  });
-
-  test("stores and defaults diff style separately for inline and zoomed states", () => {
-    expect(storedDiffStyle(false)).toBe("unified");
-    expect(storedDiffStyle(true)).toBe("split");
-
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => {
-        if (key === "tandem.diffStyle") return "split";
-        if (key === "tandem.diffStyle.zoomed") return "unified";
-        return null;
-      },
-    });
-    expect(storedDiffStyle(false)).toBe("split");
-    expect(storedDiffStyle(true)).toBe("unified");
-  });
-
-  test("stores diff wrap separately for inline and zoomed states", () => {
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => {
-        if (key === "tandem.diffWrap") return "true";
-        if (key === "tandem.diffWrap.zoomed") return "false";
-        return null;
-      },
-    });
-    expect(storedDiffWrap(false)).toBe(true);
-    expect(storedDiffWrap(true)).toBe(false);
   });
 });

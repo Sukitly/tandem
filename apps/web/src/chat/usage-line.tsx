@@ -1,18 +1,18 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ProviderUsage, UsageWindow } from "@tandem/contracts";
-import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button.tsx";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.tsx";
 import { Progress } from "@/components/ui/progress.tsx";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
+import { useRefreshOnRun } from "@/hooks/use-refresh-on-run.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 
 const DAY_SECONDS = 24 * 60 * 60;
 
 /** Over the pace: the window is being spent faster than time passes. */
-const AHEAD_COLOR = "text-red-600 dark:text-red-400";
+const AHEAD_COLOR = "text-red-700 dark:text-red-400";
 /** Under the pace: the window is being spent slower than time passes. */
-const BEHIND_COLOR = "text-emerald-600 dark:text-emerald-400";
+const BEHIND_COLOR = "text-emerald-700 dark:text-emerald-400";
 
 /**
  * Select the appropriate quota windows when a provider defines distinct model-pool groups (e.g. Antigravity).
@@ -43,19 +43,9 @@ export function UsageLine({
   const { usage } = useConnected();
   const state = useReplicatedState(usage.state);
 
-  // Read when the provider shown changes, forced, and again after each run, as the extension refreshes on session
-  // start and on `agent_end`. The server decides whether an unforced read is due.
-  useEffect(() => {
-    if (provider === undefined) return;
-    usage.refresh(provider, true, BACKGROUND_CONTEXT).catch(() => {});
-  }, [usage, provider]);
-
-  const running = useRef(active === true);
-  useEffect(() => {
-    const ended = running.current && active !== true;
-    running.current = active === true;
-    if (ended && provider !== undefined) usage.refresh(provider, false, BACKGROUND_CONTEXT).catch(() => {});
-  }, [usage, provider, active]);
+  // Read, forced, when the provider shown changes, and again after each run. The server decides whether the read after
+  // a run is due.
+  useRefreshOnRun(provider, active, (shown, why) => usage.refresh(shown, why === "shown", BACKGROUND_CONTEXT));
 
   const known = provider === undefined ? undefined : state?.providers[provider];
   if (known === undefined) return null;
@@ -89,8 +79,8 @@ function WindowText({ window }: { window: UsageWindow }) {
   const reset = formatResetTime(window.resetsAt, window.windowSeconds);
   const pace = paceOf(window);
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <Popover>
+      <PopoverTrigger
         render={<Button variant="ghost" size="xs" />}
         className="inline-flex max-w-full shrink-0 items-center gap-1.5 tabular-nums sm:gap-2"
       >
@@ -107,8 +97,8 @@ function WindowText({ window }: { window: UsageWindow }) {
             {Math.abs(pace.diff).toFixed(1)}%
           </span>
         )}
-      </TooltipTrigger>
-      <TooltipContent>
+      </PopoverTrigger>
+      <PopoverContent aria-label={`${window.label} quota details`} className="max-w-[calc(100vw-2rem)] text-xs">
         <div className="grid gap-1">
           <span>
             {window.label} quota: {window.utilization.toFixed(0)}% used
@@ -124,8 +114,8 @@ function WindowText({ window }: { window: UsageWindow }) {
             </span>
           )}
         </div>
-      </TooltipContent>
-    </Tooltip>
+      </PopoverContent>
+    </Popover>
   );
 }
 

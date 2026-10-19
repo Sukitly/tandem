@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { WithFiles } from "../src/App.tsx";
 import { ProjectPanel } from "../src/app/project-panel.tsx";
+import { WithFiles } from "../src/app/workspace-layout.tsx";
 
 const mobileState = vi.hoisted(() => ({
   isMobile: false,
@@ -13,25 +13,27 @@ vi.mock("../src/hooks/use-mobile.ts", () => ({
   useIsMobile: () => mobileState.isMobile,
 }));
 
-vi.mock("../src/app/workbench.tsx", () => ({
-  panelTabOf: (value: unknown) => (value === "changes" || value === "terminal" ? value : "files"),
-  useWorkbench: () => ({
-    filesShown: mobileState.filesShown,
-    showFiles: vi.fn(),
-    panelTab: "files",
-    showTab: vi.fn(),
-    changeTarget: null,
-    showHiddenFiles: false,
-    setShowHiddenFiles: vi.fn(),
-    projectFiles: () => ({
-      subscribe: () => () => {},
-      current: { failure: null, opened: null },
-      refresh: vi.fn(),
-      dismissFailure: vi.fn(),
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(
+    () => ({
+      filesShown: mobileState.filesShown,
+      showFiles: vi.fn(),
+      panelTab: "files",
+      showTab: vi.fn(),
+      changeTarget: null,
+      showHiddenFiles: false,
+      setShowHiddenFiles: vi.fn(),
+      projectFiles: () => ({
+        subscribe: () => () => {},
+        current: { failure: null, opened: null },
+        refresh: vi.fn(),
+        dismissFailure: vi.fn(),
+      }),
+      comments: () => ({}),
     }),
-    comments: () => ({}),
-  }),
-}));
+    { panelTabOf: (value: unknown) => (value === "changes" || value === "terminal" ? value : "files") },
+  ),
+);
 
 vi.mock("../src/files/project-files.ts", () => ({
   useProjectFiles: (_files: unknown, select: (f: unknown) => unknown) => select({ failure: null, opened: null }),
@@ -96,13 +98,13 @@ describe("WithFiles responsive layout", () => {
     expect(markup).toContain("Chat");
   });
 
-  test("renders full-width conversation without ResizablePanelGroup on mobile", () => {
+  test("keeps the conversation in the same layout tree on mobile", () => {
     mobileState.isMobile = true;
     mobileState.filesShown = false;
     const markup = renderToStaticMarkup(
       createElement(WithFiles, { workspaceId: 1 }, createElement("div", null, "Chat")),
     );
-    expect(markup).not.toContain('id="conversation"');
+    expect(markup).toContain('id="conversation"');
     expect(markup).toContain("Chat");
   });
 });

@@ -3,7 +3,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement, StrictMode } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { PairScreen, takePairingCode } from "../src/auth/pair-screen.tsx";
-import { clearLegacyToken } from "../src/rpc/token.ts";
 
 afterEach(() => {
   cleanup();
@@ -72,11 +71,29 @@ describe("pairing a browser", () => {
     await waitFor(() => expect(screen.getByText("Try again in one minute")).toBeDefined());
     expect(input.value).toBe("saved-code");
   });
-  test("migration discards the old permanent token", () => {
-    localStorage.setItem("tandem.token", "old-secret");
-    window.history.replaceState(null, "", "/?token=old-secret&keep=yes");
-    clearLegacyToken();
-    expect(localStorage.getItem("tandem.token")).toBeNull();
-    expect(window.location.search).toBe("?keep=yes");
+  test("a link that is being paired from leaves the form disabled until the pairing has failed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("", { status: 401 }))
+        .mockResolvedValueOnce(new Response('{"error":"The code has expired"}', { status: 400 })),
+    );
+    render(createElement(PairScreen, { initialCode: "expired", onPaired: vi.fn() }));
+    expect((screen.getByLabelText("Pairing or recovery code") as HTMLInputElement).disabled).toBe(true);
+    await waitFor(() => expect(screen.getByText("The code has expired")).toBeDefined());
+    expect((screen.getByLabelText("Pairing or recovery code") as HTMLInputElement).disabled).toBe(false);
+  });
+  test("a browser that has paired stays disabled while it leaves, so that it does not pair twice", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetch);
+    const onPaired = vi.fn();
+    render(createElement(PairScreen, { onPaired }));
+    fireEvent.change(screen.getByLabelText("Pairing or recovery code"), { target: { value: "code" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pair device" }));
+    await waitFor(() => expect(onPaired).toHaveBeenCalledTimes(1));
+    expect((screen.getByLabelText("Pairing or recovery code") as HTMLInputElement).disabled).toBe(true);
+    fireEvent.submit(screen.getByLabelText("Pairing or recovery code").closest("form") as HTMLFormElement);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

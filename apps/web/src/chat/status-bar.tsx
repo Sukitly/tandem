@@ -1,33 +1,15 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { ModelRef, ModelSummary } from "@tandem/contracts";
+import type { ModelRef } from "@tandem/contracts";
 import { cn } from "cn";
-import { CheckIcon, ChevronDownIcon, KeyRoundIcon } from "lucide-react";
-import { useState } from "react";
-import { Context } from "@/components/ai-elements/context.tsx";
-import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useProvidersDialog } from "@/models/providers-dialog.tsx";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
+import { ContextUsageBadge } from "./context-usage.tsx";
+import { ModelPicker } from "./model-picker.tsx";
+import { ThinkingSelector } from "./thinking-selector.tsx";
 import type { ContextUsage } from "./transcript.ts";
+
+export { formatCost, formatTokens } from "./context-usage.tsx";
 
 export interface AgentChoice {
   model?: ModelRef;
@@ -54,167 +36,31 @@ export function StatusBar({
   const current = state?.models.find(
     (model) => model.provider === agent?.model?.provider && model.modelId === agent?.model?.modelId,
   );
+  const save = useCommand({ failure: "Could not save thinking level" });
+  const { pending } = save;
   const contextWindow = current?.contextWindow ?? 0;
-  const percent = contextWindow > 0 ? Math.min(100, (usage.tokens / contextWindow) * 100) : 0;
-  const report = (error: unknown): void => console.error(error);
+
   const chooseThinking = (thinkingLevel: string): void => {
-    onConfigure({ thinkingLevel }).catch(report);
-    // The last choice is what new conversations start with.
-    models.setDefaultThinkingLevel(thinkingLevel, BACKGROUND_CONTEXT).catch(report);
+    void save.run(async () => {
+      await onConfigure({ thinkingLevel });
+      await models.setDefaultThinkingLevel(thinkingLevel, BACKGROUND_CONTEXT);
+    });
   };
 
   return (
     <div
       className={cn("flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs text-muted-foreground", className)}
     >
-      <ModelPicker agent={agent} current={current} onConfigure={onConfigure} />
-      {current !== undefined && current.thinkingLevels.length > 1 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="xs" className="shrink-0" />}>
-            <span className="hidden sm:inline">{thinkingLabel(agent?.thinkingLevel ?? "off")}</span>
-            <span className="sm:hidden">{shortThinkingLabel(agent?.thinkingLevel ?? "off")}</span>
-            <ChevronDownIcon />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-40">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Thinking</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={agent?.thinkingLevel ?? "off"} onValueChange={chooseThinking}>
-                {current.thinkingLevels.map((level) => (
-                  <DropdownMenuRadioItem key={level} value={level} closeOnClick>
-                    {level === "off" ? "Off" : level[0]?.toUpperCase() + level.slice(1)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <ModelPicker selectedModel={agent?.model} current={current} onConfigure={onConfigure} />
+      {current !== undefined && (
+        <ThinkingSelector
+          level={agent?.thinkingLevel ?? "off"}
+          levels={current.thinkingLevels}
+          disabled={pending}
+          onSelect={chooseThinking}
+        />
       )}
-      {contextWindow > 0 && (
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <span className="hidden font-mono tabular-nums sm:inline">{formatCost(usage.cost)}</span>
-          <Context
-            usedTokens={usage.tokens}
-            maxTokens={contextWindow}
-            cost={usage.cost}
-            label={
-              <>
-                <span>{percent.toFixed(0)}%</span>
-                <span className="hidden sm:inline"> of {formatTokens(contextWindow)}</span>
-              </>
-            }
-          />
-        </div>
-      )}
+      <ContextUsageBadge usage={usage} contextWindow={contextWindow} />
     </div>
   );
-}
-
-function ModelPicker({
-  agent,
-  current,
-  onConfigure,
-}: {
-  agent: AgentChoice | undefined;
-  current: ModelSummary | undefined;
-  onConfigure: (change: AgentChoice) => Promise<void>;
-}) {
-  const { models } = useConnected();
-  const state = useReplicatedState(models.state);
-  const providers = useProvidersDialog();
-  const [open, setOpen] = useState(false);
-  const available = state?.models ?? [];
-  const report = (error: unknown): void => console.error(error);
-
-  if (available.length === 0) {
-    return (
-      <Button variant="ghost" size="xs" onClick={() => providers.open()}>
-        <KeyRoundIcon />
-        Sign in to a model provider
-      </Button>
-    );
-  }
-
-  const choose = (model: ModelSummary): void => {
-    setOpen(false);
-    const ref = { provider: model.provider, modelId: model.modelId };
-    onConfigure({ model: ref }).catch(report);
-    // The last choice is what new conversations start with.
-    models.setDefaultModel(ref, BACKGROUND_CONTEXT).catch(report);
-  };
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={<Button variant="ghost" size="xs" className="shrink min-w-0 max-w-36 text-left sm:max-w-none" />}
-      >
-        <span className="truncate">
-          {current?.name ?? (agent?.model === undefined ? "Choose a model" : `${agent.model.modelId} (unavailable)`)}
-        </span>
-        <ChevronDownIcon />
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-80 p-0">
-        <Command>
-          <CommandInput placeholder="Search models" />
-          <CommandList>
-            <CommandEmpty>No model found.</CommandEmpty>
-            {groupByProvider(available, state?.providers ?? []).map(({ name, models: group }) => (
-              <CommandGroup key={name} heading={name}>
-                {group.map((model) => (
-                  <CommandItem
-                    key={`${model.provider}/${model.modelId}`}
-                    value={`${name} ${model.name} ${model.modelId}`}
-                    onSelect={() => choose(model)}
-                  >
-                    <span className="flex-1 truncate">{model.name}</span>
-                    {model === current && <CheckIcon />}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            ))}
-            <CommandSeparator />
-            <CommandGroup>
-              <CommandItem
-                onSelect={() => {
-                  setOpen(false);
-                  providers.open();
-                }}
-              >
-                <KeyRoundIcon />
-                Model providers…
-              </CommandItem>
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function groupByProvider(
-  models: ModelSummary[],
-  providers: { id: string; name: string }[],
-): { name: string; models: ModelSummary[] }[] {
-  const groups = new Map<string, ModelSummary[]>();
-  for (const model of models) groups.set(model.provider, [...(groups.get(model.provider) ?? []), model]);
-  return [...groups].map(([id, group]) => ({
-    name: providers.find((provider) => provider.id === id)?.name ?? id,
-    models: group,
-  }));
-}
-
-function thinkingLabel(level: string): string {
-  return level === "off" ? "No thinking" : `Thinking: ${level}`;
-}
-
-function shortThinkingLabel(level: string): string {
-  return level === "off" ? "Off" : (level[0]?.toUpperCase() ?? "") + level.slice(1);
-}
-
-export function formatCost(dollars: number): string {
-  return `$${dollars < 1 ? dollars.toFixed(3) : dollars.toFixed(2)}`;
-}
-
-export function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
-  return `${Math.round(tokens / 1000)}K`;
 }

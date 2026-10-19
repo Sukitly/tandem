@@ -59,6 +59,11 @@ export class StaticFiles {
       ].join("; "),
     );
   }
+  /**
+   * A file of the web build, or, for a page's address that no file is at, the page that shows it: `index.html`, which
+   * the client's router reads the address in. Only a browser asking for a page gets that, and only for an address that
+   * names no file: a missing script or style, and a request for data, are still not found.
+   */
   async serve(pathname: string, request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     if (request.method !== "GET" && request.method !== "HEAD") return false;
     let decoded: string;
@@ -68,7 +73,11 @@ export class StaticFiles {
       return false;
     }
     if (decoded.includes("\0") || decoded.includes("\\")) return false;
-    const relative = decoded === "/" || decoded === "/pair" ? "index.html" : decoded.slice(1);
+    if (await this.#send(decoded === "/" ? "index.html" : decoded.slice(1), request, response)) return true;
+    const page = extname(decoded) === "" && request.headers.accept?.includes("text/html") === true;
+    return page && (await this.#send("index.html", request, response));
+  }
+  async #send(relative: string, request: IncomingMessage, response: ServerResponse): Promise<boolean> {
     let file = resolve(this.#root, relative);
     if (!file.startsWith(`${this.#root}${sep}`)) return false;
     try {

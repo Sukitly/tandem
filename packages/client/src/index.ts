@@ -7,6 +7,7 @@ export {
   type TandemConnection,
   type TerminalOptions,
 } from "./connect.ts";
+export { onConnectionWake } from "./connection-lifecycle.ts";
 export { OpenChanges } from "./open-changes.ts";
 export { OpenConversations } from "./open-conversations.ts";
 export { TerminalConnection, type TerminalLink, type TerminalScreen } from "./terminal-connection.ts";

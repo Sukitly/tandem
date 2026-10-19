@@ -1,74 +1,13 @@
-import {
-  BootstrapError,
-  type ConnectionStatus,
-  connect,
-  OpenChanges,
-  OpenConversations,
-  type TandemConnection,
-} from "@tandem/client";
-import {
-  Changes,
-  Comments,
-  Conversation,
-  Conversations,
-  Devices,
-  Files,
-  Models,
-  Preview,
-  ProjectChanges,
-  Prompts,
-  PublicAccess,
-  Repository,
-  Terminals,
-  Usage,
-  Workspaces,
-} from "@tandem/contracts";
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import type { ConnectionStatus } from "@tandem/client";
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { PairScreen } from "@/auth/pair-screen.tsx";
-import { clearLegacyToken } from "./token.ts";
+import { ConnectionController, type ConnectionState, type Session } from "./connection-controller.ts";
 import { useReplicatedState } from "./use-replicated-state.ts";
 
-export interface Connected {
-  devices: Devices;
-  /** Publishing this machine on the public internet, and what the tunnel is doing. */
-  publicAccess: PublicAccess;
-  deviceId?: string;
-  /** The shared project list and its methods. */
-  workspaces: Workspaces;
-  /** The shared conversation list and its methods. */
-  conversations: Conversations;
-  /** Providers, sign-in, and available models. */
-  models: Models;
-  /** The projects' files. */
-  files: Files;
-  /** The comment threads of every project. */
-  comments: Comments;
-  /** Application preview ports. */
-  preview: Preview;
-  /** The prompt templates of the projects: the slash commands their messages may name. */
-  prompts: Prompts;
-  /** The terminals of every project. */
-  terminals: Terminals;
-  /** The providers' rate-limit usage, read by the server. */
-  usage: Usage;
-  /** The projects' pull requests, read by the server with `gh`. */
-  repository: Repository;
-  /** Connect to a terminal with the paired browser's cookie. */
-  openTerminal: TandemConnection["terminal"];
-  /** A same-origin transcript image URL, authenticated by the browser's cookie. */
-  imageUrl: TandemConnection["imageUrl"];
-  /** The conversations this page has open. */
-  open: OpenConversations;
-  /** The projects whose changes this page shows. */
-  openChanges: OpenChanges;
-  status: ConnectionStatus | undefined;
-}
+export type { ConnectionState } from "./connection-controller.ts";
 
-export type ConnectionState =
-  | { kind: "connecting" }
-  | { kind: "unauthorized" }
-  | { kind: "failed"; message: string; retry: () => void }
-  | { kind: "connected"; value: Omit<Connected, "status"> & { connection: Awaited<ReturnType<typeof connect>> } };
+/** What a component reaches the server with: the services, what this page has open, and how the connection is. */
+export type Connected = Omit<Session, "connection"> & { status: ConnectionStatus | undefined };
 
 const ConnectedContext = createContext<Connected | null>(null);
 
@@ -80,160 +19,28 @@ export function ConnectionProvider({
   children: ReactNode;
   fallback: (state: Exclude<ConnectionState, { kind: "connected" }>) => ReactNode;
 }) {
-  const [state, setState] = useState<ConnectionState>({ kind: "connecting" });
-
+  const [controller] = useState(() => new ConnectionController({ onError: (error) => console.error(error) }));
   useEffect(() => {
-    clearLegacyToken();
-    let cancelled = false;
-    let close = (): void => {};
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    const controller = new AbortController();
-    let phase: "connecting" | "failed" | "connected" | "unauthorized" = "failed";
-
-    const retry = (): void => {
-      if (cancelled || phase !== "failed") return;
-      phase = "connecting";
-      clearTimeout(retryTimer);
-      setState({ kind: "connecting" });
-      connect({
-        baseUrl: window.location.origin,
-        signal: controller.signal,
-        services: [
-          Models,
-          Devices,
-          PublicAccess,
-          Workspaces,
-          Files,
-          Changes,
-          ProjectChanges,
-          Comments,
-          Terminals,
-          Prompts,
-          Preview,
-          Conversations,
-          Conversation,
-          Usage,
-          Repository,
-        ],
-        onError: (error) => console.error(error),
-      }).then(
-        (connection) => {
-          const open = new OpenConversations(connection, (error) => console.error(error));
-          const openChanges = new OpenChanges(connection, (error) => console.error(error));
-          close = () => {
-            open.dispose();
-            openChanges.dispose();
-            void connection.close();
-          };
-          if (cancelled) {
-            close();
-          } else {
-            phase = "connected";
-            setState({
-              kind: "connected",
-              value: {
-                connection,
-                devices: connection.services.use(Devices),
-                publicAccess: connection.services.use(PublicAccess),
-                deviceId: connection.deviceId,
-                open,
-                openChanges,
-                workspaces: connection.services.use(Workspaces),
-                conversations: connection.services.use(Conversations),
-                models: connection.services.use(Models),
-                files: connection.services.use(Files),
-                comments: connection.services.use(Comments),
-                preview: connection.services.use(Preview),
-                prompts: connection.services.use(Prompts),
-                terminals: connection.services.use(Terminals),
-                usage: connection.services.use(Usage),
-                repository: connection.services.use(Repository),
-                openTerminal: (id, screen, options) => connection.terminal(id, screen, options),
-                imageUrl: (ref) => connection.imageUrl(ref),
-              },
-            });
-          }
-        },
-        (error: unknown) => {
-          if (cancelled) return;
-          if (error instanceof BootstrapError && error.status === 401) {
-            phase = "unauthorized";
-            setState({ kind: "unauthorized" });
-          } else {
-            phase = "failed";
-            setState({
-              kind: "failed",
-              message: error instanceof Error ? error.message : String(error),
-              retry,
-            });
-            retryTimer = setTimeout(retry, 5_000);
-          }
-        },
-      );
-    };
-    const onWake = (): void => {
-      if (document.visibilityState !== "hidden" && navigator.onLine !== false) retry();
-    };
-    document.addEventListener("visibilitychange", onWake);
-    for (const event of ["online", "pageshow", "focus"]) window.addEventListener(event, onWake);
-    retry();
-    return () => {
-      cancelled = true;
-      controller.abort();
-      clearTimeout(retryTimer);
-      document.removeEventListener("visibilitychange", onWake);
-      for (const event of ["online", "pageshow", "focus"]) window.removeEventListener(event, onWake);
-      close();
-    };
-  }, []);
-
+    controller.start();
+    return () => controller.stop();
+  }, [controller]);
+  const state = useSyncExternalStore(controller.subscribe, controller.getState);
   if (state.kind !== "connected") return fallback(state);
-  return <Connected value={state.value}>{children}</Connected>;
+  return <Opened session={state.session}>{children}</Opened>;
 }
 
-function Connected({
-  value,
-  children,
-}: {
-  value: Extract<ConnectionState, { kind: "connected" }>["value"];
-  children: ReactNode;
-}) {
-  const status = useReplicatedState(value.connection.status);
+function Opened({ session, children }: { session: Session; children: ReactNode }) {
+  const status = useReplicatedState(session.connection.status);
+  const connected = useMemo<Connected>(() => {
+    const { connection: _, ...rest } = session;
+    return { ...rest, status };
+  }, [session, status]);
   if (status?.status === "unauthorized") return <PairScreen />;
-  return (
-    <ConnectedContext.Provider
-      value={{
-        devices: value.devices,
-        publicAccess: value.publicAccess,
-        deviceId: value.deviceId,
-        workspaces: value.workspaces,
-        conversations: value.conversations,
-        models: value.models,
-        files: value.files,
-        comments: value.comments,
-        preview: value.preview,
-        prompts: value.prompts,
-        terminals: value.terminals,
-        usage: value.usage,
-        repository: value.repository,
-        openTerminal: value.openTerminal,
-        imageUrl: value.imageUrl,
-        open: value.open,
-        openChanges: value.openChanges,
-        status,
-      }}
-    >
-      {children}
-    </ConnectedContext.Provider>
-  );
+  return <ConnectedContext.Provider value={connected}>{children}</ConnectedContext.Provider>;
 }
 
 export function useConnected(): Connected {
   const connected = useContext(ConnectedContext);
   if (connected === null) throw new Error("useConnected() must be used inside ConnectionProvider");
   return connected;
-}
-
-export function useOptionalConnected(): Connected | null {
-  return useContext(ConnectedContext);
 }

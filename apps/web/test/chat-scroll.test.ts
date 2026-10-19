@@ -25,13 +25,14 @@ vi.mock("../src/rpc/connection.tsx", () => ({
 }));
 vi.mock("../src/rpc/use-conversation.ts", () => ({
   useConversation: () => ({ view: mock.view, submit: mock.submit }),
+  useConversationFailure: () => undefined,
 }));
 vi.mock("../src/rpc/use-replicated-state.ts", () => ({ useReplicatedState: (state: unknown) => state }));
 vi.mock("../src/rpc/use-prompts.ts", () => ({ usePrompts: () => ({ commands: [] }) }));
 vi.mock("../src/app/sidebar.tsx", () => ({ SidebarToggle: () => null }));
-vi.mock("../src/app/workbench.tsx", () => ({
-  useWorkbench: () => ({ filesShown: false, showFiles: vi.fn() }),
-}));
+vi.mock("../src/app/workbench.tsx", async () =>
+  (await import("./workbench-mock.ts")).workbenchMock(() => ({ filesShown: false, showFiles: vi.fn() })),
+);
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => false }));
 vi.mock("../src/chat/status-bar.tsx", () => ({ StatusBar: () => null }));
 vi.mock("../src/chat/usage-line.tsx", () => ({ UsageLine: () => null }));

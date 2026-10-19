@@ -36,7 +36,13 @@ export async function attachImages(
       };
     }
     total += file.size;
-    const data = await base64Of(file);
+    let data: string;
+    try {
+      data = await base64Of(file);
+    } catch (error) {
+      for (const image of attached) URL.revokeObjectURL(image.url);
+      throw error;
+    }
     attached.push({
       id: nextId++,
       name: file.name === "" ? "Pasted image" : file.name,

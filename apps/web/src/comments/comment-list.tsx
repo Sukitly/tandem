@@ -1,5 +1,5 @@
 import { XIcon } from "lucide-react";
-import { useWorkbench } from "@/app/workbench.tsx";
+import { usePanelNavigation } from "@/app/workbench.tsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
@@ -14,7 +14,7 @@ export function CommentList({
   comments: WaitingComment[];
   onWithdraw(comment: WaitingComment): void;
 }) {
-  const { openChange } = useWorkbench();
+  const { openChange } = usePanelNavigation();
   if (comments.length === 0) return null;
   return (
     <ItemGroup aria-label="Comments to send" className="gap-1">

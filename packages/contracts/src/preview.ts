@@ -2,6 +2,14 @@ import { type Context, defineService, type ReplicatedState } from "@earendil-wor
 
 export const PREVIEW_PATH = "/preview";
 
+/** Preview code may run, but must never inherit Tandem\'s origin or escape the sandbox in popups. */
+export const PREVIEW_SANDBOX_TOKENS = Object.freeze([
+  "allow-scripts",
+  "allow-forms",
+  "allow-popups",
+  "allow-modals",
+] as const);
+
 /** A port on the host machine available for web application preview. */
 export interface PreviewPort {
   readonly port: number;

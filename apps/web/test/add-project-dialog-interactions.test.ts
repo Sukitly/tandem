@@ -2,10 +2,10 @@
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ProjectDirectory } from "@tandem/contracts";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { act, createElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AddProjectDialog } from "../src/app/add-project-dialog.tsx";
+import { cleanup, fireEvent, render, screen, waitFor } from "./render.tsx";
 
 const workspaces = vi.hoisted(() => ({ browse: vi.fn(), add: vi.fn() }));
 
@@ -145,7 +145,7 @@ describe("add project dialog interactions", () => {
     render(createElement(Harness));
     await selected(home.path);
     fireEvent.click(screen.getByRole("button", { name: "Add project" }));
-    expect(disabled("Loading Add project")).toBe(true);
+    await waitFor(() => expect(disabled("Loading Add project")).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.click(screen.getByRole("button", { name: "Open picker" }));
     await selected(home.path);
@@ -165,9 +165,10 @@ describe("add project dialog interactions", () => {
     fireEvent.submit(form);
     expect(workspaces.add).not.toHaveBeenCalled();
     await act(async () => loading.resolve(home));
+    await selected(home.path);
     fireEvent.submit(form);
     fireEvent.submit(form);
-    expect(workspaces.add).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(workspaces.add).toHaveBeenCalledTimes(1));
     await act(async () => adding.resolve(1));
   });
 });

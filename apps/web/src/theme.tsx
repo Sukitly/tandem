@@ -1,9 +1,8 @@
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useMemo } from "react";
+import { type ThemeChoice, userPreferences } from "@/app/user-preferences.ts";
+import { usePreference } from "@/lib/preferences.ts";
 
-export type ThemeChoice = "system" | "light" | "dark";
-
-/** Also read by the inline script in `index.html`, which applies the theme before the page first paints. */
-const THEME_KEY = "tandem.theme";
+export type { ThemeChoice } from "@/app/user-preferences.ts";
 
 interface ThemeControl {
   choice: ThemeChoice;
@@ -18,7 +17,7 @@ export function useTheme(): ThemeControl {
 
 /** Light or dark: the system's unless the user chose one. Applied as the `dark` class on the root element. */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [choice, setChoice] = useState<ThemeChoice>(() => readChoice());
+  const [choice, setChoice] = usePreference(userPreferences.theme);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -31,22 +30,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => media.removeEventListener("change", apply);
   }, [choice]);
 
-  return (
-    <ThemeContext.Provider
-      value={{
-        choice,
-        setChoice: (next) => {
-          localStorage.setItem(THEME_KEY, next);
-          setChoice(next);
-        },
-      }}
-    >
-      {children}
-    </ThemeContext.Provider>
-  );
-}
-
-function readChoice(): ThemeChoice {
-  const stored = localStorage.getItem(THEME_KEY);
-  return stored === "light" || stored === "dark" ? stored : "system";
+  const control = useMemo(() => ({ choice, setChoice }), [choice, setChoice]);
+  return <ThemeContext.Provider value={control}>{children}</ThemeContext.Provider>;
 }

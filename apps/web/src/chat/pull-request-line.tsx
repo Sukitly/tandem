@@ -1,8 +1,8 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { GitPullRequest } from "lucide-react";
-import { useEffect, useRef } from "react";
 import { buttonVariants } from "@/components/ui/button.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
+import { useRefreshOnRun } from "@/hooks/use-refresh-on-run.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 
@@ -15,19 +15,8 @@ export function PullRequestLine({ workspaceId, active }: { workspaceId: number |
   const { repository } = useConnected();
   const state = useReplicatedState(repository.state);
 
-  // Read when the project shown changes, and again after each run, as the extension refreshes on session start and on
-  // `agent_end`.
-  useEffect(() => {
-    if (workspaceId === undefined) return;
-    repository.refresh(workspaceId, BACKGROUND_CONTEXT).catch(() => {});
-  }, [repository, workspaceId]);
-
-  const running = useRef(active === true);
-  useEffect(() => {
-    const ended = running.current && active !== true;
-    running.current = active === true;
-    if (ended && workspaceId !== undefined) repository.refresh(workspaceId, BACKGROUND_CONTEXT).catch(() => {});
-  }, [repository, workspaceId, active]);
+  // Read when the project shown changes, and again after each run.
+  useRefreshOnRun(workspaceId, active, (shown) => repository.refresh(shown, BACKGROUND_CONTEXT));
 
   const pull = workspaceId === undefined ? undefined : state?.projects[workspaceId];
   if (pull === undefined) return null;

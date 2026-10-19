@@ -29,10 +29,10 @@ export function statusLabel(status: ChangeStatus, from?: string): string {
 }
 
 /** Added lines, and the files that are only lines added. */
-export const ADDITIONS_COLOR = "text-emerald-600 dark:text-emerald-400";
+export const ADDITIONS_COLOR = "text-emerald-700 dark:text-emerald-400";
 
 /** Deleted lines, and the files that are only lines deleted. */
-export const DELETIONS_COLOR = "text-red-600 dark:text-red-400";
+export const DELETIONS_COLOR = "text-red-700 dark:text-red-400";
 
 /**
  * The letter's color: what the change does to the file, not how it differs from the base commit. A file that already

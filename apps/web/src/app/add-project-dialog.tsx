@@ -1,13 +1,14 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ProjectDirectory } from "@tandem/contracts";
+import { useMutation } from "@tanstack/react-query";
 import { ArrowUp, Folder, House, RefreshCw } from "lucide-react";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useRef } from "react";
+import { ResponsiveDialogContent as DialogContent } from "@/components/responsive-dialog.tsx";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
+import { errorMessage } from "@/lib/errors.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useProjectDirectory } from "@/rpc/use-project-directory.ts";
 
@@ -32,33 +34,22 @@ function AddProjectContent({ onAdded }: { onAdded: () => void }) {
   const { listing, navigate, refresh } = useProjectDirectory(workspaces);
   const directory = listing.status === "ready" ? listing.value : null;
   const loading = listing.status === "loading";
-  const [addError, setAddError] = useState<string | null>(null);
-  const error = addError ?? (listing.status === "failed" ? listing.message : null);
-  const [adding, setAdding] = useState(false);
-  const mounted = useRef(false);
-
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
+  const add = useMutation({ mutationFn: (path: string) => workspaces.add({ path }, BACKGROUND_CONTEXT) });
+  const adding = add.isPending;
+  const error = add.isError ? errorMessage(add.error) : listing.status === "failed" ? listing.message : null;
+  // Guard same-tick submissions before React has committed the disabled button.
+  const submitting = useRef(false);
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (directory === null || loading || adding) return;
-    setAdding(true);
-    setAddError(null);
-    workspaces.add({ path: directory.path }, BACKGROUND_CONTEXT).then(
-      () => {
-        if (mounted.current) onAdded();
+    if (directory === null || loading || submitting.current) return;
+    submitting.current = true;
+    add.mutate(directory.path, {
+      // Observer callbacks are discarded on unmount; an old add cannot close a newly opened dialog.
+      onSuccess: onAdded,
+      onSettled: () => {
+        submitting.current = false;
       },
-      (failure: unknown) => {
-        if (!mounted.current) return;
-        setAddError(errorMessage(failure));
-        setAdding(false);
-      },
-    );
+    });
   };
 
   return (
@@ -74,7 +65,7 @@ function AddProjectContent({ onAdded }: { onAdded: () => void }) {
           directory={directory}
           busy={loading || adding}
           onNavigate={(path) => {
-            setAddError(null);
+            add.reset();
             navigate(path);
           }}
         />
@@ -95,7 +86,7 @@ function AddProjectContent({ onAdded }: { onAdded: () => void }) {
             variant="outline"
             disabled={loading || adding}
             onClick={() => {
-              setAddError(null);
+              add.reset();
               refresh();
             }}
           >
@@ -171,8 +162,4 @@ export function ProjectDirectoryPicker({
       </section>
     </div>
   );
-}
-
-function errorMessage(failure: unknown): string {
-  return failure instanceof Error ? failure.message : String(failure);
 }
