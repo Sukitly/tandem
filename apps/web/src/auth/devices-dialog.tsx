@@ -2,25 +2,17 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type PairingCode, SIGN_OUT_PATH } from "@tandem/contracts";
 import { createContext, type ReactNode, useContext, useState } from "react";
 import { ResponsiveDialogContent as DialogContent } from "@/components/responsive-dialog.tsx";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
 import { FieldError } from "@/components/ui/field.tsx";
 import { useCommand } from "@/hooks/use-command.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
+import { ConfirmAction, type Confirmation } from "./confirm-action.tsx";
 import { DevicePairing } from "./device-pairing.tsx";
 import { DeviceRow } from "./device-row.tsx";
 import { RecoveryCodesSection } from "./recovery-codes-section.tsx";
+import { RecoveryReminder } from "./recovery-reminder.tsx";
 
 const DevicesDialogContext = createContext<{ open(): void }>({ open: () => {} });
 export function useDevicesDialog(): { open(): void } {
@@ -29,39 +21,14 @@ export function useDevicesDialog(): { open(): void } {
 
 export function DevicesDialogProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const { devices } = useConnected();
-  const state = useReplicatedState(devices.state);
-  const [dismissed, setDismissed] = useState(false);
   return (
     <DevicesDialogContext.Provider value={{ open: () => setOpen(true) }}>
       {children}
-      {state?.recoveryCodesRemaining === 0 && !dismissed && (
-        <Dialog open onOpenChange={() => setDismissed(true)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Save recovery codes</DialogTitle>
-              <DialogDescription>
-                Recovery codes let you pair a new device when no paired device is available. Keep them in your password
-                manager, not on this machine alone.
-              </DialogDescription>
-            </DialogHeader>
-            <Button
-              onClick={() => {
-                setDismissed(true);
-                setOpen(true);
-              }}
-            >
-              Manage devices and recovery codes
-            </Button>
-          </DialogContent>
-        </Dialog>
-      )}
+      <RecoveryReminder onManage={() => setOpen(true)} />
       {open && <DevicesDialog open={open} onOpenChange={setOpen} />}
     </DevicesDialogContext.Provider>
   );
 }
-
-type Confirmation = { title: string; description: string; action(): Promise<void> };
 
 function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
   const { devices, deviceId } = useConnected();
@@ -148,6 +115,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                         action: async () => {
                           const response = await fetch(SIGN_OUT_PATH, { method: "POST" });
                           if (!response.ok) throw new Error(`Sign out failed (status ${response.status})`);
+                          // A full load: the session this page held is over, and so is what it held.
                           window.location.replace("/");
                         },
                       })
@@ -182,33 +150,15 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
           </div>
         </DialogContent>
       </Dialog>
-      <AlertDialog
-        open={confirmation !== undefined}
-        onOpenChange={(shown) => {
-          if (!shown) setConfirmation(undefined);
+      <ConfirmAction
+        confirmation={confirmation}
+        busy={busy}
+        onCancel={() => setConfirmation(undefined)}
+        onConfirm={(action) => {
+          setConfirmation(undefined);
+          void run(action);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmation?.title}</AlertDialogTitle>
-            <AlertDialogDescription>{confirmation?.description}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={busy}
-              onClick={() => {
-                const action = confirmation?.action;
-                setConfirmation(undefined);
-                if (action !== undefined) void run(action);
-              }}
-            >
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
     </>
   );
 }

@@ -200,14 +200,22 @@ export class ConnectionController {
   }
 }
 
-function sessionOf(connection: TandemConnection, open: OpenConversations, openChanges: OpenChanges): Session {
+/**
+ * Every service of `SERVICES` bound to `connection`, each under its name. `Object.entries` forgets that a name goes
+ * with its own service's handle, which `ServiceHandles` says, so the object is built untyped and stated as that.
+ */
+function bindServices(connection: TandemConnection): ServiceHandles {
   // A handle intercepts every property access, so each is kept in an object and never resolved on its own.
   const handles: Record<string, unknown> = {};
   for (const [name, service] of Object.entries(SERVICES)) {
     handles[name] = connection.services.use(service as Service<unknown>);
   }
+  return handles as ServiceHandles;
+}
+
+function sessionOf(connection: TandemConnection, open: OpenConversations, openChanges: OpenChanges): Session {
   return {
-    ...(handles as unknown as ServiceHandles),
+    ...bindServices(connection),
     connection,
     deviceId: connection.deviceId,
     open,
