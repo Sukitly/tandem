@@ -1,8 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ModelRef } from "@tandem/contracts";
 import { cn } from "cn";
-import { useState } from "react";
-import { toast } from "sonner";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ContextUsageBadge } from "./context-usage.tsx";
@@ -37,23 +36,15 @@ export function StatusBar({
   const current = state?.models.find(
     (model) => model.provider === agent?.model?.provider && model.modelId === agent?.model?.modelId,
   );
-  const [pending, setPending] = useState(false);
+  const save = useCommand({ failure: "Could not save thinking level" });
+  const { pending } = save;
   const contextWindow = current?.contextWindow ?? 0;
 
-  const report = (error: unknown): void => {
-    toast.error("Could not save thinking level", {
-      description: error instanceof Error ? error.message : String(error),
-    });
-  };
-
   const chooseThinking = (thinkingLevel: string): void => {
-    if (pending) return;
-    setPending(true);
-    Promise.resolve()
-      .then(() => onConfigure({ thinkingLevel }))
-      .then(() => models.setDefaultThinkingLevel(thinkingLevel, BACKGROUND_CONTEXT))
-      .catch(report)
-      .finally(() => setPending(false));
+    void save.run(async () => {
+      await onConfigure({ thinkingLevel });
+      await models.setDefaultThinkingLevel(thinkingLevel, BACKGROUND_CONTEXT);
+    });
   };
 
   return (

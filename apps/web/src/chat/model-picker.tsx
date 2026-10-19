@@ -2,7 +2,6 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ModelRef, ModelSummary } from "@tandem/contracts";
 import { CheckIcon, ChevronDownIcon, KeyRoundIcon } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button.tsx";
 import {
   Command,
@@ -14,6 +13,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.tsx";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useProvidersDialog } from "@/models/providers-dialog.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
@@ -31,14 +31,9 @@ export function ModelPicker({
   const state = useReplicatedState(models.state);
   const providers = useProvidersDialog();
   const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
+  const save = useCommand({ failure: "Could not save model selection" });
+  const { pending } = save;
   const available = state?.models ?? [];
-
-  const report = (error: unknown): void => {
-    toast.error("Could not save model selection", {
-      description: error instanceof Error ? error.message : String(error),
-    });
-  };
 
   if (available.length === 0) {
     return (
@@ -51,14 +46,12 @@ export function ModelPicker({
 
   const choose = (model: ModelSummary): void => {
     if (pending) return;
-    setPending(true);
     setOpen(false);
     const ref = { provider: model.provider, modelId: model.modelId };
-    Promise.resolve()
-      .then(() => onConfigure({ model: ref }))
-      .then(() => models.setDefaultModel(ref, BACKGROUND_CONTEXT))
-      .catch(report)
-      .finally(() => setPending(false));
+    void save.run(async () => {
+      await onConfigure({ model: ref });
+      await models.setDefaultModel(ref, BACKGROUND_CONTEXT);
+    });
   };
 
   return (

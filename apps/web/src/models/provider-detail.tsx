@@ -1,11 +1,11 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { AuthType } from "@tandem/contracts";
 import { ArrowLeftIcon } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
 import { FieldError } from "@/components/ui/field.tsx";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item.tsx";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { LoginFlow } from "./login-flow.tsx";
@@ -16,20 +16,12 @@ export function ProviderDetail({ providerId, onBack }: { providerId: string; onB
   const state = useReplicatedState(models.state);
   const provider = state?.providers.find((candidate) => candidate.id === providerId);
   const login = state?.login?.providerId === providerId ? state.login : undefined;
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const command = useCommand();
+  const { pending, error } = command;
 
-  const run = (operation: () => Promise<unknown>): void => {
-    if (pending) return;
-    setError(null);
-    setPending(true);
-    Promise.resolve()
-      .then(operation)
-      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)))
-      .finally(() => setPending(false));
+  const start = (type: AuthType): void => {
+    void command.run(() => models.login({ providerId, type }, BACKGROUND_CONTEXT));
   };
-
-  const start = (type: AuthType): void => run(() => models.login({ providerId, type }, BACKGROUND_CONTEXT));
 
   if (provider === undefined) return null;
   const running = login?.status === "running";
@@ -87,7 +79,7 @@ export function ProviderDetail({ providerId, onBack }: { providerId: string; onB
           <Button
             variant="outline"
             disabled={pending}
-            onClick={() => run(() => models.cancelLogin(BACKGROUND_CONTEXT))}
+            onClick={() => void command.run(() => models.cancelLogin(BACKGROUND_CONTEXT))}
           >
             Cancel sign-in
           </Button>
@@ -96,7 +88,7 @@ export function ProviderDetail({ providerId, onBack }: { providerId: string; onB
           <Button
             variant="destructive"
             disabled={pending}
-            onClick={() => run(() => models.logout(providerId, BACKGROUND_CONTEXT))}
+            onClick={() => void command.run(() => models.logout(providerId, BACKGROUND_CONTEXT))}
           >
             Sign out
           </Button>

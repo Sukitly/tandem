@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 
 /** A login running on the server: its events, the question it waits on, and how it ended. */
@@ -98,18 +99,13 @@ function LoginEventItem({ event }: { event: LoginEvent }) {
 function LoginPromptForm({ prompt }: { prompt: LoginPrompt }) {
   const { models } = useConnected();
   const [value, setValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const command = useCommand();
+  const { pending, error } = command;
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (pending || value === "") return;
-    setError(null);
-    setPending(true);
-    Promise.resolve()
-      .then(() => models.answerLogin({ promptId: prompt.id, value }, BACKGROUND_CONTEXT))
-      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : String(failure)))
-      .finally(() => setPending(false));
+    if (value === "") return;
+    void command.run(() => models.answerLogin({ promptId: prompt.id, value }, BACKGROUND_CONTEXT));
   };
 
   return (

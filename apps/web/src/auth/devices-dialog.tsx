@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button.tsx";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
 import { FieldError } from "@/components/ui/field.tsx";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { DevicePairing } from "./device-pairing.tsx";
@@ -69,23 +70,11 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
   const [recovery, setRecovery] = useState<string[]>();
   const remaining = state?.recoveryCodesRemaining ?? 0;
   const deviceList = state?.devices ?? [];
-  const [failure, setFailure] = useState<string>();
-  const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>();
-
-  const run = async (action: () => Promise<void>): Promise<boolean> => {
-    setBusy(true);
-    setFailure(undefined);
-    try {
-      await action();
-      return true;
-    } catch (error) {
-      setFailure(error instanceof Error ? error.message : String(error));
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  };
+  const command = useCommand();
+  const { run } = command;
+  const busy = command.pending;
+  const failure = command.error;
 
   const regenerate = async (): Promise<void> => {
     const codes = await devices.regenerateRecoveryCodes(BACKGROUND_CONTEXT);
@@ -189,7 +178,7 @@ function DevicesDialog({ open, onOpenChange }: { open: boolean; onOpenChange(ope
                 }
               }}
             />
-            {failure !== undefined && <FieldError>{failure}</FieldError>}
+            {failure !== null && <FieldError>{failure}</FieldError>}
           </div>
         </DialogContent>
       </Dialog>

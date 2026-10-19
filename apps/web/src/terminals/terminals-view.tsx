@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { CloseTerminalDialog } from "./close-terminal-dialog.tsx";
@@ -24,22 +25,12 @@ export function TerminalsView({ workspaceId, active }: { workspaceId: number; ac
   const list = (all ?? []).filter((summary) => summary.workspaceId === workspaceId);
   const [selected, setSelected] = useState<string | null>(null);
   const [closing, setClosing] = useState<TerminalSummary | null>(null);
-  const [creating, setCreating] = useState(false);
+  const creation = useCommand({ failure: "Could not open a terminal" });
+  const creating = creation.pending;
   const current = list.find((summary) => summary.id === selected) ?? list.at(-1);
 
   const create = (): void => {
-    if (creating) return;
-    setCreating(true);
-    terminals.create({ workspaceId }, BACKGROUND_CONTEXT).then(
-      (id) => {
-        setCreating(false);
-        setSelected(id);
-      },
-      (error: unknown) => {
-        setCreating(false);
-        reportFailure("Could not open a terminal", error);
-      },
-    );
+    void creation.run(async () => setSelected(await terminals.create({ workspaceId }, BACKGROUND_CONTEXT)));
   };
 
   const close = (summary: TerminalSummary): void => {

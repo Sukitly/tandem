@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog.tsx";
 import { Input } from "@/components/ui/input.tsx";
+import { useCommand } from "@/hooks/use-command.ts";
 import { useCompositionGuard } from "@/hooks/use-composition-guard.ts";
 
 export function RenameConversationDialog({
@@ -26,7 +27,9 @@ export function RenameConversationDialog({
   const { renameConversation } = useWorkbench((state) => ({ renameConversation: state.renameConversation }));
   const ime = useCompositionGuard();
   const [title, setTitle] = useState(summary.title);
-  const [busy, setBusy] = useState(false);
+  // The workbench reports a failure to rename, so the command only keeps the dialog from being used meanwhile.
+  const rename = useCommand();
+  const busy = rename.pending;
 
   useEffect(() => {
     if (open) setTitle(summary.title);
@@ -40,15 +43,7 @@ export function RenameConversationDialog({
       onOpenChange(false);
       return;
     }
-    setBusy(true);
-    try {
-      await renameConversation(summary.id, trimmed);
-      onOpenChange(false);
-    } catch {
-      // Toast reported by workbench
-    } finally {
-      setBusy(false);
-    }
+    if (await rename.run(() => renameConversation(summary.id, trimmed))) onOpenChange(false);
   };
 
   return (

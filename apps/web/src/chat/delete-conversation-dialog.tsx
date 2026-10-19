@@ -1,5 +1,4 @@
 import type { ConversationSummary } from "@tandem/contracts";
-import { useState } from "react";
 import { useWorkbench } from "@/app/workbench.tsx";
 import {
   AlertDialog,
@@ -11,6 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog.tsx";
+import { useCommand } from "@/hooks/use-command.ts";
 
 export function DeleteConversationDialog({
   summary,
@@ -22,18 +22,12 @@ export function DeleteConversationDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { removeConversation } = useWorkbench((state) => ({ removeConversation: state.removeConversation }));
-  const [busy, setBusy] = useState(false);
+  // The workbench reports a failure to delete, so the command only keeps the dialog from being used meanwhile.
+  const removal = useCommand();
+  const busy = removal.pending;
 
   const remove = async () => {
-    setBusy(true);
-    try {
-      await removeConversation(summary.id);
-      onOpenChange(false);
-    } catch {
-      // Toast reported by workbench
-    } finally {
-      setBusy(false);
-    }
+    if (await removal.run(() => removeConversation(summary.id))) onOpenChange(false);
   };
 
   return (

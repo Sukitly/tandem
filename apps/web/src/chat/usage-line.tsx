@@ -1,9 +1,9 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ProviderUsage, UsageWindow } from "@tandem/contracts";
-import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.tsx";
 import { Progress } from "@/components/ui/progress.tsx";
+import { useRefreshOnRun } from "@/hooks/use-refresh-on-run.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 
@@ -43,19 +43,9 @@ export function UsageLine({
   const { usage } = useConnected();
   const state = useReplicatedState(usage.state);
 
-  // Read when the provider shown changes, forced, and again after each run, as the extension refreshes on session
-  // start and on `agent_end`. The server decides whether an unforced read is due.
-  useEffect(() => {
-    if (provider === undefined) return;
-    usage.refresh(provider, true, BACKGROUND_CONTEXT).catch(() => {});
-  }, [usage, provider]);
-
-  const running = useRef(active === true);
-  useEffect(() => {
-    const ended = running.current && active !== true;
-    running.current = active === true;
-    if (ended && provider !== undefined) usage.refresh(provider, false, BACKGROUND_CONTEXT).catch(() => {});
-  }, [usage, provider, active]);
+  // Read, forced, when the provider shown changes, and again after each run. The server decides whether the read after
+  // a run is due.
+  useRefreshOnRun(provider, active, (shown, why) => usage.refresh(shown, why === "shown", BACKGROUND_CONTEXT));
 
   const known = provider === undefined ? undefined : state?.providers[provider];
   if (known === undefined) return null;
