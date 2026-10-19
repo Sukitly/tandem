@@ -112,7 +112,7 @@ export function OpenChat({ conversationId, conversation }: { conversationId: num
             />
           }
           status={
-            <div className="grid gap-1.5">
+            <div className="grid gap-0 sm:gap-1.5">
               <UsageLine provider={agent?.model?.provider} modelId={agent?.model?.modelId} active={transcript.busy} />
               {tps !== undefined && <TpsLine tps={tps} />}
             </div>

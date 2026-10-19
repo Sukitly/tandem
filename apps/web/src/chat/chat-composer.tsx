@@ -11,7 +11,7 @@ import { usePreference } from "@/lib/preferences.ts";
 import { CommandSuggestions } from "./command-suggestions.tsx";
 import { AttachImages, placeholderOf, SubmitOrStop } from "./composer-actions.tsx";
 import { ComposerAttachments } from "./composer-attachments.tsx";
-import { ComposerContext, ComposerDetails } from "./composer-context.tsx";
+import { ComposerContext } from "./composer-context.tsx";
 import { ComposerOptions, type SendMode } from "./composer-options.tsx";
 import type { QueuedMessage } from "./transcript.ts";
 import { completeCommand, useCommandCompletion } from "./use-command-completion.ts";
@@ -147,7 +147,7 @@ export function ChatComposer({
   };
 
   return (
-    <div data-composer className="grid min-w-0 gap-2">
+    <div data-composer className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <ComposerContext comments={comments} queued={queued} onWithdrawComment={onWithdrawComment} />
       <div ref={menu.boxRef} className="relative">
         <CommandSuggestions
@@ -201,12 +201,12 @@ export function ChatComposer({
               aria-expanded={menu.open}
               aria-controls={menu.open ? menu.listId : undefined}
               aria-activedescendant={menu.selected >= 0 ? menu.optionId(menu.selected) : undefined}
-              placeholder={placeholderOf(busy, sendMode)}
+              placeholder={placeholderOf(busy, sendMode, mobile)}
               autoFocus={autoFocus}
             />
-            <PromptInputActions className="flex-wrap">
+            <PromptInputActions>
               {imageSupport.kind === "accepted" && <AttachImages picker={picker} onAttach={attach} />}
-              {statusBar !== undefined && <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">{statusBar}</div>}
+              {statusBar !== undefined && <div className="flex min-w-0 flex-1">{statusBar}</div>}
               <ComposerOptions
                 mobile={mobile}
                 keyboard={keyboardMode}
@@ -229,9 +229,9 @@ export function ChatComposer({
         </form>
       </div>
       {status !== undefined && (
-        <ComposerDetails label="Usage and run metrics">
-          <div className="max-h-[20dvh] overflow-y-auto overscroll-contain">{status}</div>
-        </ComposerDetails>
+        <div data-dense className="max-h-[20dvh] overflow-y-auto overscroll-contain">
+          {status}
+        </div>
       )}
       {error !== null && <FieldError>{error}</FieldError>}
     </div>

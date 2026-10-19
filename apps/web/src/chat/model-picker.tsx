@@ -57,14 +57,7 @@ export function ModelPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="xs"
-            disabled={pending}
-            className="shrink min-w-0 max-w-36 text-left sm:max-w-none"
-          />
-        }
+        render={<Button variant="ghost" size="xs" disabled={pending} className="min-w-0 shrink text-left" />}
       >
         <span className="truncate">
           {current?.name ?? (selectedModel === undefined ? "Choose a model" : `${selectedModel.modelId} (unavailable)`)}

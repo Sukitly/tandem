@@ -8,7 +8,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -33,33 +32,31 @@ export function ComposerOptions({
         <Settings2Icon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        {mobile && (
-          <>
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>While the agent is running</DropdownMenuLabel>
-              <DropdownMenuRadioGroup value={mode} onValueChange={(value) => onMode(value as SendMode)}>
-                <DropdownMenuRadioItem value="steer" closeOnClick>
-                  Steer current turn
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="followUp" closeOnClick>
-                  Queue follow-up
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-          </>
+        {mobile ? (
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>While the agent is running</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={mode} onValueChange={(value) => onMode(value as SendMode)}>
+              <DropdownMenuRadioItem value="steer" closeOnClick>
+                Steer current turn
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="followUp" closeOnClick>
+                Queue follow-up
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuGroup>
+        ) : (
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Keyboard shortcuts</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={keyboard} onValueChange={(value) => onKeyboard(value as KeyboardMode)}>
+              <DropdownMenuRadioItem value="platform" closeOnClick>
+                Platform defaults
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="emacs" closeOnClick>
+                Emacs editing
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuGroup>
         )}
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Keyboard shortcuts</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={keyboard} onValueChange={(value) => onKeyboard(value as KeyboardMode)}>
-            <DropdownMenuRadioItem value="platform" closeOnClick>
-              Platform defaults
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="emacs" closeOnClick>
-              Emacs editing
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

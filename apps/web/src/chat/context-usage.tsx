@@ -15,7 +15,7 @@ export function ContextUsageBadge({ usage, contextWindow }: { usage: ContextUsag
   const percent = Math.min(100, (usage.tokens / contextWindow) * 100);
 
   return (
-    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+    <div className="ml-auto flex shrink-0 items-center gap-1.5 max-[340px]:hidden">
       <span className="hidden font-mono tabular-nums sm:inline">{formatCost(usage.cost)}</span>
       <Context
         usedTokens={usage.tokens}
