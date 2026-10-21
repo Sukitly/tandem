@@ -14,7 +14,7 @@ test("a failure is a compact collapsed trace event with error status styling", (
   const { container } = render(createElement(ChatError, { error: "WebSocket error" }));
   const trigger = screen.getByRole("button", { name: /Generation failed.*WebSocket error/ });
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
-  expect(container.querySelector("[data-slot=trace]")).not.toBeNull();
+  expect(container.querySelector("[data-slot=trace-collapsible]")).not.toBeNull();
   expect(container.querySelector("[data-slot=trace-line]")?.getAttribute("data-status")).toBe("error");
   expect(container.querySelector("pre")).toBeNull();
   expect(container.textContent).not.toMatch(/Retrying|Reconnecting/);
@@ -74,5 +74,5 @@ test("attempt counts can be inspected even when the provider omitted an error me
 test("conversation notices share the trace treatment and preserve their title", () => {
   const { container } = render(createElement(ChatError, { title: "Notice", error: "A server notice" }));
   expect(screen.getByRole("button", { name: /Notice.*A server notice/ })).toBeDefined();
-  expect(container.querySelector("[data-slot=trace]")).not.toBeNull();
+  expect(container.querySelector("[data-slot=trace-collapsible]")).not.toBeNull();
 });

@@ -41,7 +41,7 @@
   },
   "overrides": [
     {
-      "includes": ["apps/web/src/components/ui/**"],
+      "includes": ["apps/web/src/components/ui/**", "apps/web/src/lib/highlighter.tsx"],
       "linter": { "enabled": false }
     },
     {

@@ -1,16 +1,9 @@
 import { AlertCircleIcon, CheckIcon, CopyIcon } from "lucide-react";
+import { ToolCall, ToolCallContent, ToolCallTrigger } from "@/components/agent/tool-call.tsx";
 import { MessageAction } from "@/components/ai-elements/message.tsx";
 import { useCopyText } from "@/components/copy-text.tsx";
-import {
-  Trace,
-  TraceCollapsible,
-  TraceCollapsibleContent,
-  TraceCollapsibleTrigger,
-  TraceIcon,
-  TraceLine,
-  TraceTitle,
-} from "@/components/ui/trace.tsx";
 import { cn } from "@/lib/utils.ts";
+import { CopyableCode } from "./copyable-code.tsx";
 
 export function CopyAction({ text, className }: { text: string; className?: string }) {
   const { copied, pending, copy } = useCopyText(text);
@@ -30,7 +23,10 @@ export function CopyAction({ text, className }: { text: string; className?: stri
   );
 }
 
-/** A failure is an expandable trace event, not a separate alert card. */
+/**
+ * A failure is an expandable trace event, not a separate alert card: its line says what failed and the first line of
+ * the error, and opened it holds the attempts and the complete error, as plain text that can be copied.
+ */
 export function ChatError({
   title = "Generation failed",
   error,
@@ -51,38 +47,22 @@ export function ChatError({
     .find((line) => line.trim() !== "")
     ?.trim();
   const summary = firstLine === undefined ? "" : firstLine.length > 120 ? `${firstLine.slice(0, 120)}…` : firstLine;
-  const line = (
-    <TraceLine status="error">
-      <TraceIcon>
-        <AlertCircleIcon />
-      </TraceIcon>
-      <span className="shrink-0">{title}</span>
-      {summary !== "" && <TraceTitle>· {summary}</TraceTitle>}
-    </TraceLine>
-  );
 
   return (
-    <Trace className={cn("group/message", className)} data-historical={historical || undefined}>
-      {hasError || multipleAttempts ? (
-        <TraceCollapsible>
-          <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
-          <TraceCollapsibleContent>
-            <div className="grid min-w-0 gap-2">
-              {multipleAttempts && <p className="text-xs">{attempts} attempts</p>}
-              {hasError && (
-                <div className="flex min-w-0 items-start gap-2">
-                  <pre className="min-w-0 flex-1 font-mono text-xs leading-relaxed whitespace-pre-wrap wrap-anywhere">
-                    {error}
-                  </pre>
-                  <CopyAction text={error} className="opacity-100" />
-                </div>
-              )}
-            </div>
-          </TraceCollapsibleContent>
-        </TraceCollapsible>
-      ) : (
-        line
-      )}
-    </Trace>
+    <div data-historical={historical || undefined} className={cn("min-w-0", className)}>
+      <ToolCall status="error" icon={<AlertCircleIcon />} expandable={hasError || multipleAttempts}>
+        <ToolCallTrigger summary={summary === "" ? undefined : `· ${summary}`}>
+          <span className="shrink-0">{title}</span>
+        </ToolCallTrigger>
+        <ToolCallContent>
+          {multipleAttempts && <p className="text-xs">{attempts} attempts</p>}
+          {hasError && (
+            <CopyableCode value={error} label="Copy" variant="destructive" className="max-h-64">
+              {error}
+            </CopyableCode>
+          )}
+        </ToolCallContent>
+      </ToolCall>
+    </div>
   );
 }
