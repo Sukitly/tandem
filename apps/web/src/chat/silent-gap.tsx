@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { WaitingDots } from "./waiting-dots.tsx";
+import { TypingIndicator } from "@/components/agent/typing-indicator.tsx";
 
 const SILENT_GAP_MS = 2000;
 
@@ -16,5 +16,6 @@ export function SilentGap({ silent, turnHasContent }: { silent: boolean; turnHas
   }, [silent]);
 
   if (!silent || (turnHasContent && !sustained)) return null;
-  return <WaitingDots />;
+  // h-5 keeps the 20px the dots always took at the end of the transcript.
+  return <TypingIndicator label="Working" className="h-5" />;
 }
