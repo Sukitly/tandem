@@ -1,15 +1,12 @@
-import { Reasoning, Terminal, Tool } from "@/components/ai-elements/index.ts";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Bubble, BubbleContent } from "@/components/ui/bubble.tsx";
-import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block.tsx";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker.tsx";
 import { Message, MessageContent, MessageFooter } from "@/components/ui/message.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { Trace } from "@/components/ui/trace.tsx";
 import { ChatError, CopyAction } from "./chat-error.tsx";
-import { fileToolBody, isFileTool } from "./file-tool-body.tsx";
 import { Markdown } from "./markdown.tsx";
-import { toolDescription } from "./tool-description.ts";
+import { ThinkingStep, ToolStep } from "./tool-steps.tsx";
 import type { AssistantPart, TranscriptItem } from "./transcript.ts";
 import { TranscriptImages } from "./transcript-images.tsx";
 
@@ -105,69 +102,15 @@ function AssistantMessage({ item }: { item: Extract<TranscriptItem, { kind: "ass
                   const isLastStep = isLastSegment && stepIdx === segment.steps.length - 1;
                   if (step.kind === "thinking") {
                     return (
-                      <Reasoning
+                      <ThinkingStep
                         // biome-ignore lint/suspicious/noArrayIndexKey: thinking step sequence is stable
                         key={stepIdx}
-                        text={step.text}
-                        running={streaming && isLastStep}
-                      >
-                        <div className="text-sm text-muted-foreground">
-                          <Markdown text={step.text} streaming={streaming && isLastStep} />
-                        </div>
-                      </Reasoning>
-                    );
-                  }
-                  if (step.name === "bash") {
-                    const { command, ...options } = step.args;
-                    return (
-                      <Terminal
-                        key={step.callId}
-                        name={step.name}
-                        command={String(command ?? "")}
-                        options={options}
-                        output={step.output}
-                        status={step.status}
+                        step={step}
+                        streaming={streaming && isLastStep}
                       />
                     );
                   }
-                  if (isFileTool(step)) {
-                    // What the call changed is shown instead of its arguments, which hold the same text as JSON.
-                    return (
-                      <Tool
-                        key={step.callId}
-                        name={step.name}
-                        description={toolDescription(step.args)}
-                        status={step.status}
-                        outputLabel={null}
-                      >
-                        {fileToolBody(step)}
-                      </Tool>
-                    );
-                  }
-                  const hasDetail = step.images.length > 0 || step.output !== "";
-
-                  return (
-                    <Tool
-                      key={step.callId}
-                      name={step.name}
-                      description={toolDescription(step.args)}
-                      input={step.args}
-                      status={step.status}
-                    >
-                      {hasDetail ? (
-                        <>
-                          {step.images.length > 0 && <TranscriptImages images={step.images} className="mb-2" />}
-                          {step.output !== "" && (
-                            <CodeBlock size="sm">
-                              <CodeBlockContent wrap className="max-h-64">
-                                {step.output}
-                              </CodeBlockContent>
-                            </CodeBlock>
-                          )}
-                        </>
-                      ) : undefined}
-                    </Tool>
-                  );
+                  return <ToolStep key={step.callId} step={step} />;
                 })}
               </Trace>
             );

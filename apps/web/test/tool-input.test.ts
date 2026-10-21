@@ -29,7 +29,11 @@ test.each(cases)("expanding $name shows every input parameter alongside the outp
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(trigger);
   await waitFor(() => expect(screen.getByText("Input")).toBeDefined());
-  const input = screen.getByText("Input").parentElement?.querySelector("[data-slot=code-block-content]");
+  // "Input" is the title of the block that holds the arguments.
+  const input = screen
+    .getByText("Input")
+    .closest("[data-slot=code-block]")
+    ?.querySelector("[data-slot=code-block-content]");
   expect(JSON.parse(input?.textContent ?? "")).toEqual(args);
   expect(input?.getAttribute("data-wrap")).toBe("true");
   expect(input?.classList.contains("truncate")).toBe(false);
@@ -46,7 +50,7 @@ test("generic tool input is expandable even without any output", async () => {
   expect(screen.getByText(/"enabled": true/)).toBeDefined();
 });
 
-test("bash expands to one block of command, arguments and output instead of generic tool sections", async () => {
+test("bash expands to one joined box of command, arguments and output instead of generic tool sections", async () => {
   const { container } = render(entry("bash", { command: "echo hello", timeout: 120 }, "hello"));
   expect(container.querySelector("[data-slot=badge]")?.textContent).toBe("bash");
   expect(screen.getByText("echo hello")).toBeDefined();
@@ -54,10 +58,14 @@ test("bash expands to one block of command, arguments and output instead of gene
   await waitFor(() => expect(screen.getByText("hello")).toBeDefined());
   expect(screen.queryByText("Input")).toBeNull();
   expect(screen.queryByText("Output")).toBeNull();
+  // The arguments other than the command are in the command's part, under it; the output is the other part.
   expect(
     Array.from(container.querySelectorAll("[data-slot=code-block-content]"), (block) => block.textContent),
-  ).toEqual(["$ echo hello", "hello"]);
-  expect(container.querySelectorAll("[data-slot=code-block]")).toHaveLength(1);
+  ).toEqual(["$ echo hellotimeout 120s", "hello"]);
+  // The command and its output are two parts of one box, with the divider the style draws between them.
+  expect(
+    container.querySelector("[data-slot=tool-call-joined]")?.querySelectorAll("[data-slot=code-block]"),
+  ).toHaveLength(2);
   // Arguments other than the command stay visible, and the command is not repeated among them.
   expect(container.querySelector("[data-slot=terminal-options]")?.textContent).toBe("timeout 120s");
 });
