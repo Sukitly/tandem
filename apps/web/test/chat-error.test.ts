@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { TranscriptItem } from "../src/chat/transcript.ts";
 import { ChatError, TranscriptEntry } from "../src/chat/transcript-items.tsx";
+import { inTranscript } from "./in-transcript.ts";
 
 afterEach(() => {
   cleanup();
@@ -51,7 +52,7 @@ test("historical failures preserve error status styling without claiming the ret
     error: "WebSocket error",
     continued: true,
   };
-  const { container } = render(createElement(TranscriptEntry, { item }));
+  const { container } = render(inTranscript(createElement(TranscriptEntry, { item })));
   expect(container.querySelector("[data-historical=true]")).not.toBeNull();
   expect(container.querySelector("[data-slot=trace-line]")?.getAttribute("data-status")).toBe("error");
   expect(screen.getByText("Generation failed")).toBeDefined();

@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { AssistantPart, ToolStatus, TranscriptItem } from "../src/chat/transcript.ts";
 import { TranscriptEntry } from "../src/chat/transcript-items.tsx";
+import { inTranscript } from "./in-transcript.ts";
 
 afterEach(() => {
   cleanup();
@@ -14,7 +15,7 @@ type ToolPart = Extract<AssistantPart, { kind: "tool" }>;
 
 function entry(...parts: AssistantPart[]) {
   const item: TranscriptItem = { kind: "assistant", key: "message", ending: "streaming", parts };
-  return createElement(TranscriptEntry, { item });
+  return inTranscript(createElement(TranscriptEntry, { item }));
 }
 
 function tool(over: Partial<ToolPart> = {}): ToolPart {
@@ -200,14 +201,16 @@ test("a file change that has nothing to show yet is a line that cannot be opened
 
 test("a thinking step is open and named Thinking while it streams, then a closed Thought", () => {
   const thinking = (streaming: boolean) =>
-    createElement(TranscriptEntry, {
-      item: {
-        kind: "assistant",
-        key: "message",
-        ending: streaming ? "streaming" : "complete",
-        parts: [{ kind: "thinking", text: "weighing the options" }],
-      },
-    });
+    inTranscript(
+      createElement(TranscriptEntry, {
+        item: {
+          kind: "assistant",
+          key: "message",
+          ending: streaming ? "streaming" : "complete",
+          parts: [{ kind: "thinking", text: "weighing the options" }],
+        },
+      }),
+    );
   const { container, rerender } = render(thinking(true));
   const trigger = () => screen.getByRole("button", { name: /Thinking|Thought/ });
   expect(trigger().textContent).toBe("Thinking");
@@ -220,9 +223,16 @@ test("a thinking step is open and named Thinking while it streams, then a closed
 
 test("a thinking step keeps the reader's choice once it is done", () => {
   const thinking = (ending: "streaming" | "complete") =>
-    createElement(TranscriptEntry, {
-      item: { kind: "assistant", key: "message", ending, parts: [{ kind: "thinking", text: "weighing the options" }] },
-    });
+    inTranscript(
+      createElement(TranscriptEntry, {
+        item: {
+          kind: "assistant",
+          key: "message",
+          ending,
+          parts: [{ kind: "thinking", text: "weighing the options" }],
+        },
+      }),
+    );
   const { rerender } = render(thinking("streaming"));
   fireEvent.click(screen.getByRole("button", { name: /Thinking/ }));
   rerender(thinking("complete"));
