@@ -5,9 +5,9 @@ import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { describe, expect, test } from "vitest";
 import { texDelimiters } from "../src/chat/tex-delimiters.ts";
-import { untrustedMarkdown } from "../src/chat/untrusted-markdown.ts";
+import { keepAddress, untrustedMarkdown } from "../src/chat/untrusted-markdown.ts";
 
-// As in `Markdown`: GFM, remark-math as Streamdown configures it, then Tandem's plugins.
+// As in `Markdown`: GFM, remark-math with a single dollar sign left alone, then Tandem's plugins.
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
@@ -92,5 +92,38 @@ describe("untrusted Markdown", () => {
     const tree = parse("![chart](https://example.com/a.png) ![secret](/etc/passwd) ![](data:image/png;base64,AA==)");
     expect(all(tree, "image").map((image) => image.url)).toEqual(["https://example.com/a.png"]);
     expect(text("![secret](/etc/passwd)")).toBe("secret");
+  });
+});
+
+describe("which addresses are kept", () => {
+  test("the web, for a link and an image, and mail and files for a link only", () => {
+    expect(keepAddress("https://example.com/a?b=1#c", "href")).toBe("https://example.com/a?b=1#c");
+    expect(keepAddress("HTTP://example.com", "src")).toBe("HTTP://example.com");
+    expect(keepAddress("mailto:a@b.co", "href")).toBe("mailto:a@b.co");
+    for (const file of ["src/app.ts", "app.ts:12", "README.md#L3", "src/app.ts:12:5", "./notes.md", "/abs/path.ts"]) {
+      expect(keepAddress(file, "href")).toBe(file);
+      expect(keepAddress(file, "src")).toBe("");
+    }
+    expect(keepAddress("mailto:a@b.co", "src")).toBe("");
+  });
+
+  test.each([
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    " javascript:alert(1)",
+    "\tjavascript:alert(1)",
+    "java\tscript:alert(1)",
+    "java\nscript:alert(1)",
+    "java\u0000script:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "vbscript:msgbox(1)",
+    "file:///etc/passwd",
+    "vscode://file/etc/passwd",
+    "//evil.example/track.png",
+    "?query",
+    "",
+  ])("%j is emptied, as a link and as an image", (address) => {
+    expect(keepAddress(address, "href")).toBe("");
+    expect(keepAddress(address, "src")).toBe("");
   });
 });

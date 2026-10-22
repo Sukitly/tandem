@@ -70,12 +70,87 @@ function demoReply(text: string): string {
   ].join("\n");
 }
 
+/** One of each thing that Markdown can be in a message, for looking at how they are drawn. */
+const MARKDOWN_SAMPLE = [
+  "# Markdown sample",
+  "",
+  "A paragraph with **bold**, *italic*, ~~strikethrough~~, `inline code` and [a link to the web](https://example.com).",
+  "A second line, which is a line break.",
+  "",
+  "## Lists",
+  "",
+  "- One",
+  "- Two",
+  "  - Nested",
+  "- [x] A task that is done",
+  "- [ ] A task to do",
+  "",
+  "1. First",
+  "2. Second",
+  "",
+  "> A quote, which may run over",
+  "> several lines.",
+  "",
+  "## A table",
+  "",
+  "| Language | File | Lines |",
+  "|---|---|---|",
+  "| TypeScript | `src/app.ts` | 120 |",
+  "| Rust | `src/main.rs` | 48 |",
+  "",
+  "## Files",
+  "",
+  "See [app.ts:12](app.ts:12), [a line](src/app.ts#L3) and [the readme](README.md).",
+  "",
+  "## Code",
+  "",
+  "```ts:src/app.ts",
+  "export function main(): void {",
+  '  console.log("hello")',
+  "}",
+  "```",
+  "",
+  "```rust",
+  "fn main() {",
+  '    println!("hello");',
+  "}",
+  "```",
+  "",
+  "```diff",
+  "-const a = 1",
+  "+const a = 2",
+  "```",
+  "",
+  "## Math",
+  "",
+  "Inline \\(E = mc^2\\), and displayed:",
+  "",
+  "\\[ \\int_0^1 x^2 \\, dx = \\frac{1}{3} \\]",
+  "",
+  "## 中文",
+  "",
+  "他说**“你好。”**然后走了，价格是~~100元。~~见 https://example.com。",
+  "",
+  "## A diagram",
+  "",
+  "```mermaid",
+  "graph TD",
+  "  A[Start] --> B{Works?}",
+  "  B -->|yes| C[Done]",
+  "  B -->|no| D[Fix it]",
+  "```",
+].join("\n");
+
 /**
  * A scripted turn for trying the UI: to a user message, it thinks, says what it will do, and lists the directory and
- * reads the README; once the tool results are in, it answers with `demoReply`.
+ * reads the README; once the tool results are in, it answers with `demoReply`. To the message `markdown` it answers at
+ * once with `MARKDOWN_SAMPLE`, to see how Markdown is drawn.
  */
 export function demoResponse(messages: readonly Message[]): AssistantMessage {
   const last = messages.at(-1);
+  if (last?.role === "user" && lastUserText(messages).trim().toLowerCase() === "markdown") {
+    return fauxAssistantMessage(MARKDOWN_SAMPLE);
+  }
   if (last?.role === "toolResult") return fauxAssistantMessage(demoReply(lastUserText(messages)));
   const text = lastUserText(messages);
   return fauxAssistantMessage(

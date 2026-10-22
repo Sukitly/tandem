@@ -10,7 +10,7 @@ import { Conversation, Conversations, Models, type StartInput, Workspaces } from
 import { afterEach, describe, expect, test } from "vitest";
 import { startApp } from "../src/app.ts";
 import { FileCredentialStore } from "../src/credentials.ts";
-import { createFauxProvider } from "../src/models.ts";
+import { createFauxProvider, demoResponse } from "../src/models.ts";
 import type { TandemServer } from "../src/server.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -206,5 +206,37 @@ describe("models", () => {
     await waitFor(() => open.get(id)?.view.value !== undefined);
     await waitFor(() => (open.get(id)?.notices.value?.notices.length ?? 0) > 0);
     expect(open.get(id)?.notices.value?.notices[0]?.message).toContain("No model is selected");
+  });
+});
+
+describe("the faux model's scripted turns", () => {
+  const user = (content: string) => [{ role: "user" as const, content, timestamp: 0 }];
+
+  test("a message is answered by looking at the project first", () => {
+    const answer = demoResponse(user("hello"));
+    expect(answer.stopReason).toBe("toolUse");
+    expect(answer.content.map((block) => block.type)).toEqual(["thinking", "text", "toolCall", "toolCall"]);
+  });
+
+  test("the message `markdown` is answered at once with one of each thing Markdown can be", () => {
+    for (const message of ["markdown", "  Markdown\n"]) {
+      const answer = demoResponse(user(message));
+      expect(answer.stopReason).toBe("stop");
+      const [block, ...rest] = answer.content;
+      expect(rest).toEqual([]);
+      const text = block?.type === "text" ? block.text : "";
+      for (const part of [
+        "| Language |",
+        "```ts:src/app.ts",
+        "```rust",
+        "```mermaid",
+        "\\(E = mc^2\\)",
+        "[app.ts:12](app.ts:12)",
+        "**“你好。”**",
+        "- [x]",
+      ]) {
+        expect(text).toContain(part);
+      }
+    }
   });
 });

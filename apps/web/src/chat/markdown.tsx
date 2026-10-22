@@ -1,73 +1,67 @@
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { Children, type ComponentProps, createElement, isValidElement, memo, type ReactNode } from "react";
+import { type ComponentProps, createContext, memo, useContext } from "react";
+import type { Components, ExtraProps } from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkBreaks from "remark-breaks";
-import { type Components, defaultComponents, defaultRehypePlugins, defaultRemarkPlugins, Streamdown } from "streamdown";
+import remarkCjkFriendly from "remark-cjk-friendly";
+import remarkCjkFriendlyGfmStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
+import remarkMath from "remark-math";
+import type { PluggableList } from "unified";
+import { Markdown as AgentMarkdown, MarkdownPre, readCodeFence } from "@/components/agent/markdown.tsx";
 import { parseFileLink } from "@/files/file-link.ts";
 import { FileLink } from "@/files/file-link-button.tsx";
-import { FencedCode } from "./fenced-code.tsx";
-import { lazyMermaid } from "./lazy-mermaid.ts";
+import { cjkAutolink } from "./cjk-autolink.ts";
+import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { texDelimiters } from "./tex-delimiters.ts";
-import { untrustedMarkdown } from "./untrusted-markdown.ts";
+import { keepAddress, untrustedMarkdown } from "./untrusted-markdown.ts";
+import { useThrottledText } from "./use-throttled-text.ts";
 
-const plugins = { cjk, code, math, mermaid: lazyMermaid };
-// A single newline is a line break, as a person writing in a message box expects.
-const remarkPlugins = [...Object.values(defaultRemarkPlugins), remarkBreaks, texDelimiters, untrustedMarkdown];
-// Raw HTML is text by now, and links and images are checked by `untrustedMarkdown`; sanitizing stays.
-const sanitize = defaultRehypePlugins.sanitize;
-if (sanitize === undefined) throw new Error("Streamdown's sanitize plugin is missing");
-const rehypePlugins = [sanitize];
+/** Whether the text being drawn is still arriving, for a part inside it that must wait for the whole of its source. */
+const StreamingContext = createContext(false);
 
-/**
- * Code blocks are Tandem's own (`CodeBlock`), and so are links to files (`FileLink`); inline code and Mermaid diagrams
- * keep Streamdown's. Streamdown marks a fenced block's `code` element with `data-block` and its language with a
- * `language-*` class.
- */
-const components: Components = {
-  // Only Markdown paragraphs receive chat spacing; plugin UI paragraphs keep their own styles.
-  // Delegate to Streamdown so images and fenced blocks still omit their paragraph wrapper.
-  p: (props: object) =>
-    createElement(defaultComponents.p, { ...props, "data-chat-markdown": "paragraph" } as ComponentProps<"p">),
-  ol: (props: object) =>
-    createElement(defaultComponents.ol, {
-      ...props,
-      className: (props as { className?: string }).className?.replace(/\blist-inside\b/g, "list-outside"),
-    } as ComponentProps<"ol">),
-  ul: (props: object) =>
-    createElement(defaultComponents.ul, {
-      ...props,
-      className: (props as { className?: string }).className?.replace(/\blist-inside\b/g, "list-outside"),
-    } as ComponentProps<"ul">),
-  // Links to files open them in the files panel; links to the web keep Streamdown's, which asks before leaving.
-  a: (props: object) => {
-    const { href, children } = props as ComponentProps<"a">;
-    const target = href === undefined || /^(https?|mailto):/i.test(href) ? undefined : parseFileLink(href);
-    if (target === undefined) return createElement(defaultComponents.a, props as ComponentProps<"a">);
-    return <FileLink target={target}>{children}</FileLink>;
-  },
-  // `object`: Streamdown types a component both as its element's props and as any record.
-  code: (props: object) => {
-    const { className, children } = props as ComponentProps<"code">;
-    const language = /language-(\S+)/.exec(className ?? "")?.[1];
-    if (!("data-block" in props) || language === "mermaid") {
-      return createElement(defaultComponents.code, props as ComponentProps<"code">);
-    }
-    return <FencedCode code={textOf(children).replace(/\n$/, "")} language={language} />;
-  },
-};
+// GFM runs before these, as agent-ui's `Markdown` has it. Math is dollar signs, with a single one left a dollar sign; Chinese, Japanese
+// and Korean text gets emphasis and strikethrough next to its punctuation, and addresses end at it. A single newline is
+// a line break, as a person writing in a message box expects.
+const remarkPlugins: PluggableList = [
+  [remarkMath, { singleDollarTextMath: false }],
+  remarkCjkFriendly,
+  remarkCjkFriendlyGfmStrikethrough,
+  cjkAutolink,
+  remarkBreaks,
+  texDelimiters,
+  untrustedMarkdown,
+];
 
-function textOf(children: ReactNode): string {
-  return Children.toArray(children)
-    .map((child) =>
-      typeof child === "string" || typeof child === "number"
-        ? String(child)
-        : isValidElement<{ children?: ReactNode }>(child)
-          ? textOf(child.props.children)
-          : "",
-    )
-    .join("");
+// There is no rehype-sanitize: raw HTML is text by now (`untrustedMarkdown`, and there is no rehype-raw to parse it),
+// and what could still do harm is an address, which `keepAddress` allows by name. Sanitizing would also empty the
+// address of a link to a file with no folder, `app.ts:12`, taking its `app.ts` for a scheme, as react-markdown does.
+const rehypePlugins: PluggableList = [[rehypeKatex, { errorColor: "var(--color-muted-foreground)" }]];
+
+/** A link to a file opens it in the files panel; one to the web opens in a new tab, so the page stays where it is. */
+function Link({ node, href, children, ...props }: ComponentProps<"a"> & ExtraProps) {
+  const web = href !== undefined && /^https?:\/\//i.test(href);
+  const file = href === undefined || web || /^mailto:/i.test(href) ? undefined : parseFileLink(href);
+  if (file !== undefined) return <FileLink target={file}>{children}</FileLink>;
+  return (
+    <a href={href} {...(web ? { target: "_blank", rel: "noreferrer noopener" } : {})} {...props}>
+      {children}
+    </a>
+  );
 }
+
+/** A fence is the code panel, except Mermaid, which is a diagram once the text is whole. */
+function Pre({ node, ...props }: ComponentProps<"pre"> & ExtraProps) {
+  const streaming = useContext(StreamingContext);
+  const fence = readCodeFence(node);
+  const panel = <MarkdownPre node={node} {...props} />;
+  return fence?.language === "mermaid" ? (
+    <MermaidDiagram code={fence.code} streaming={streaming} fallback={panel} />
+  ) : (
+    panel
+  );
+}
+
+// Declared once, so a streaming update does not mount what they draw again.
+const components: Components = { a: Link, pre: Pre };
 
 /**
  * Markdown of a message: code with highlighting, math (`$$…$$`, `\(…\)`, `\[…\]`), Mermaid diagrams, and CJK-aware
@@ -75,18 +69,20 @@ function textOf(children: ReactNode): string {
  */
 export const Markdown = memo(
   function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
+    const drawn = useThrottledText(text, streaming);
     return (
-      <Streamdown
-        className="chat-markdown min-w-0"
-        plugins={plugins}
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={components}
-        tableMaxHeight="none"
-        isAnimating={streaming}
-      >
-        {text}
-      </Streamdown>
+      <StreamingContext value={streaming}>
+        <AgentMarkdown
+          className="min-w-0"
+          streaming={streaming}
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
+          components={components}
+          urlTransform={keepAddress}
+        >
+          {drawn}
+        </AgentMarkdown>
+      </StreamingContext>
     );
   },
   (previous, next) => previous.text === next.text && previous.streaming === next.streaming,
