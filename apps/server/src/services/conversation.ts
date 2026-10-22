@@ -9,6 +9,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { clampThinkingLevel, type ImageContent, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type {
   AgentChange,
+  EntryId,
   Conversation as HarnessConversation,
   SettledSubmissionRecord,
   UserInput,
@@ -18,10 +19,13 @@ import type {
   ConversationNotices,
   ConversationTps,
   ConversationView,
+  HistoryInput,
   ImageInput,
   ModelRef,
   SubmitInput,
 } from "@tandem/contracts";
+import { HISTORY_PAGE_SIZE, MAX_HISTORY_PAGE_SIZE } from "@tandem/contracts";
+import { withRefs } from "../conversation-view.ts";
 import type { ImageProcessor } from "../images/image-processor.ts";
 import { checkImageTotal, ImageRefused, imageModel, prepareImages } from "../images/message-images.ts";
 import { lastRunTokens, RunTimer, runTps } from "../run-metrics.ts";
@@ -124,6 +128,17 @@ export function createConversationService({
       await onSubmitted(message, context);
     },
     abort: (context) => conversation.abort(context),
+    async history(input, context) {
+      const { before, limit } = parseHistoryInput(input);
+      // Newest first, one more than asked for to tell whether there is another page.
+      const page = await conversation.entries({ maxEntryId: (before - 1) as EntryId }, limit + 1, undefined, context);
+      const entries = page.items.slice(0, limit).reverse();
+      const conversationId = conversation.id as number;
+      return {
+        entries: entries.map((entry) => withRefs(entry, conversationId)),
+        more: page.items.length > limit,
+      };
+    },
     async configure(input, context) {
       const { model: ref, thinkingLevel } = (input ?? {}) as { model?: ModelRef; thinkingLevel?: unknown };
       const change: { -readonly [K in keyof AgentChange]: AgentChange[K] } = {};
@@ -151,6 +166,19 @@ export function createConversationService({
       await conversation.configure(change, context);
     },
   };
+}
+
+/** The `before` and `limit` of a request for older entries, which a page sends and so can get wrong. */
+function parseHistoryInput(input: unknown): { before: number; limit: number } {
+  const { before, limit } = (input ?? {}) as Partial<HistoryInput>;
+  if (typeof before !== "number" || !Number.isSafeInteger(before) || before < 1) {
+    throw invalidInput("before must be an entry ID");
+  }
+  if (limit === undefined) return { before, limit: HISTORY_PAGE_SIZE };
+  if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_HISTORY_PAGE_SIZE) {
+    throw invalidInput(`limit must be between 1 and ${MAX_HISTORY_PAGE_SIZE}`);
+  }
+  return { before, limit };
 }
 
 /**

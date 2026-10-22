@@ -118,6 +118,26 @@ export interface ConversationTps {
   last?: RunTps;
 }
 
+/** Most entries `Conversation.history` returns in one page, and what it returns when no `limit` is given. */
+export const HISTORY_PAGE_SIZE = 50;
+export const MAX_HISTORY_PAGE_SIZE = 200;
+
+/** What `Conversation.history` is asked for: the entries before `before`, at most `limit` of them. */
+export interface HistoryInput {
+  /** An entry ID: the entries returned are those with a smaller one. */
+  before: number;
+  /** At most this many, `HISTORY_PAGE_SIZE` by default and `MAX_HISTORY_PAGE_SIZE` at most. */
+  limit?: number;
+}
+
+/** One page of a conversation's older entries. */
+export interface ConversationHistory {
+  /** Oldest first, the last of them the newest entry before `before`; images are references, as in the view. */
+  entries: ConversationView["entries"];
+  /** Whether there are entries before the first of these. */
+  more: boolean;
+}
+
 /**
  * One open conversation. A keyed service: observe it to receive the instances this connection opened, and tell them
  * apart by `view.conversation.id`.
@@ -137,6 +157,12 @@ export interface Conversation {
    * lowered to the nearest one it does.
    */
   configure(input: { model?: ModelRef; thinkingLevel?: string }, context: Context): Promise<void>;
+  /**
+   * The entries before `input.before`, which `view` leaves out once a compaction has replaced them with a summary: it
+   * holds what the model sees, and these are still stored. Taken a page at a time, the next from the first entry of the
+   * last page.
+   */
+  history(input: HistoryInput, context: Context): Promise<ConversationHistory>;
 }
 
 export const Conversation = defineService<Conversation>("tandem.conversation");

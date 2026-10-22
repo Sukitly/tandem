@@ -203,6 +203,84 @@ describe("conversations", () => {
     await expect(conversation.submit({ text: " ", whenBusy: "followUp" }, context)).rejects.toThrow("Write a message");
   });
 
+  test("older entries come a page at a time, the newest first of the pages, and each page oldest first", async () => {
+    const { server } = await start();
+    const { startIn, openConversation, view } = await client(server);
+    const id = await startIn("one");
+    const { conversation } = await openConversation(id);
+    await waitFor(() => answers(view(id)).includes("You said: one") && !isBusy(view(id)));
+    for (const text of ["two", "three"]) {
+      await conversation.submit({ text, whenBusy: "followUp" }, context);
+      await waitFor(() => answers(view(id)).includes(`You said: ${text}`) && !isBusy(view(id)));
+    }
+    const ids = (view(id)?.entries ?? []).map((entry) => entry.id as number);
+    expect(ids.length).toBeGreaterThanOrEqual(6);
+    const last = ids.at(-1) as number;
+
+    // Nothing is compacted, so every entry before `last` is in the view as well, and is what the page must be.
+    const first = await conversation.history({ before: last, limit: 2 }, context);
+    expect(first.entries.map((entry) => entry.id as number)).toEqual(ids.slice(-3, -1));
+    expect(first.more).toBe(true);
+
+    // Walking back from the first entry of each page reaches the start, once each, and says when it has.
+    const walked: number[] = [];
+    let before = last;
+    for (;;) {
+      const page = await conversation.history({ before, limit: 2 }, context);
+      walked.unshift(...page.entries.map((entry) => entry.id as number));
+      before = page.entries[0]?.id as number;
+      if (!page.more) break;
+    }
+    expect(walked).toEqual(ids.slice(0, -1));
+
+    const all = await conversation.history({ before: last }, context);
+    expect(all.entries.map((entry) => entry.id as number)).toEqual(ids.slice(0, -1));
+    expect(all.more).toBe(false);
+    // Before the first entry there is nothing.
+    expect(await conversation.history({ before: ids[0] as number }, context)).toEqual({ entries: [], more: false });
+  });
+
+  test("after a compaction the view leaves out what it replaced, and history returns it", async () => {
+    // Long enough that the conversation compacts itself: it does when the context nears the model's window.
+    const long = (word: string) => `${word} ${"x".repeat(100_000)}`;
+    const { server } = await start({ providers: [createFauxProvider({ reply: () => "ok" })] });
+    const { startIn, openConversation, view } = await client(server);
+    const id = await startIn(long("one"));
+    const { conversation } = await openConversation(id);
+    const heard = (word: string) =>
+      (view(id)?.entries ?? []).some((entry) => JSON.stringify(entry.model ?? []).includes(`${word} x`));
+    await waitFor(() => heard("one") && !isBusy(view(id)), 10_000);
+    for (const word of ["two", "three"]) {
+      await conversation.submit({ text: long(word), whenBusy: "followUp" }, context);
+      await waitFor(() => heard(word) && !isBusy(view(id)), 10_000);
+    }
+    await waitFor(() => view(id)?.entries[0]?.kind === "pi.compaction" && !isBusy(view(id)), 10_000);
+
+    // The compaction is first, and what it replaced is not in the view: that is what the page asks history for.
+    const entries = view(id)?.entries ?? [];
+    const firstKept = entries[1]?.id as number;
+    expect(heard("one")).toBe(false);
+    const page = await conversation.history({ before: firstKept, limit: 200 }, context);
+    expect(page.more).toBe(false);
+    expect(page.entries.length).toBeGreaterThan(0);
+    const ids = page.entries.map((entry) => entry.id as number);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(Math.max(...ids)).toBeLessThan(firstKept);
+    expect(JSON.stringify(page.entries[0]?.model)).toContain("one x");
+  });
+
+  test("a request for older entries is refused unless it names an entry and a sensible page", async () => {
+    const { server } = await start();
+    const { startIn, openConversation } = await client(server);
+    const { conversation } = await openConversation(await startIn("hi"));
+    for (const before of [0, -1, 1.5, "7", null]) {
+      await expect(conversation.history({ before } as never, context)).rejects.toThrow("before must be an entry ID");
+    }
+    for (const limit of [0, -1, 201, 1.5, "5"]) {
+      await expect(conversation.history({ before: 5, limit } as never, context)).rejects.toThrow("limit must be");
+    }
+  });
+
   test("an answer interrupted by a restart completes, and the open client picks it up", async () => {
     const reply = (text: string) => `${text}: ${"word ".repeat(200).trim()}`;
     const slow = await start({ providers: [createFauxProvider({ tokensPerSecond: 50, reply })] });

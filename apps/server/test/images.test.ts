@@ -208,6 +208,26 @@ describe("images in a message", () => {
     await waitFor(() => refsOf(app.view(id)).length === 1);
   });
 
+  test("in older entries are references too, which the page fetches as it does those of the view", async () => {
+    const app = await start();
+    const image = png(20, 10);
+    const id = await app.conversations.start(
+      { workspaceId: app.workspaceId, text: "look", images: [{ data: base64(image), mimeType: "image/png" }] },
+      context,
+    );
+    await app.opened(id);
+    await waitFor(() => refsOf(app.view(id)).length === 1);
+    const conversation = app.open.get(id) as Conversation;
+    await waitFor(() => (app.view(id)?.entries.length ?? 0) >= 2);
+    const last = app.view(id)?.entries.at(-1)?.id as number;
+    const { entries } = await conversation.history({ before: last + 1 }, context);
+    expect(JSON.stringify(entries)).not.toContain(base64(image));
+    const [ref] = refsOf({ entries } as ConversationView);
+    expect(ref?.mimeType).toBe("image/png");
+    const response = await app.fetchImage(app.pathOf(ref?.ref as ImageRef));
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(image);
+  });
+
   test("are refused without a model to fit them to, which no answer would come from", async () => {
     await expect(
       prepareImages([{ data: base64(png(8, 8)), mimeType: "image/png" }], undefined, {
