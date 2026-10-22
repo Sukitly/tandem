@@ -54,10 +54,9 @@ export async function attachImages(
   return { attached };
 }
 
-/** The image files a paste or a drop carries. */
-export function imageFiles(data: DataTransfer | null): File[] {
-  if (data === null) return [];
-  return [...data.files].filter((file) => ACCEPTED.has(file.type));
+/** The files among `files`, which a paste, a drop or the file picker hands over, that are images a message takes. */
+export function imageFiles(files: Iterable<File>): File[] {
+  return [...files].filter((file) => ACCEPTED.has(file.type));
 }
 
 async function base64Of(file: Blob): Promise<string> {

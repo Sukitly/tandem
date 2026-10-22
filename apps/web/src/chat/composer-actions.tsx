@@ -1,81 +1,37 @@
-import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
-import type { RefObject } from "react";
-import { PromptInputActionButton, PromptInputSubmitButton } from "@/components/ai-elements/index.ts";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { IMAGE_ACCEPT } from "./attached-images.ts";
+import type { MessageDraft } from "@/app/message-draft.ts";
+import { imageFiles } from "./attached-images.ts";
+import type { ImageSupport } from "./chat-composer.tsx";
 import type { SendMode } from "./composer-options.tsx";
 
-/** The control that picks images from the device; they can also be pasted or dropped. */
-export function AttachImages({
-  picker,
-  onAttach,
-}: {
-  picker: RefObject<HTMLInputElement | null>;
-  onAttach(files: File[]): Promise<void>;
-}) {
-  return (
-    <>
-      <input
-        ref={picker}
-        type="file"
-        accept={IMAGE_ACCEPT}
-        multiple
-        hidden
-        onChange={(event) => {
-          void onAttach([...(event.target.files ?? [])]);
-          event.target.value = "";
-        }}
-      />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PromptInputActionButton type="button" aria-label="Attach images" onClick={() => picker.current?.click()} />
-          }
-        >
-          <PlusIcon />
-        </TooltipTrigger>
-        <TooltipContent>Attach images, or paste or drop them</TooltipContent>
-      </Tooltip>
-    </>
-  );
+/**
+ * Attaches the files a paste, a drop or the file picker handed over. Only images are taken, and only by a model that
+ * takes them; otherwise the box says why, so that a file dropped on it is never silently ignored.
+ */
+export async function attachFiles(draft: MessageDraft, imageSupport: ImageSupport, files: File[]): Promise<void> {
+  if (files.length === 0) return;
+  if (imageSupport.kind !== "accepted") {
+    draft.setError(
+      imageSupport.kind === "none"
+        ? "The current model does not take images. Choose one that does."
+        : "Choose an available model before sending images.",
+    );
+    return;
+  }
+  const images = imageFiles(files);
+  if (images.length === 0) {
+    draft.setError("Only images can be attached.");
+    return;
+  }
+  await draft.attach(images, imageSupport.maxPerMessage);
 }
 
 /**
- * Stop or Send. While the agent works, an empty box offers Stop and a message offers Send, which steers or queues it. A
- * message being sent offers Stop too, as Send cannot be pressed again; Escape stops whatever the box holds.
+ * What the one button of the box offers, by what the agent is doing and how a message would be sent: Stop while the
+ * agent works and the box is empty (Escape stops it with a message in the box too), otherwise Send.
  */
-export function SubmitOrStop({
-  busy,
-  empty,
-  sending,
-  stopping,
-  sendMode,
-  onStop,
-}: {
-  busy: boolean;
-  empty: boolean;
-  sending: boolean;
-  stopping: boolean;
-  sendMode: SendMode;
-  onStop(): void;
-}) {
-  if (busy && (empty || sending)) {
-    return (
-      <PromptInputSubmitButton type="button" aria-label="Stop" title="Stop (Esc)" disabled={stopping} onClick={onStop}>
-        <SquareIcon />
-      </PromptInputSubmitButton>
-    );
-  }
-  return (
-    <PromptInputSubmitButton
-      type="submit"
-      aria-label="Send"
-      title={busy && sendMode === "followUp" ? "Queue follow-up" : "Send"}
-      disabled={empty || sending}
-    >
-      <ArrowUpIcon />
-    </PromptInputSubmitButton>
-  );
+export function submitTitle(busy: boolean, empty: boolean, sendMode: SendMode): string {
+  if (busy && empty) return "Stop (Esc)";
+  return busy && sendMode === "followUp" ? "Queue follow-up" : "Send";
 }
 
 /** What the box asks for, by what the agent is doing and how a message would be sent. */

@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { createElement } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChatView } from "../src/chat/chat-view.tsx";
+import { stubBrowserForComposer } from "./composer-browser.ts";
 
 const mock = vi.hoisted(() => ({
   submit: vi.fn(),
@@ -52,10 +53,14 @@ vi.mock("../src/components/ui/message-scroller.tsx", async (importOriginal) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  stubBrowserForComposer();
   mock.transcript.busy = false;
   mock.submit.mockResolvedValue(undefined);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function send(modifiers = {}) {
   const textarea = screen.getByLabelText("Message");

@@ -6,6 +6,7 @@ import { Drafts, DraftsProvider, useMessageDraft } from "../src/app/drafts.tsx";
 import { MessageDraft } from "../src/app/message-draft.ts";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
 import { CommentDraft } from "../src/comments/comment-box.tsx";
+import { stubBrowserForComposer } from "./composer-browser.ts";
 
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => window.innerWidth < 768 }));
 vi.mock("../src/app/workbench.tsx", async () =>
@@ -15,8 +16,12 @@ vi.mock("../src/comments/use-comment-width.ts", () => ({ useCommentWidth: () => 
 beforeEach(() => {
   URL.createObjectURL = vi.fn(() => "blob:draft");
   URL.revokeObjectURL = vi.fn();
+  stubBrowserForComposer();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function Composer({ id, onSend = async () => {} }: { id: string; onSend?: () => Promise<void> }) {
   const draft = useMessageDraft(id);
@@ -47,14 +52,14 @@ test("text and images survive conversation, connection, and responsive view repl
   const { rerender, unmount } = render(page("conversation:1"));
   fireEvent.change(input(), { target: { value: "First draft" } });
   fireEvent.paste(input(), { clipboardData: { files: [new File(["png"], "one.png", { type: "image/png" })] } });
-  await waitFor(() => expect(screen.getByRole("img")).toBeDefined());
+  await waitFor(() => expect(screen.getByRole("list", { name: "Images" })).toBeDefined());
   rerender(page("conversation:2"));
   expect(input().value).toBe("");
   fireEvent.change(input(), { target: { value: "Second draft" } });
   rerender(page(null));
   rerender(page("conversation:1", "mobile"));
   expect(input().value).toBe("First draft");
-  expect(screen.getByRole("img").getAttribute("alt")).toBe("one.png");
+  expect(screen.getByRole("list", { name: "Images" }).textContent).toContain("one.png");
   expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   rerender(page("conversation:2"));
   expect(input().value).toBe("Second draft");
@@ -76,8 +81,12 @@ test("a pending send follows the draft across remounts and preserves later edits
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   rerender(page(null));
   rerender(page("conversation:1", "mobile", onSend));
-  expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  // The send is the draft's, not the view's: pressing Send again in the new view sends nothing, and keeps the text.
   fireEvent.change(input(), { target: { value: "Keep this" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await act(async () => {});
+  expect(onSend).toHaveBeenCalledTimes(1);
+  expect(input().value).toBe("Keep this");
   await act(async () => finish());
   expect(input().value).toBe("Keep this");
   expect(onSend).toHaveBeenCalledTimes(1);

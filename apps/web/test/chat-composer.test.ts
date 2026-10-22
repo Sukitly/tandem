@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { MessageDraft } from "../src/app/message-draft.ts";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
 import type { QueuedMessage } from "../src/chat/transcript.ts";
+import { stubBrowserForComposer } from "./composer-browser.ts";
 
 vi.mock("../src/app/workbench.tsx", async () =>
   (await import("./workbench-mock.ts")).workbenchMock(() => ({ openChange: vi.fn() })),
@@ -13,12 +15,17 @@ vi.mock("../src/app/workbench.tsx", async () =>
 const viewport = vi.hoisted(() => ({ mobile: false }));
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => viewport.mobile }));
 
+beforeEach(() => stubBrowserForComposer());
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   viewport.mobile = false;
 });
 
-test("a successful send preserves edits made while waiting for the server", async () => {
+const idle = { busy: false, queued: [] as QueuedMessage[], onStop: vi.fn(), imageSupport: { kind: "none" } as const };
+const messageBox = () => screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
+
+test("while the server decides the text is the one being sent, and a taken message clears the box", async () => {
   let finish!: () => void;
   const onSend = vi.fn(
     () =>
@@ -26,16 +33,46 @@ test("a successful send preserves edits made while waiting for the server", asyn
         finish = resolve;
       }),
   );
-  render(
-    createElement(ChatComposer, { busy: false, queued: [], onSend, onStop: vi.fn(), imageSupport: { kind: "none" } }),
-  );
-  const input = screen.getByRole("combobox", { name: "Message" }) as HTMLTextAreaElement;
-  fireEvent.change(input, { target: { value: "First" } });
-  fireEvent.submit(screen.getByRole("form", { name: "Message box" }));
-  fireEvent.change(input, { target: { value: "Next draft" } });
-  await act(async () => finish());
-  expect(input.value).toBe("Next draft");
+  render(createElement(ChatComposer, { ...idle, onSend }));
+  fireEvent.change(messageBox(), { target: { value: "First" } });
+  fireEvent.submit(messageBox().form as HTMLFormElement);
   expect(onSend).toHaveBeenCalledWith("First", [], [], "steer");
+  expect(messageBox().readOnly).toBe(true);
+  await act(async () => finish());
+  expect(messageBox().value).toBe("");
+  expect(messageBox().readOnly).toBe(false);
+});
+
+test("a message the server refuses stays in the box, with the reason", async () => {
+  const onSend = vi.fn().mockRejectedValue(new Error("The agent is not available"));
+  render(createElement(ChatComposer, { ...idle, onSend }));
+  fireEvent.change(messageBox(), { target: { value: "Hello" } });
+  fireEvent.submit(messageBox().form as HTMLFormElement);
+  expect(await screen.findByText("The agent is not available")).toBeDefined();
+  expect(messageBox().value).toBe("Hello");
+  await waitFor(() => expect(messageBox().readOnly).toBe(false));
+});
+
+test("a send that was not made because another is under way leaves the text where it is", async () => {
+  const draft = new MessageDraft();
+  let finish!: () => void;
+  const first = draft.send(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const onSend = vi.fn().mockResolvedValue(undefined);
+  render(createElement(ChatComposer, { ...idle, draft, onSend }));
+  fireEvent.change(messageBox(), { target: { value: "Second" } });
+  fireEvent.submit(messageBox().form as HTMLFormElement);
+  await act(async () => {});
+  expect(onSend).not.toHaveBeenCalled();
+  expect(messageBox().value).toBe("Second");
+  finish();
+  await act(async () => {
+    await first;
+  });
 });
 
 describe("queued chat messages", () => {
