@@ -73,7 +73,7 @@ test("sending successfully resumes following the bottom even when reading older 
   );
   render(createElement(ChatView, { conversationId: 1 }));
   // Browsing history must not jump back to the bottom until this client successfully sends.
-  fireEvent.wheel(screen.getByRole("log", { name: "Transcript" }), { deltaY: -100 });
+  fireEvent.wheel(screen.getByRole("region", { name: "Transcript" }), { deltaY: -100 });
   expect(mock.scrollToEnd).not.toHaveBeenCalled();
   send();
   expect(mock.submit).toHaveBeenCalledWith({ text: "New message", comments: [], whenBusy: "steer" }, expect.anything());
@@ -104,7 +104,7 @@ test("failed sends preserve the draft and do not force a scroll", async () => {
 
 test("subscription updates alone do not force a reader back to the bottom", () => {
   const { rerender } = render(createElement(ChatView, { conversationId: 1 }));
-  fireEvent.wheel(screen.getByRole("log", { name: "Transcript" }), { deltaY: -100 });
+  fireEvent.wheel(screen.getByRole("region", { name: "Transcript" }), { deltaY: -100 });
   mock.transcript.busy = true;
   rerender(createElement(ChatView, { conversationId: 1 }));
   expect(mock.scrollToEnd).not.toHaveBeenCalled();

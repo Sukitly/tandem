@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { useDrafts, useMessageDraft } from "@/app/drafts.tsx";
 import { useProjectResources } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
+import { ConversationEmpty } from "@/components/agent/conversation-empty.tsx";
 import { reportFailure } from "@/lib/errors.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { usePrompts } from "@/rpc/use-prompts.ts";
@@ -38,17 +38,11 @@ export function NewChat({ workspaceId }: { workspaceId: number }) {
 
   return (
     <ChatFrame cwd={project?.path} title="New conversation">
-      <Empty className="h-full">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <MessageCircleDashedIcon />
-          </EmptyMedia>
-          <EmptyTitle>What should we build?</EmptyTitle>
-          <EmptyDescription>
-            The agent can read your code, run commands and make changes. Press send to start.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <ConversationEmpty
+        icon={<MessageCircleDashedIcon />}
+        title="What should we build?"
+        description="The agent can read your code, run commands and make changes. Press send to start."
+      />
       <ChatFooter>
         <PullRequestLine workspaceId={workspaceId} />
         <ChatComposer

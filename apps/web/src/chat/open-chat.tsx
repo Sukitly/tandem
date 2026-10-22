@@ -4,15 +4,8 @@ import { useMemo, useState } from "react";
 import { useMessageDraft } from "@/app/drafts.tsx";
 import { useProjectResources } from "@/app/workbench.tsx";
 import { useCommentThreads, waitingComments } from "@/comments/project-comments.ts";
+import { MessageList, useMessageListScroller } from "@/components/agent/message-list.tsx";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
-import {
-  MessageScroller,
-  MessageScrollerButton,
-  MessageScrollerContent,
-  MessageScrollerItem,
-  MessageScrollerViewport,
-  useMessageScroller,
-} from "@/components/ui/message-scroller.tsx";
 import { reportFailure } from "@/lib/errors.ts";
 import { useConnected } from "@/rpc/connection.tsx";
 import { usePrompts } from "@/rpc/use-prompts.ts";
@@ -30,7 +23,7 @@ import { UsageLine } from "./usage-line.tsx";
 export function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
   const [stopping, setStopping] = useState(false);
   const inputDraft = useMessageDraft(`conversation:${conversationId}`);
-  const { scrollToEnd } = useMessageScroller();
+  const { scrollToEnd } = useMessageListScroller();
   const { conversations, models } = useConnected();
   const available = useReplicatedState(models.state);
   const resources = useProjectResources();
@@ -51,33 +44,17 @@ export function OpenChat({ conversationId, conversation }: { conversationId: num
 
   return (
     <ChatFrame cwd={summary?.cwd} title={summary?.title} summary={summary}>
-      <MessageScroller className="relative min-h-0 flex-1">
-        <MessageScrollerViewport
-          role="log"
-          aria-label="Transcript"
-          className="chat-transcript-scrollbar size-full min-h-0 min-w-0 overflow-y-auto scroll-fade-none"
-        >
-          <MessageScrollerContent className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
-            {transcript.items.map((item, index) => (
-              <MessageScrollerItem
-                key={item.key}
-                messageId={item.key}
-                // Each model call is its own assistant item. Back-to-back ones are one agent turn, so they use the
-                // 8px spacing of steps inside a message (gap-2) instead of the 24px gap (gap-6) between messages.
-                className={
-                  item.kind === "assistant" && transcript.items[index - 1]?.kind === "assistant" ? "-mt-4" : undefined
-                }
-              >
-                <ErrorBoundary what="this message" resetKey={item} compact>
-                  <TranscriptEntry item={item} />
-                </ErrorBoundary>
-              </MessageScrollerItem>
-            ))}
-            <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
-          </MessageScrollerContent>
-        </MessageScrollerViewport>
-        <MessageScrollerButton />
-      </MessageScroller>
+      <MessageList label="Transcript" className="flex-1" viewportClassName="chat-transcript-scrollbar scroll-fade-none">
+        {transcript.items.map((item, index) => (
+          <ErrorBoundary key={item.key} what="this message" resetKey={item} compact>
+            <TranscriptEntry
+              item={item}
+              joinsPrevious={item.kind === "assistant" && transcript.items[index - 1]?.kind === "assistant"}
+            />
+          </ErrorBoundary>
+        ))}
+        <SilentGap silent={transcript.silent} turnHasContent={transcript.turnHasContent} />
+      </MessageList>
       <ChatFooter>
         {notices.map((notice) => (
           <Notice key={notice.id} notice={notice} />

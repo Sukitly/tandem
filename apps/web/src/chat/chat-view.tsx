@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
+import { MessageListProvider } from "@/components/agent/message-list.tsx";
 import { Button, buttonVariants } from "@/components/ui/button.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
-import { MessageScrollerProvider } from "@/components/ui/message-scroller.tsx";
 import { Spinner } from "@/components/ui/spinner.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { useConversation, useConversationFailure } from "@/rpc/use-conversation.ts";
@@ -44,8 +44,8 @@ export function ChatView({ conversationId }: { conversationId: number }) {
   }
 
   return (
-    <MessageScrollerProvider key={conversationId} autoScroll defaultScrollPosition="end">
+    <MessageListProvider key={conversationId} autoScroll defaultScrollPosition="end">
       <OpenChat conversationId={conversationId} conversation={conversation} />
-    </MessageScrollerProvider>
+    </MessageListProvider>
   );
 }

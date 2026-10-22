@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { afterEach, expect, test } from "vitest";
 import type { TranscriptItem } from "../src/chat/transcript.ts";
 import { TranscriptEntry } from "../src/chat/transcript-items.tsx";
+import { inTranscript } from "./in-transcript.ts";
 
 afterEach(cleanup);
 
@@ -14,7 +15,7 @@ function entry(name: string, args: Record<string, unknown>, output = "") {
     ending: "complete",
     parts: [{ kind: "tool", callId: "call", name, args, status: "done", output, images: [] }],
   };
-  return createElement(TranscriptEntry, { item });
+  return inTranscript(createElement(TranscriptEntry, { item }));
 }
 
 const cases = [

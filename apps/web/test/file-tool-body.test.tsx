@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { TranscriptItem } from "../src/chat/transcript.ts";
 import { TranscriptEntry } from "../src/chat/transcript-items.tsx";
+import { inTranscript } from "./in-transcript.ts";
 
 const shown = vi.hoisted(() => ({ patch: undefined as string | undefined, file: undefined as unknown }));
 vi.mock("@pierre/diffs/react", () => ({
@@ -32,7 +33,7 @@ function entry(step: Partial<Step> & Pick<Step, "name" | "args">) {
     ending: "complete",
     parts: [{ kind: "tool", callId: "call", status: "done", output: "", images: [], ...step }],
   };
-  return createElement(TranscriptEntry, { item });
+  return inTranscript(createElement(TranscriptEntry, { item }));
 }
 
 const patch = "--- a.ts\n+++ a.ts\n@@ -1 +1 @@\n-old\n+new\n";

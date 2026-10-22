@@ -1,27 +1,7 @@
-import { AlertCircleIcon, CheckIcon, CopyIcon } from "lucide-react";
+import { AlertCircleIcon } from "lucide-react";
 import { ToolCall, ToolCallContent, ToolCallTrigger } from "@/components/agent/tool-call.tsx";
-import { MessageAction } from "@/components/ai-elements/message.tsx";
-import { useCopyText } from "@/components/copy-text.tsx";
 import { cn } from "@/lib/utils.ts";
 import { CopyableCode } from "./copyable-code.tsx";
-
-export function CopyAction({ text, className }: { text: string; className?: string }) {
-  const { copied, pending, copy } = useCopyText(text);
-  return (
-    <MessageAction
-      label={copied ? "Copied" : "Copy"}
-      className={className}
-      disabled={pending}
-      onClick={() => void copy()}
-    >
-      {copied ? (
-        <CheckIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-      ) : (
-        <CopyIcon className="size-3.5" />
-      )}
-    </MessageAction>
-  );
-}
 
 /**
  * A failure is an expandable trace event, not a separate alert card: its line says what failed and the first line of
