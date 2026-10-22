@@ -110,10 +110,13 @@ export function toTranscript(view: ConversationView): TranscriptState {
 
   const items: TranscriptItem[] = [];
   let tokens = 0;
+  // The view puts a compaction first, then the entries it kept, which were written before it and report the context
+  // as it was. Only an answer written after it reports how much the summary left.
+  let compactedAt = 0;
   for (const entry of view.entries) {
     if (entry.kind === "pi.compaction") {
       items.push({ kind: "compaction", key: String(entry.id) });
-      // The next answer reports how much the summary left.
+      compactedAt = entry.id;
       tokens = 0;
       continue;
     }
@@ -128,7 +131,7 @@ export function toTranscript(view: ConversationView): TranscriptState {
           message.stopReason === "aborted" ? "interrupted" : message.stopReason === "error" ? "failed" : "complete";
         const error = message.errorMessage;
         const used = contextTokens(message.usage);
-        if (used > 0) tokens = used;
+        if (used > 0 && entry.id > compactedAt) tokens = used;
 
         const prev = items[items.length - 1];
         if (

@@ -234,9 +234,20 @@ describe("toTranscript", () => {
     // The view drops what the summary replaced and puts the compaction first, so the line heads what was kept.
     const compacted = toTranscript(view([{ id: 3, kind: "pi.compaction", model: [] }, ...entries], docs));
     expect(compacted.items[0]).toEqual({ kind: "compaction", key: "3" });
-    expect(compacted.usage.tokens).toBe(7000);
-    const justCompacted = toTranscript(view([{ id: 3, kind: "pi.compaction", model: [] }], docs));
-    expect(justCompacted.usage.tokens).toBe(0);
+    // The kept answers were written before it and report the context as it was, so nothing is counted yet.
+    expect(compacted.usage.tokens).toBe(0);
+    // The first answer after it is the one that reports how much the summary left.
+    const answered = toTranscript(
+      view(
+        [
+          { id: 3, kind: "pi.compaction", model: [] },
+          ...entries,
+          { id: 4, kind: "pi.assistant", model: [assistant("three", "stop", { usage: usage(2000) })] },
+        ],
+        docs,
+      ),
+    );
+    expect(answered.usage.tokens).toBe(2000);
   });
 
   test("keeps the images of user messages, tool results, and queued messages", () => {
