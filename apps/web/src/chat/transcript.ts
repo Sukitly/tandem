@@ -42,8 +42,8 @@ export type TranscriptItem =
     }
   /** Older messages were summarized from here on; the model sees the summary instead. */
   | { kind: "compaction"; key: string }
-  /** A summary of the conversation is being made. */
-  | { kind: "compacting"; key: string };
+  /** A summary of the conversation is being made. It is `retrying` when an attempt failed and another will follow. */
+  | { kind: "compacting"; key: string; retrying: boolean };
 
 export interface QueuedMessage {
   id: number;
@@ -83,7 +83,8 @@ interface LiveDoc {
   run?: unknown;
   generation?: { attempt: number; message?: Message };
   tools?: ToolSlot[];
-  compactions?: unknown[];
+  /** A compaction that failed has `retry`: when it will try again, and why it failed. */
+  compactions?: { retry?: unknown }[];
 }
 
 interface InboxDoc {
@@ -175,8 +176,11 @@ export function toTranscript(view: ConversationView): TranscriptState {
     }
   }
 
-  const compacting = (live?.compactions ?? []).length > 0;
-  if (compacting) items.push({ kind: "compacting", key: "compacting" });
+  const compactions = live?.compactions ?? [];
+  const compacting = compactions.length > 0;
+  if (compacting) {
+    items.push({ kind: "compacting", key: "compacting", retrying: compactions.some((c) => c.retry !== undefined) });
+  }
   const toolsRunning = (live?.tools ?? []).some((slot) => slot.status !== "done");
   const silent = busy && !streaming && !toolsRunning && !compacting;
   const lastUser = items.findLastIndex((item) => item.kind === "user");

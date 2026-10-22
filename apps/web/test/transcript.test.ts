@@ -212,10 +212,16 @@ describe("toTranscript", () => {
 
     const compacting = toTranscript(view([user, answered], { "pi.live": { compactions: [{ taskId: 3 }] } }));
     expect(compacting).toMatchObject({ silent: false });
-    expect(compacting.items.at(-1)).toEqual({ kind: "compacting", key: "compacting" });
+    expect(compacting.items.at(-1)).toEqual({ kind: "compacting", key: "compacting", retrying: false });
+
+    // An attempt that failed has a `retry`; the line says another follows.
+    const retrying = toTranscript(
+      view([user, answered], { "pi.live": { compactions: [{ taskId: 3, retry: { at: 1, error: "overloaded" } }] } }),
+    );
+    expect(retrying.items.at(-1)).toEqual({ kind: "compacting", key: "compacting", retrying: true });
   });
 
-  test("counts the context the last answer used, the spend, and starts over after a compaction", () => {
+  test("counts the context the last answer used, the spend, and starts over at a compaction", () => {
     const usage = (totalTokens: number) => ({ ...noUsage, totalTokens });
     const entries = [
       { id: 1, kind: "pi.assistant", model: [assistant("one", "stop", { usage: usage(5000) })] },
@@ -225,9 +231,12 @@ describe("toTranscript", () => {
       "pi.usage": { models: { "a/b": { cost: { total: 0.25 } } }, tools: { bash: { cost: { total: 0.05 } } } },
     };
     expect(toTranscript(view(entries, docs)).usage).toEqual({ tokens: 7000, cost: 0.3 });
-    const compacted = toTranscript(view([...entries, { id: 3, kind: "pi.compaction", model: [] }], docs));
-    expect(compacted.usage.tokens).toBe(0);
-    expect(compacted.items.at(-1)).toEqual({ kind: "compaction", key: "3" });
+    // The view drops what the summary replaced and puts the compaction first, so the line heads what was kept.
+    const compacted = toTranscript(view([{ id: 3, kind: "pi.compaction", model: [] }, ...entries], docs));
+    expect(compacted.items[0]).toEqual({ kind: "compaction", key: "3" });
+    expect(compacted.usage.tokens).toBe(7000);
+    const justCompacted = toTranscript(view([{ id: 3, kind: "pi.compaction", model: [] }], docs));
+    expect(justCompacted.usage.tokens).toBe(0);
   });
 
   test("keeps the images of user messages, tool results, and queued messages", () => {

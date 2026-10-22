@@ -1,11 +1,10 @@
 import { ImageIcon } from "lucide-react";
+import { CompactionMarker } from "@/components/agent/compaction-marker.tsx";
 import { MessageActions, MessageCopyAction } from "@/components/agent/message-actions.tsx";
 import { MessageListItem } from "@/components/agent/message-list.tsx";
 import { UserMessage, type UserMessageAttachment } from "@/components/agent/user-message.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
-import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker.tsx";
 import { MessageScrollerItem } from "@/components/ui/message-scroller.tsx";
-import { Spinner } from "@/components/ui/spinner.tsx";
 import { Trace } from "@/components/ui/trace.tsx";
 import { useConnected } from "@/rpc/connection.tsx";
 import { ChatError } from "./chat-error.tsx";
@@ -32,20 +31,17 @@ export function TranscriptEntry({ item, joinsPrevious = false }: { item: Transcr
     case "compaction":
       return (
         <MessageScrollerItem messageId={item.key}>
-          <Marker variant="separator">
-            <MarkerContent>Older messages were summarized</MarkerContent>
-          </Marker>
+          <CompactionMarker status="done" />
         </MessageScrollerItem>
       );
     case "compacting":
       return (
         <MessageScrollerItem messageId={item.key}>
-          <Marker role="status">
-            <MarkerIcon>
-              <Spinner />
-            </MarkerIcon>
-            <MarkerContent>Compacting the conversation</MarkerContent>
-          </Marker>
+          {item.retrying ? (
+            <CompactionMarker status="failed" label="Could not compact the conversation, trying again" />
+          ) : (
+            <CompactionMarker status="working" />
+          )}
         </MessageScrollerItem>
       );
   }
