@@ -3,26 +3,36 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, expect, test } from "vitest";
-import { formatCost, formatTokens } from "../src/chat/context-usage.tsx";
-import { Context } from "../src/components/ai-elements/context.tsx";
+import { ContextUsageBadge, formatCost, formatTokens } from "../src/chat/context-usage.tsx";
 
 afterEach(cleanup);
 
-test("the context AI element exposes the percentage and token usage", () => {
-  render(createElement(Context, { usedTokens: 59840, maxTokens: 272000, cost: 0.042 }));
-  expect(screen.getByRole("button", { name: "22% context" })).toBeDefined();
+function badge(tokens: number, contextWindow: number, cost = 0.042) {
+  return createElement(ContextUsageBadge, { usage: { tokens, cost }, contextWindow });
+}
+
+test("the context button shows the percentage and the size of the window", () => {
+  render(badge(59840, 272000));
+  expect(screen.getByRole("button", { name: "22% of 272K" })).toBeDefined();
 });
 
 test("context details can be opened by click instead of hover", async () => {
-  render(createElement(Context, { usedTokens: 500, maxTokens: 1000, cost: 0.05 }));
-  fireEvent.click(screen.getByRole("button", { name: "50% context" }));
-  expect(await screen.findByText("Used tokens")).toBeDefined();
+  render(badge(500, 1000, 0.05));
+  fireEvent.click(screen.getByRole("button", { name: "50% of 1K" }));
+  expect(await screen.findByText("Context window")).toBeDefined();
   expect(screen.getByText("Total cost")).toBeDefined();
+  expect(screen.getByText("of 1K tokens")).toBeDefined();
+  expect(screen.getByRole("img", { name: "500 of 1K used" })).toBeDefined();
 });
 
-test("the context AI element clamps its display to 100 percent", () => {
-  render(createElement(Context, { usedTokens: 120000, maxTokens: 100000 }));
-  expect(screen.getByRole("button", { name: "100% context" })).toBeDefined();
+test("the context button clamps its percentage to 100", () => {
+  render(badge(120000, 100000));
+  expect(screen.getByRole("button", { name: "100% of 100K" })).toBeDefined();
+});
+
+test("nothing is shown while the size of the window is not known", () => {
+  const { container } = render(badge(500, 0));
+  expect(container.textContent).toBe("");
 });
 
 test("status bar formats costs with appropriate precision", () => {
@@ -32,8 +42,9 @@ test("status bar formats costs with appropriate precision", () => {
   expect(formatCost(12.345)).toBe("$12.35");
 });
 
-test("status bar formats token counts into human readable abbreviations", () => {
-  expect(formatTokens(500)).toBe("1K");
+test("status bar formats token counts into short English figures", () => {
+  expect(formatTokens(500)).toBe("500");
+  expect(formatTokens(59840)).toBe("59.8K");
   expect(formatTokens(272000)).toBe("272K");
   expect(formatTokens(1_000_000)).toBe("1M");
   expect(formatTokens(1_500_000)).toBe("1.5M");
