@@ -3,19 +3,21 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { createPortal } from "react-dom";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AppSidebarProvider } from "../src/app/sidebar-provider.tsx";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
 import { SidebarTrigger, useSidebar } from "../src/components/ui/sidebar.tsx";
+import { stubBrowserForComposer } from "./composer-browser.ts";
 
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => false }));
 vi.mock("../src/app/workbench.tsx", async () =>
   (await import("./workbench-mock.ts")).workbenchMock(() => ({ openChange: vi.fn() })),
 );
 
+beforeEach(() => stubBrowserForComposer());
 afterEach(() => {
   cleanup();
-  localStorage.removeItem("tandem.keyboardMode");
+  vi.unstubAllGlobals();
 });
 
 function SidebarState() {
@@ -44,18 +46,17 @@ function workbench(defaultOpen = true) {
 const sidebarState = () => screen.getByLabelText("Sidebar state").textContent;
 
 describe("sidebar shortcuts", () => {
-  test.each([true, false])("Ctrl+B edits the message without toggling the sidebar (open: %s)", (open) => {
-    localStorage.setItem("tandem.keyboardMode", "emacs");
-    workbench(open);
-    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
-    fireEvent.change(textarea, { target: { value: "hello" } });
-    textarea.setSelectionRange(3, 3);
-
-    expect(fireEvent.keyDown(textarea, { key: "b", ctrlKey: true })).toBe(false);
-    expect(textarea.selectionStart).toBe(2);
-    expect(textarea.value).toBe("hello");
-    expect(sidebarState()).toBe(open ? "expanded" : "collapsed");
-  });
+  test.each([true, false])(
+    "Ctrl+B in the message does not toggle the sidebar, or change the message (open: %s)",
+    (open) => {
+      workbench(open);
+      const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "hello" } });
+      fireEvent.keyDown(textarea, { key: "b", ctrlKey: true });
+      expect(textarea.value).toBe("hello");
+      expect(sidebarState()).toBe(open ? "expanded" : "collapsed");
+    },
+  );
 
   test("disables conflicting Ctrl+B throughout the page", () => {
     workbench();

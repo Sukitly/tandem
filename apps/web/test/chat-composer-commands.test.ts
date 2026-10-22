@@ -3,8 +3,9 @@
 import type { PromptTemplateSummary } from "@tandem/contracts";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
+import { stubBrowserForComposer } from "./composer-browser.ts";
 
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => window.innerWidth < 768 }));
 vi.mock("../src/app/workbench.tsx", async () =>
@@ -14,20 +15,24 @@ vi.mock("../src/app/workbench.tsx", async () =>
 // The box scrolls the highlighted row into view itself; jsdom has no layout.
 Element.prototype.scrollIntoView = vi.fn();
 
-afterEach(cleanup);
+beforeEach(() => stubBrowserForComposer());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const commands: PromptTemplateSummary[] = [
   { name: "review", description: "Review the changes", argumentHint: "[focus]", origin: "project" },
   { name: "commit", description: "Write a commit", origin: "global" },
 ];
 
-function composer() {
+function composer(available: PromptTemplateSummary[] = commands) {
   const onSend = vi.fn().mockResolvedValue(undefined);
   render(
     createElement(ChatComposer, {
       busy: false,
       queued: [],
-      commands,
+      commands: available,
       onSend,
       onStop: vi.fn(),
       imageSupport: { kind: "accepted" },
@@ -77,7 +82,7 @@ describe("chat composer commands", () => {
     type(textarea, "/rev");
     expect(press(textarea, { key: "Enter" })).toBe(true);
     // The settled command is what goes out, not the half-typed `/rev` the server could not expand.
-    expect(onSend).toHaveBeenCalledWith("/review ", [], [], "steer");
+    expect(onSend).toHaveBeenCalledWith("/review", [], [], "steer");
     expect(textarea.value).toBe("/review ");
     await waitFor(() => expect(textarea.value).toBe(""));
   });
@@ -90,6 +95,18 @@ describe("chat composer commands", () => {
 
     type(textarea, "/c");
     expect(offered()).toEqual(["commit"]);
+  });
+
+  test("each command says where it comes from, and a project's and a global one of a name are both offered", () => {
+    const { textarea } = composer([
+      { name: "review", description: "The project's review", origin: "project" },
+      { name: "review", description: "Everyone's review", origin: "global" },
+    ]);
+    type(textarea, "/rev");
+    const rows = screen.getAllByRole("option").map((row) => row.textContent);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain("Project");
+    expect(rows[1]).toContain("Global");
   });
 
   test("an ordinary message offers nothing", () => {

@@ -1,23 +1,30 @@
 import type { ImageInput, ModelRef, ModelSummary, PromptTemplateSummary } from "@tandem/contracts";
-import { type FormEvent, type ReactNode, useSyncExternalStore } from "react";
+import { type KeyboardEvent, type ReactNode, useSyncExternalStore } from "react";
 import { useMessageDraft } from "@/app/drafts.tsx";
 import type { MessageDraft } from "@/app/message-draft.ts";
 import { userPreferences } from "@/app/user-preferences.ts";
 import type { WaitingComment } from "@/comments/project-comments.ts";
-import { PromptInput, PromptInputActions, PromptInputTextarea } from "@/components/ai-elements/index.ts";
+import {
+  PromptInput,
+  PromptInputAttachButton,
+  PromptInputAttachment,
+  PromptInputAttachments,
+  PromptInputBox,
+  PromptInputCommands,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputToolbar,
+} from "@/components/agent/prompt-input.tsx";
+import { Badge } from "@/components/ui/badge.tsx";
 import { FieldError } from "@/components/ui/field";
 import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { usePreference } from "@/lib/preferences.ts";
-import { CommandSuggestions } from "./command-suggestions.tsx";
-import { AttachImages, placeholderOf, SubmitOrStop } from "./composer-actions.tsx";
-import { ComposerAttachments } from "./composer-attachments.tsx";
+import { IMAGE_ACCEPT } from "./attached-images.ts";
+import { attachFiles, placeholderOf, submitTitle } from "./composer-actions.tsx";
 import { ComposerContext } from "./composer-context.tsx";
 import { ComposerOptions, type SendMode } from "./composer-options.tsx";
 import type { QueuedMessage } from "./transcript.ts";
-import { completeCommand, useCommandCompletion } from "./use-command-completion.ts";
-import { useComposerImages } from "./use-composer-images.ts";
-import { useComposerKeyboard } from "./use-composer-keyboard.ts";
-import { useComposerText } from "./use-composer-text.ts";
 
 /**
  * What the composer knows of the current model's images: it takes them (at most `maxPerMessage` in a message, if it
@@ -58,17 +65,23 @@ export interface ChatComposerProps {
 }
 
 /**
- * The message box. Desktop Enter always steers; mobile uses its chosen send mode (steering by default).
- * Alt+Enter explicitly queues a follow-up on either layout. Escape stops the agent, as the Stop button does.
- * Shift+Enter starts a new line. Platform editing is the default; Emacs shortcuts are an explicit preference.
+ * Escape stops the agent once and only by itself: a held key repeats, and with a modifier it is another shortcut's.
+ * The box stops the agent on any Escape, so the ones that must not are taken from it here, before it sees them.
+ */
+function stopsOnlyOnce(event: KeyboardEvent<HTMLTextAreaElement>): void {
+  if (event.key !== "Escape") return;
+  if (event.repeat || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) event.preventDefault();
+}
+
+/**
+ * The message box. Enter sends, and while the agent works it steers the turn; Alt+Enter queues a follow-up instead.
+ * Shift+Enter starts a new line, and Escape stops the agent, as the Stop button does. A narrow layout sends in the way
+ * it chose in the options, since a phone has no Alt+Enter, and on a touch screen Enter breaks the line and the button
+ * sends.
  *
- * The box is a combobox, and its suggestion menu is Tandem's own, laid over the box rather than rendered by a popover
- * or a menu component: focus must stay in the box so that ordinary typing, spaces, and Shift+Enter keep working, and
- * such a component would take the keys for itself. It follows how pi's own input behaves: a message that begins with
- * `/` and holds no argument yet offers the project's slash commands, the arrows move through them, Tab fills the
- * highlighted one into the box so its arguments can be typed, Enter sends it, Escape puts the menu away (or, with no
- * menu, stops the agent), and
- * optional Emacs editing keys are handled by the box; everything else is left to the browser.
+ * A message that begins with `/` and holds no argument yet offers the project's slash commands: the arrows move through
+ * them, Tab fills the highlighted one into the box so its arguments can be typed, Enter sends it, and Escape puts the
+ * menu away (or, with no menu, stops the agent). The server expands the command when the message is sent.
  */
 export function ChatComposer({
   draft: suppliedDraft,
@@ -87,152 +100,95 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const localDraft = useMessageDraft();
   const draft = suppliedDraft ?? localDraft;
-  const {
-    text,
-    images: attached,
-    sending,
-    error,
-  } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
-  const images = useComposerImages(draft, imageSupport);
-  const { dragging, picker, attach, onPaste, onDragOver, onDrop } = images;
-  const [keyboardMode, chooseKeyboard] = usePreference(userPreferences.keyboardMode);
+  const { text, images: attached, error } = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   const mobile = useIsMobile();
   const [mobileSendMode, chooseSendMode] = usePreference(userPreferences.sendMode);
   const sendMode: SendMode = mobile ? mobileSendMode : "steer";
-  const menu = useCommandCompletion(text, commands, sending);
-  const editor = useComposerText(
-    (value) => {
-      draft.setText(value);
-      menu.reset();
-      keyboard.resetColumn();
-    },
-    text,
-    keyboardMode === "emacs",
-  );
-  const { value, textareaRef } = editor;
-  const empty = value.trim() === "" && comments.length === 0 && attached.length === 0;
+  // Comments and images go with a message, so it can be sent with no text.
+  const hasContext = comments.length > 0 || attached.length > 0;
 
-  const accept = (command: PromptTemplateSummary): void => {
-    editor.setText(completeCommand(command));
-    menu.reset();
-  };
-
-  const send = async (text: string, whenBusy: "steer" | "followUp"): Promise<void> => {
-    if (sending) return;
-    if (text.trim() === "" && comments.length === 0 && attached.length === 0) return;
+  // The box clears itself when a send resolves with anything but `false`, so this always resolves with it: the draft
+  // does the clearing, and only when the text is still the one that was sent. The box cannot know that, as a send may
+  // finish in another view of the same draft, after more was typed there. A refused message stays; the draft says why.
+  const send = async (message: string, whenBusy: SendMode): Promise<false> => {
     await draft.send((sent) =>
       onSend(
-        text,
+        message,
         comments.map((comment) => comment.messageId),
         sent.map((image) => image.input),
         whenBusy,
       ),
     );
+    return false;
   };
-
-  const keyboard = useComposerKeyboard({
-    editor,
-    keyboardMode,
-    menu,
-    send,
-    sendMode,
-    accept,
-    stop: busy && !stopping ? onStop : undefined,
-  });
-  const { composition, onKeyDown } = keyboard;
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    void send(value, sendMode);
-  };
+  const sendAsChosen = (message: string) => send(message, sendMode);
+  const sendAsFollowUp = (message: string) => send(message, "followUp");
 
   return (
     <div data-composer className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <ComposerContext comments={comments} queued={queued} onWithdrawComment={onWithdrawComment} />
-      <div ref={menu.boxRef} className="relative">
-        <CommandSuggestions
-          completion={menu}
-          onAccept={(command) => {
-            accept(command);
-            textareaRef.current?.focus({ preventScroll: true });
-          }}
-        />
-        <form
-          onSubmit={onSubmit}
-          onDragOver={onDragOver}
-          onDragLeave={images.onDragLeave}
-          onDrop={onDrop}
-          aria-label="Message box"
-          className="relative"
-        >
-          {/* Where a dragged image would land: a layer of the composer's own over the box, which keeps its look. */}
-          {dragging && (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 z-10 rounded-lg border-2 border-dashed border-ring bg-background/60"
-            />
-          )}
-          <PromptInput>
-            <ComposerAttachments attached={attached} onDetach={(id) => draft.detach(id)} />
-            <PromptInputTextarea
-              ref={textareaRef}
-              className="max-h-[min(16rem,20dvh)] overflow-y-auto overscroll-contain"
-              defaultValue={editor.initialValue}
-              onChange={(event) => editor.change(event.target)}
-              onSelect={editor.rememberSelection}
-              onPointerDown={() => {
-                keyboard.resetColumn();
-              }}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-              onCompositionStart={() => {
-                composition.onCompositionStart();
-                editor.compositionStart();
-              }}
-              onCompositionEnd={(event) => {
-                editor.compositionEnd(event.currentTarget);
-                composition.onCompositionEnd();
-              }}
-              rows={1}
-              aria-label="Message"
-              role="combobox"
-              aria-haspopup="listbox"
-              aria-autocomplete="list"
-              aria-expanded={menu.open}
-              aria-controls={menu.open ? menu.listId : undefined}
-              aria-activedescendant={menu.selected >= 0 ? menu.optionId(menu.selected) : undefined}
-              placeholder={placeholderOf(busy, sendMode, mobile)}
-              autoFocus={autoFocus}
-            />
-            <PromptInputActions>
-              {imageSupport.kind === "accepted" && <AttachImages picker={picker} onAttach={attach} />}
-              {statusBar !== undefined && <div className="flex min-w-0 flex-1">{statusBar}</div>}
-              <ComposerOptions
-                mobile={mobile}
-                keyboard={keyboardMode}
-                onKeyboard={chooseKeyboard}
-                mode={sendMode}
-                onMode={chooseSendMode}
+      <PromptInput
+        // The footer around it is the column already.
+        className="max-w-none px-0"
+        value={text}
+        onValueChange={(value) => draft.setText(value)}
+        onSubmit={sendAsChosen}
+        onSteer={sendAsChosen}
+        onFollowUp={sendAsFollowUp}
+        streaming={busy}
+        // Escape and the Stop button do nothing once the agent is stopping.
+        onStop={busy && !stopping ? onStop : undefined}
+        allowEmpty={hasContext}
+        onAddFiles={(files) => void attachFiles(draft, imageSupport, files)}
+        dropLabel="Drop images to attach"
+      >
+        <PromptInputBox>
+          <PromptInputAttachments aria-label="Images">
+            {attached.map((image) => (
+              <PromptInputAttachment
+                key={image.id}
+                name={image.name}
+                src={image.url}
+                onRemove={() => draft.detach(image.id)}
               />
-              <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                <SubmitOrStop
-                  busy={busy}
-                  empty={empty}
-                  sending={sending}
-                  stopping={stopping}
-                  sendMode={sendMode}
-                  onStop={onStop}
-                />
-              </div>
-            </PromptInputActions>
-          </PromptInput>
-        </form>
-      </div>
-      {status !== undefined && (
-        <div data-dense className="max-h-[20dvh] overflow-y-auto overscroll-contain">
-          {status}
-        </div>
-      )}
+            ))}
+          </PromptInputAttachments>
+          <PromptInputTextarea
+            aria-label="Message"
+            placeholder={placeholderOf(busy, sendMode, mobile)}
+            autoFocus={autoFocus}
+            // As high as the box allows, and no higher than a fifth of a short screen, which a keyboard has halved.
+            className="max-h-[min(12rem,20dvh)] overscroll-contain"
+            onKeyDown={stopsOnlyOnce}
+          />
+          <PromptInputCommands
+            commands={commands.map((command) => ({
+              id: `${command.origin}/${command.name}`,
+              name: command.name,
+              description: command.description,
+              badge: <Badge variant="outline">{command.origin === "project" ? "Project" : "Global"}</Badge>,
+            }))}
+          />
+          <PromptInputToolbar>
+            {imageSupport.kind === "accepted" && (
+              <PromptInputAttachButton
+                accept={IMAGE_ACCEPT}
+                label="Attach images"
+                title="Attach images, or paste or drop them"
+                className="mr-auto"
+              />
+            )}
+            {statusBar !== undefined && <div className="flex min-w-0 flex-1">{statusBar}</div>}
+            {mobile && <ComposerOptions mode={mobileSendMode} onMode={chooseSendMode} />}
+            <PromptInputSubmit title={submitTitle(busy, text.trim() === "" && !hasContext, sendMode)} />
+          </PromptInputToolbar>
+        </PromptInputBox>
+        {status !== undefined && (
+          <PromptInputFooter data-dense className="max-h-[20dvh] overflow-y-auto overscroll-contain">
+            {status}
+          </PromptInputFooter>
+        )}
+      </PromptInput>
       {error !== null && <FieldError>{error}</FieldError>}
     </div>
   );

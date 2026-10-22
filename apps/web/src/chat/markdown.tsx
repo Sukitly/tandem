@@ -18,9 +18,9 @@ import { useThrottledText } from "./use-throttled-text.ts";
 /** Whether the text being drawn is still arriving, for a part inside it that must wait for the whole of its source. */
 const StreamingContext = createContext(false);
 
-// GFM runs before these, as agent-ui's `Markdown` has it. Math is dollar signs, with a single one left a dollar sign; Chinese, Japanese
-// and Korean text gets emphasis and strikethrough next to its punctuation, and addresses end at it. A single newline is
-// a line break, as a person writing in a message box expects.
+// GFM runs before these, as `Markdown` has it. Math is dollar signs, with a single one left a dollar sign; Chinese,
+// Japanese and Korean text gets emphasis and strikethrough next to its punctuation, and addresses end at it. A single
+// newline is a line break, as a person writing in a message box expects.
 const remarkPlugins: PluggableList = [
   [remarkMath, { singleDollarTextMath: false }],
   remarkCjkFriendly,

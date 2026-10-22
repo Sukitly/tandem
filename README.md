@@ -147,9 +147,9 @@ The container runs in the background and continues running when you close the te
 
 ## Composer keyboard behavior
 
-The composer defaults to platform editing and native undo/redo. Earlier versions always intercepted Emacs-style Ctrl shortcuts; upgrading without an explicit keyboard preference now uses platform defaults. Choose **Composer options → Keyboard shortcuts → Emacs editing** to restore Emacs shortcuts and their custom edit history.
+The composer uses platform editing and native undo/redo; it intercepts no Emacs-style Ctrl shortcuts. Earlier versions could be switched to Emacs editing; that option is gone, and a saved choice is ignored.
 
-On desktop layouts, Enter and the Send button steer the current turn; Alt/Option+Enter queues a follow-up. Narrow layouts (under 768px) additionally offer a saved send-mode choice for on-screen sending. This preference does not change desktop sending. Keyboard-mode selection is available in both layouts. The layout breakpoint is not a test for physical keyboard availability.
+On desktop layouts, Enter and the Send button steer the current turn while the agent works; Alt/Option+Enter queues a follow-up, and Shift+Enter starts a new line. On a touch screen, whose keyboard has no Shift+Enter, Enter starts a new line and the Send button sends. Narrow layouts (under 768px) additionally offer a saved send-mode choice, **Composer options**, for on-screen sending; it does not change desktop sending. Escape stops the agent, as the Stop button does.
 
 ## Development Commands
 

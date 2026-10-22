@@ -43,10 +43,10 @@ describe("attaching images", () => {
   });
 });
 
-describe("the image files of a paste or a drop", () => {
-  test("are its files that are images", () => {
-    const data = { files: [png(), new File(["x"], "a.txt", { type: "text/plain" })] } as unknown as DataTransfer;
-    expect(imageFiles(data).map((file) => file.name)).toEqual(["shot.png"]);
-    expect(imageFiles(null)).toEqual([]);
+describe("the image files among files that were added", () => {
+  test("are the files that are images", () => {
+    const files = [png(), new File(["x"], "a.txt", { type: "text/plain" })];
+    expect(imageFiles(files).map((file) => file.name)).toEqual(["shot.png"]);
+    expect(imageFiles([])).toEqual([]);
   });
 });

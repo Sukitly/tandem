@@ -3,9 +3,6 @@ import { choicePreference, flagPreference } from "@/lib/preferences.ts";
 const THEME_CHOICES = ["system", "light", "dark"] as const;
 export type ThemeChoice = (typeof THEME_CHOICES)[number];
 
-const KEYBOARD_MODES = ["platform", "emacs"] as const;
-export type KeyboardMode = (typeof KEYBOARD_MODES)[number];
-
 const SEND_MODES = ["steer", "followUp"] as const;
 export type SendMode = (typeof SEND_MODES)[number];
 
@@ -22,7 +19,6 @@ export type PanelTab = (typeof PANEL_TABS)[number];
 export const userPreferences = {
   /** Also read by the inline script in `index.html`, which applies it before the page first paints. */
   theme: choicePreference("tandem.theme", THEME_CHOICES, "system"),
-  keyboardMode: choicePreference("tandem.keyboardMode", KEYBOARD_MODES, "platform"),
   /** Of narrow layouts only: on a desktop, Enter always steers. */
   sendMode: choicePreference("tandem.sendMode", SEND_MODES, "steer"),
   /** Of desktop layouts only: a narrow layout always starts with the panel away. */

@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChatComposer } from "../src/chat/chat-composer.tsx";
+import { stubBrowserForComposer } from "./composer-browser.ts";
 
 vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => window.innerWidth < 768 }));
 vi.mock("../src/app/workbench.tsx", async () =>
   (await import("./workbench-mock.ts")).workbenchMock(() => ({ openChange: vi.fn() })),
 );
 Element.prototype.scrollIntoView = vi.fn();
+beforeEach(() => stubBrowserForComposer());
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  localStorage.removeItem("tandem.keyboardMode");
   localStorage.removeItem("tandem.sendMode");
 });
 function setup(busy = true, stopping = false) {
@@ -50,7 +51,7 @@ test("when the agent is idle, only Send is offered", () => {
   expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
   expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
 });
-test("Stop remains reachable while a send is pending", async () => {
+test("while a send is pending the text is the one being sent, and Escape still stops the agent", async () => {
   const { input, send, stop } = setup();
   let finish!: () => void;
   send.mockImplementationOnce(
@@ -61,11 +62,15 @@ test("Stop remains reachable while a send is pending", async () => {
   );
   fireEvent.change(input, { target: { value: "Next message" } });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Send" })).toBeNull());
-  fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+  await waitFor(() => expect(input.readOnly).toBe(true));
+  // Send cannot be pressed again while it waits, and nothing else takes its place.
+  expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+  fireEvent.keyDown(input, { key: "Escape" });
   expect(stop).toHaveBeenCalledOnce();
   finish();
   await waitFor(() => expect(input.value).toBe(""));
+  expect(input.readOnly).toBe(false);
 });
 test("a refused message stays in the box and brings Send back", async () => {
   const { input, send } = setup();
@@ -126,10 +131,7 @@ test("mobile follow-up can be selected and sent without a modifier key", async (
   vi.stubGlobal("innerWidth", 390);
   const { input, send } = setup();
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-  // A touch screen chooses how a message is sent, not keyboard shortcuts.
   expect(await screen.findByRole("menuitemradio", { name: "Steer current turn" })).toBeTruthy();
-  expect(screen.queryByRole("menuitemradio", { name: "Emacs editing" })).toBeNull();
-  expect(screen.queryByRole("menuitemradio", { name: "Platform defaults" })).toBeNull();
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Queue follow-up" }));
   fireEvent.change(input, { target: { value: "Later" } });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -137,18 +139,14 @@ test("mobile follow-up can be selected and sent without a modifier key", async (
   expect(localStorage.getItem("tandem.sendMode")).toBe("followUp");
   await waitFor(() => expect(input.value).toBe(""));
 });
-test("desktop ignores the saved mobile mode for Enter, slash commands, and the send button", async () => {
+test("desktop has no send options, and ignores the saved mobile mode for Enter, slash commands, and the send button", async () => {
   localStorage.setItem("tandem.sendMode", "followUp");
   const { input, send } = setup();
-  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-  expect(await screen.findByRole("menuitemradio", { name: "Emacs editing" })).toBeTruthy();
-  expect(screen.queryByRole("menuitemradio", { name: "Queue follow-up" })).toBeNull();
-  expect(screen.queryByRole("menuitemradio", { name: "Steer current turn" })).toBeNull();
-  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+  expect(screen.queryByRole("button", { name: "Composer options" })).toBeNull();
   for (const text of ["Steer now", "/rev"]) {
     fireEvent.change(input, { target: { value: text } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(send).toHaveBeenLastCalledWith(text === "/rev" ? "/review " : text, [], [], "steer");
+    expect(send).toHaveBeenLastCalledWith(text === "/rev" ? "/review" : text, [], [], "steer");
     await waitFor(() => expect(input.value).toBe(""));
   }
   fireEvent.change(input, { target: { value: "Button" } });
@@ -161,19 +159,26 @@ test("desktop ignores the saved mobile mode for Enter, slash commands, and the s
   await waitFor(() => expect(input.value).toBe(""));
   expect(localStorage.getItem("tandem.sendMode")).toBe("followUp");
 });
-test("platform shortcuts and native history are not intercepted by default; Emacs is opt-in", async () => {
-  const { input } = setup(false);
+test("Enter sends, Shift+Enter breaks the line, and the box leaves the Ctrl shortcuts of the platform alone", () => {
+  const { input, send } = setup(false);
   fireEvent.change(input, { target: { value: "hello world" } });
-  for (const key of ["a", "f", "b", "y", "z"]) expect(fireEvent.keyDown(input, { key, ctrlKey: true })).toBe(true);
+  expect(fireEvent.keyDown(input, { key: "Enter", shiftKey: true })).toBe(true);
+  expect(send).not.toHaveBeenCalled();
+  for (const key of ["a", "f", "b", "k", "y", "z"]) expect(fireEvent.keyDown(input, { key, ctrlKey: true })).toBe(true);
   expect(
     fireEvent(input, new InputEvent("beforeinput", { inputType: "historyUndo", bubbles: true, cancelable: true })),
   ).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Emacs editing" }));
-  input.setSelectionRange(5, 5);
-  expect(fireEvent.keyDown(input, { key: "k", ctrlKey: true })).toBe(false);
-  expect(input.value).toBe("hello");
-  expect(localStorage.getItem("tandem.keyboardMode")).toBe("emacs");
+  expect(input.value).toBe("hello world");
+});
+test("on a touch screen Enter breaks the line, and the send button sends", async () => {
+  stubBrowserForComposer({ touch: true });
+  const { input, send } = setup(false);
+  fireEvent.change(input, { target: { value: "A message" } });
+  expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(true);
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(send).toHaveBeenCalledWith("A message", [], [], "steer");
+  await waitFor(() => expect(input.value).toBe(""));
 });
 test("slash options activate through click and restore combobox focus", () => {
   const { input, send } = setup(false);
