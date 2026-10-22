@@ -42,8 +42,8 @@ export type TranscriptItem =
     }
   /** Older messages were summarized from here on; the model sees the summary instead. */
   | { kind: "compaction"; key: string }
-  /** A summary of the conversation is being made. */
-  | { kind: "compacting"; key: string };
+  /** A summary of the conversation is being made. It is `retrying` when an attempt failed and another will follow. */
+  | { kind: "compacting"; key: string; retrying: boolean };
 
 export interface QueuedMessage {
   id: number;
@@ -83,7 +83,8 @@ interface LiveDoc {
   run?: unknown;
   generation?: { attempt: number; message?: Message };
   tools?: ToolSlot[];
-  compactions?: unknown[];
+  /** A compaction that failed has `retry`: when it will try again, and why it failed. */
+  compactions?: { retry?: unknown }[];
 }
 
 interface InboxDoc {
@@ -109,10 +110,13 @@ export function toTranscript(view: ConversationView): TranscriptState {
 
   const items: TranscriptItem[] = [];
   let tokens = 0;
+  // The view puts a compaction first, then the entries it kept, which were written before it and report the context
+  // as it was. Only an answer written after it reports how much the summary left.
+  let compactedAt = 0;
   for (const entry of view.entries) {
     if (entry.kind === "pi.compaction") {
       items.push({ kind: "compaction", key: String(entry.id) });
-      // The next answer reports how much the summary left.
+      compactedAt = entry.id;
       tokens = 0;
       continue;
     }
@@ -127,7 +131,7 @@ export function toTranscript(view: ConversationView): TranscriptState {
           message.stopReason === "aborted" ? "interrupted" : message.stopReason === "error" ? "failed" : "complete";
         const error = message.errorMessage;
         const used = contextTokens(message.usage);
-        if (used > 0) tokens = used;
+        if (used > 0 && entry.id > compactedAt) tokens = used;
 
         const prev = items[items.length - 1];
         if (
@@ -175,8 +179,11 @@ export function toTranscript(view: ConversationView): TranscriptState {
     }
   }
 
-  const compacting = (live?.compactions ?? []).length > 0;
-  if (compacting) items.push({ kind: "compacting", key: "compacting" });
+  const compactions = live?.compactions ?? [];
+  const compacting = compactions.length > 0;
+  if (compacting) {
+    items.push({ kind: "compacting", key: "compacting", retrying: compactions.some((c) => c.retry !== undefined) });
+  }
   const toolsRunning = (live?.tools ?? []).some((slot) => slot.status !== "done");
   const silent = busy && !streaming && !toolsRunning && !compacting;
   const lastUser = items.findLastIndex((item) => item.kind === "user");
