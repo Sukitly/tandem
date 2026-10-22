@@ -3,6 +3,7 @@ import { type KeyboardEvent, type ReactNode, useSyncExternalStore } from "react"
 import { useMessageDraft } from "@/app/drafts.tsx";
 import type { MessageDraft } from "@/app/message-draft.ts";
 import { userPreferences } from "@/app/user-preferences.ts";
+import { CommentList } from "@/comments/comment-list.tsx";
 import type { WaitingComment } from "@/comments/project-comments.ts";
 import {
   PromptInput,
@@ -12,6 +13,8 @@ import {
   PromptInputBox,
   PromptInputCommands,
   PromptInputFooter,
+  PromptInputQueue,
+  PromptInputQueueItem,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
@@ -22,7 +25,6 @@ import { useIsMobile } from "@/hooks/use-mobile.ts";
 import { usePreference } from "@/lib/preferences.ts";
 import { IMAGE_ACCEPT } from "./attached-images.ts";
 import { attachFiles, placeholderOf, submitTitle } from "./composer-actions.tsx";
-import { ComposerContext } from "./composer-context.tsx";
 import { ComposerOptions, type SendMode } from "./composer-options.tsx";
 import type { QueuedMessage } from "./transcript.ts";
 
@@ -79,6 +81,9 @@ function stopsOnlyOnce(event: KeyboardEvent<HTMLTextAreaElement>): void {
  * it chose in the options, since a phone has no Alt+Enter, and on a touch screen Enter breaks the line and the button
  * sends.
  *
+ * Messages sent while the agent works wait above the box, one line each, until the agent takes them up. The comments of
+ * the project that wait to be sent are above them: they are not sent yet, and go with the next message.
+ *
  * A message that begins with `/` and holds no argument yet offers the project's slash commands: the arrows move through
  * them, Tab fills the highlighted one into the box so its arguments can be typed, Enter sends it, and Escape puts the
  * menu away (or, with no menu, stops the agent). The server expands the command when the message is sent.
@@ -126,7 +131,11 @@ export function ChatComposer({
 
   return (
     <div data-composer className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-      <ComposerContext comments={comments} queued={queued} onWithdrawComment={onWithdrawComment} />
+      {comments.length > 0 && (
+        <div className="max-h-[15dvh] overflow-y-auto overscroll-contain">
+          <CommentList comments={comments} onWithdraw={(comment) => onWithdrawComment?.(comment)} />
+        </div>
+      )}
       <PromptInput
         // The footer around it is the column already.
         className="max-w-none px-0"
@@ -142,6 +151,19 @@ export function ChatComposer({
         onAddFiles={(files) => void attachFiles(draft, imageSupport, files)}
         dropLabel="Drop images to attach"
       >
+        {/* Messages already sent, which the agent has not taken up yet: joined to the box, one line each. */}
+        <PromptInputQueue>
+          {queued.map((message) => (
+            <PromptInputQueueItem
+              key={message.id}
+              kind={message.mode === "steer" ? "steering" : "follow-up"}
+              attachments={message.imageCount}
+              attachmentsLabel={message.imageCount === 1 ? "1 image" : `${message.imageCount} images`}
+            >
+              {message.text}
+            </PromptInputQueueItem>
+          ))}
+        </PromptInputQueue>
         <PromptInputBox>
           <PromptInputAttachments aria-label="Images">
             {attached.map((image) => (
