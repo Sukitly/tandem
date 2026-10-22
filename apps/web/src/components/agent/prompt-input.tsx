@@ -273,8 +273,9 @@ type PromptInputProps = {
   dropLabel?: ReactNode;
   /**
    * `compact` is one row: the text on a line that does not wrap or grow, and the
-   * toolbar at the end of the same row, with smaller buttons. For a place with
-   * room for a line and no more, such as a comment on a passage. Enter,
+   * toolbar at the end of the same row. The buttons are the size of the
+   * default's: a row is a layout, not a smaller input. For a place with room
+   * for a line and no more, such as a comment on a passage. Enter,
    * Escape and input methods are as they are, and Shift+Enter still breaks the
    * line. Use it with the textarea and the toolbar only: a queue, a quote,
    * attachments and a footer need the room of the default.
@@ -925,7 +926,7 @@ function PromptInputBox({ className, children, ...props }: ComponentProps<typeof
       // is blank. Not `data-disabled`, which the group's addons grey out for.
       data-textarea-disabled={disabled || undefined}
       className={cn(
-        "border-border bg-background shadow-xs has-[[data-slot=input-group-control]:focus-visible]:ring-0 not-data-textarea-disabled:has-disabled:bg-background not-data-textarea-disabled:has-disabled:opacity-100 dark:not-data-textarea-disabled:has-disabled:bg-input/30",
+        "border-border bg-background shadow-[0_4px_24px_0] shadow-foreground/8 rounded-xl dark:shadow-none has-[[data-slot=input-group-control]:focus-visible]:not-has-[[aria-invalid=true]]:border-border has-[[data-slot=input-group-control]:focus-visible]:ring-0 not-data-textarea-disabled:has-disabled:bg-background not-data-textarea-disabled:has-disabled:opacity-100 dark:not-data-textarea-disabled:has-disabled:bg-input/30",
         className,
       )}
       {...props}
@@ -1337,7 +1338,7 @@ function PromptInputTextarea({ className, onKeyDown, onPaste, ref, ...props }: P
         className={cn(
           // A compact row is the height of the box, and what does not fit in it is
           // cut, a second line included. Over the chip layer, which is behind it.
-          "max-h-48 px-4 pt-4 pb-1.5 placeholder:text-muted-foreground/60 data-[variant=compact]:py-1.25 data-[variant=compact]:leading-5 data-[chip=true]:text-transparent data-[chip=true]:caret-foreground forced-colors:data-[chip=true]:text-[color:CanvasText] min-h-0 data-[chip=true]:relative data-[chip=true]:z-1 data-[variant=compact]:h-full data-[variant=compact]:max-h-full data-[variant=compact]:overflow-hidden data-[variant=compact]:whitespace-nowrap",
+          "max-h-48 p-4 placeholder:text-muted-foreground data-[variant=compact]:py-3.75 data-[variant=compact]:leading-5 data-[chip=true]:text-transparent data-[chip=true]:caret-foreground forced-colors:data-[chip=true]:text-[color:CanvasText] min-h-0 data-[chip=true]:relative data-[chip=true]:z-1 data-[variant=compact]:h-full data-[variant=compact]:max-h-full data-[variant=compact]:overflow-hidden data-[variant=compact]:whitespace-nowrap",
           className,
         )}
       />
@@ -1581,7 +1582,10 @@ function PromptInputToolbar({ className, children, ...props }: Omit<ComponentPro
       // Under the text, or at the end of the row when it is one.
       align={variant === "compact" ? "inline-end" : "block-end"}
       onClick={(event) => focusTextarea(event, textareaRef)}
-      className={cn("data-[align=block-end]:px-3 data-[align=block-end]:pb-3 justify-end", className)}
+      className={cn(
+        "data-[align=block-end]:px-3 data-[align=block-end]:pb-3 data-[align=inline-end]:py-0 data-[align=inline-end]:pr-3.5 justify-end",
+        className,
+      )}
     >
       {children}
     </InputGroupAddon>
@@ -1609,7 +1613,7 @@ function PromptInputAttachButton({
   disabled: buttonDisabled,
   ...props
 }: PromptInputAttachButtonProps) {
-  const { onAddFiles, disabled, variant } = usePromptInput();
+  const { onAddFiles, disabled } = usePromptInput();
   const inputRef = useRef<HTMLInputElement>(null);
 
   if (!onAddFiles) {
@@ -1639,7 +1643,7 @@ function PromptInputAttachButton({
       <InputGroupButton
         {...props}
         type="button"
-        size={variant === "compact" ? "icon-xs" : "icon-sm"}
+        size="icon-sm"
         aria-label={label}
         disabled={disabled || buttonDisabled}
         onClick={() => inputRef.current?.click()}
@@ -1670,20 +1674,17 @@ function PromptInputSubmit({
   className,
   ...props
 }: PromptInputSubmitProps) {
-  const { streaming, canSend, stop, disabled, sending, variant } = usePromptInput();
-  // The button of a row is the one the style gives an input of one row.
-  const size = variant === "compact" ? "icon-xs" : "icon-sm";
+  const { streaming, canSend, stop, disabled, sending } = usePromptInput();
 
   if (streaming && !canSend && !sending) {
     return (
       <InputGroupButton
         {...props}
         type="button"
-        size={size}
+        size="icon-sm"
         variant="default"
         aria-label={stopLabel}
-        data-variant={variant}
-        className={cn("data-[variant=default]:pointer-coarse:size-11", className)}
+        className={cn("pointer-coarse:size-11", className)}
         disabled={disabled || !stop}
         onClick={stop}
       >
@@ -1696,14 +1697,13 @@ function PromptInputSubmit({
     <InputGroupButton
       {...props}
       type="submit"
-      size={size}
+      size="icon-sm"
       // Quiet while there is nothing to send, dark once there is, so the button
       // only stands out when pressing it would do something.
       variant={canSend ? "default" : "secondary"}
       aria-label={sendLabel}
-      data-variant={variant}
       className={cn(
-        "disabled:text-muted-foreground disabled:opacity-100 data-[variant=default]:pointer-coarse:size-11",
+        "disabled:bg-foreground/10 disabled:text-muted-foreground disabled:opacity-100 pointer-coarse:size-11",
         className,
       )}
       disabled={!canSend}
