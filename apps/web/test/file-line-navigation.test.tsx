@@ -12,10 +12,8 @@ vi.mock("../src/files/project-files.ts", () => ({
       content: { status: "ready", value: { kind: "text", text: "line\n".repeat(1000) } },
     }),
 }));
-vi.mock("../src/chat/highlight.tsx", () => ({
-  languageOfFile: () => undefined,
-  useHighlighted: () => undefined,
-  HighlightedLine: () => null,
+vi.mock("../src/hooks/use-highlighted-code.ts", () => ({
+  useHighlightedCode: (code: string) => code.split("\n"),
 }));
 vi.mock("../src/comments/project-comments.ts", () => ({ useCommentThreads: () => [] }));
 afterEach(cleanup);

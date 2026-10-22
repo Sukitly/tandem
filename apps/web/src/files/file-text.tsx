@@ -1,13 +1,14 @@
 import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { HighlightedLine, languageOfFile, useHighlighted } from "@/chat/highlight.tsx";
 import { AnchoredCommentEditor } from "@/comments/anchored-comment-editor.tsx";
 import { placeThreads, revealedLine, threadsByLine } from "@/comments/comment-anchor.ts";
 import { CommentThreadBox } from "@/comments/comment-box.tsx";
 import { type ProjectComments, useCommentThreads } from "@/comments/project-comments.ts";
 import { useCommentDrafts } from "@/comments/use-comment-drafts.ts";
 import { LoadingView } from "@/components/loading-view.tsx";
+import { useHighlightedCode } from "@/hooks/use-highlighted-code.ts";
 import { lazyExport } from "@/lib/lazy-export.ts";
 import { cn } from "@/lib/utils.ts";
+import { languageOfFile } from "./file-language.ts";
 import type { OpenedFile } from "./project-files.ts";
 
 const MAX_HIGHLIGHTED_LINES = 3000;
@@ -33,9 +34,11 @@ export function FileText({
   const body = text.endsWith("\n") ? text.slice(0, -1) : text;
   const lines = useMemo(() => body.split("\n"), [body]);
   const virtual = lines.length > MAX_HIGHLIGHTED_LINES;
-  const language =
-    lines.length <= MAX_HIGHLIGHTED_LINES ? languageOfFile(path.slice(path.lastIndexOf("/") + 1)) : undefined;
-  const tokens = useHighlighted(body, language, false);
+  // A long file is drawn by the virtual list, which highlights for itself: nothing is highlighted here.
+  const highlighted = useHighlightedCode(
+    virtual ? "" : body,
+    virtual ? "" : languageOfFile(path.slice(path.lastIndexOf("/") + 1)),
+  );
   const scroller = useRef<HTMLDivElement>(null);
   const threads = useCommentThreads(comments);
 
@@ -141,16 +144,9 @@ export function FileText({
                     <span className="group-hover/line:hidden">{number}</span>
                     <span className="hidden group-hover/line:inline">+</span>
                   </button>
-                  {tokens?.[index] === undefined ? (
-                    <span className={cn("min-h-[1lh] pr-4", wrap && "min-w-0 flex-1 whitespace-pre-wrap break-all")}>
-                      {content}
-                    </span>
-                  ) : (
-                    <HighlightedLine
-                      tokens={tokens[index]}
-                      className={cn("min-h-[1lh] pr-4", wrap && "min-w-0 flex-1 whitespace-pre-wrap break-all")}
-                    />
-                  )}
+                  <span className={cn("min-h-[1lh] pr-4", wrap && "min-w-0 flex-1 whitespace-pre-wrap break-all")}>
+                    {highlighted[index] ?? content}
+                  </span>
                 </div>
                 {byLine.get(number)?.map((thread) => (
                   <CommentThreadBox

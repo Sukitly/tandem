@@ -315,15 +315,6 @@ html {
   background: var(--muted-foreground);
 }
 
-/* Syntax tokens of the file viewer, coloured by Shiki through inline CSS variables. */
-.code-token {
-  color: var(--code-light, inherit);
-}
-
-.dark .code-token {
-  color: var(--code-dark, var(--code-light, inherit));
-}
-
 /* Keep code, diffs, and tool output readable at the edges. Unlayered to override shadcn's scroll-fade utilities. */
 [data-slot="code-block-content"] {
   -webkit-mask-image: none;
