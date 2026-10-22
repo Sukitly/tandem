@@ -12,6 +12,7 @@ import { usePrompts } from "@/rpc/use-prompts.ts";
 import { useReplicatedState } from "@/rpc/use-replicated-state.ts";
 import { ChatComposer, imageSupportOf } from "./chat-composer.tsx";
 import { ChatFooter, ChatFrame } from "./chat-frame.tsx";
+import { EarlierMessages } from "./earlier-messages.tsx";
 import { PullRequestLine } from "./pull-request-line.tsx";
 import { SilentGap } from "./silent-gap.tsx";
 import { type AgentChoice, StatusBar } from "./status-bar.tsx";
@@ -19,6 +20,7 @@ import { TpsLine } from "./tps-line.tsx";
 import { toTranscript } from "./transcript.ts";
 import { ChatError, TranscriptEntry } from "./transcript-items.tsx";
 import { UsageLine } from "./usage-line.tsx";
+import { useEarlierEntries } from "./use-earlier-entries.ts";
 
 export function OpenChat({ conversationId, conversation }: { conversationId: number; conversation: Conversation }) {
   const [stopping, setStopping] = useState(false);
@@ -37,7 +39,12 @@ export function OpenChat({ conversationId, conversation }: { conversationId: num
   const view = useReplicatedState(conversation.view);
   const tps = useReplicatedState(conversation.tps)?.last;
   const notices = useReplicatedState(conversation.notices)?.notices ?? [];
-  const transcript = useMemo(() => (view === undefined ? undefined : toTranscript(view)), [view]);
+  const earlier = useEarlierEntries(conversation, view);
+  const earlierEntries = earlier?.entries;
+  const transcript = useMemo(
+    () => (view === undefined ? undefined : toTranscript(view, earlierEntries)),
+    [view, earlierEntries],
+  );
 
   if (view === undefined || transcript === undefined) return null;
   const agent = view.docs["pi.agent"] as AgentChoice | undefined;
@@ -45,6 +52,7 @@ export function OpenChat({ conversationId, conversation }: { conversationId: num
   return (
     <ChatFrame cwd={summary?.cwd} title={summary?.title} summary={summary}>
       <MessageList label="Transcript" className="flex-1" viewportClassName="chat-transcript-scrollbar scroll-fade-none">
+        {earlier?.more && <EarlierMessages loading={earlier.loading} onLoad={earlier.load} />}
         {transcript.items.map((item, index) => (
           <ErrorBoundary key={item.key} what="this message" resetKey={item} compact>
             <TranscriptEntry

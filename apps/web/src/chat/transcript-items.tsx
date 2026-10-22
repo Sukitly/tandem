@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import { ImageIcon } from "lucide-react";
 import { CompactionMarker } from "@/components/agent/compaction-marker.tsx";
 import { MessageActions, MessageCopyAction } from "@/components/agent/message-actions.tsx";
@@ -66,6 +67,8 @@ function UserTurn({ item }: { item: Extract<TranscriptItem, { kind: "user" }> })
       // The transcript follows the live edge, and sending already scrolls to the end. The question is not
       // pinned near the top while the reply streams in below it.
       anchor={false}
+      // From before a compaction: the model no longer sees it.
+      className={item.earlier ? "opacity-60" : undefined}
       pictures="original"
       attachments={attachments}
       attachmentsLabel="Images"
@@ -128,7 +131,7 @@ function AssistantMessage({
       id={item.key}
       // Each model call is its own assistant item. Back-to-back ones are one agent turn, so they use the
       // 8px spacing of steps inside a message (gap-2) instead of the 24px gap (gap-6) between messages.
-      className={joinsPrevious ? "-mt-4" : undefined}
+      className={cn(joinsPrevious && "-mt-4", item.earlier && "opacity-60")}
     >
       {segments.map((segment, segIdx) => {
         const isLastSegment = segIdx === segments.length - 1;

@@ -32,6 +32,7 @@ export {
 } from "./comments.ts";
 export {
   Conversation,
+  type ConversationHistory,
   type ConversationNotice,
   type ConversationNotices,
   type ConversationSummary,
@@ -39,7 +40,10 @@ export {
   type ConversationsState,
   type ConversationTps,
   type ConversationView,
+  HISTORY_PAGE_SIZE,
+  type HistoryInput,
   MAX_CONVERSATION_TITLE_LENGTH,
+  MAX_HISTORY_PAGE_SIZE,
   type RunTps,
   type StartInput,
   type SubmitInput,

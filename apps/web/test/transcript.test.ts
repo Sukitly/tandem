@@ -1,6 +1,6 @@
 import type { ConversationView } from "@tandem/contracts";
 import { describe, expect, test } from "vitest";
-import { toTranscript } from "../src/chat/transcript.ts";
+import { compactionHead, toTranscript } from "../src/chat/transcript.ts";
 
 type Entry = ConversationView["entries"][number];
 
@@ -248,6 +248,73 @@ describe("toTranscript", () => {
       ),
     );
     expect(answered.usage.tokens).toBe(2000);
+  });
+
+  describe("entries from before a compaction", () => {
+    const compaction = { id: 9, kind: "pi.compaction", model: [] };
+    const kept = [
+      { id: 5, kind: "pi.user", model: [{ role: "user", content: "kept question" }] },
+      {
+        id: 6,
+        kind: "pi.assistant",
+        model: [assistant("kept answer", "stop", { usage: { ...noUsage, totalTokens: 9000 } })],
+      },
+    ];
+    const older = [
+      { id: 1, kind: "pi.user", model: [{ role: "user", content: "old question" }] },
+      {
+        id: 2,
+        kind: "pi.assistant",
+        model: [assistant([{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls" } }])],
+      },
+      {
+        id: 3,
+        kind: "pi.tool-result",
+        model: [{ role: "toolResult", toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "a.ts" }] }],
+      },
+      { id: 4, kind: "pi.assistant", model: [assistant("old answer")] },
+    ];
+
+    test("go above the compaction, marked as earlier, with the line between them and what was kept", () => {
+      const { items } = toTranscript(view([compaction, ...kept]), view(older).entries);
+      expect(items.map((item) => [item.kind, item.key, "earlier" in item ? item.earlier : undefined])).toEqual([
+        ["user", "1:0", true],
+        ["assistant", "2:0", true],
+        ["assistant", "4:0", true],
+        ["compaction", "9", undefined],
+        ["user", "5:0", undefined],
+        ["assistant", "6:0", undefined],
+      ]);
+    });
+
+    test("show the results of their tool calls", () => {
+      const { items } = toTranscript(view([compaction, ...kept]), view(older).entries);
+      expect(items[1]).toMatchObject({ parts: [{ kind: "tool", callId: "c1", output: "a.ts" }] });
+    });
+
+    test("do not count towards the context, and leave one line for the compaction", () => {
+      const olderCompaction = { id: 3, kind: "pi.compaction", model: [] };
+      const earlier = view([
+        older[0],
+        olderCompaction,
+        {
+          id: 4,
+          kind: "pi.assistant",
+          model: [assistant("then", "stop", { usage: { ...noUsage, totalTokens: 50_000 } })],
+        },
+      ]).entries;
+      const transcript = toTranscript(view([compaction, ...kept]), earlier);
+      expect(transcript.items.filter((item) => item.kind === "compaction")).toHaveLength(1);
+      expect(transcript.usage.tokens).toBe(0);
+    });
+
+    test("are what compactionHead says the view left out: those before the first entry it kept", () => {
+      expect(compactionHead(view([compaction, ...kept]))).toEqual({ id: 9, firstKept: 5 });
+      // Nothing kept: everything before the compaction itself.
+      expect(compactionHead(view([compaction]))).toEqual({ id: 9, firstKept: 9 });
+      expect(compactionHead(view(kept))).toBeUndefined();
+      expect(compactionHead(view([]))).toBeUndefined();
+    });
   });
 
   test("keeps the images of user messages, tool results, and queued messages", () => {

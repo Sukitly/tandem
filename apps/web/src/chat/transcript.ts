@@ -1,6 +1,7 @@
 import type { ConversationView, PageImageBlock } from "@tandem/contracts";
 
-type Message = NonNullable<ConversationView["entries"][number]["model"]>[number];
+type Entry = ConversationView["entries"][number];
+type Message = NonNullable<Entry["model"]>[number];
 type AssistantMessage = Extract<Message, { role: "assistant" }>;
 type ToolResultMessage = Extract<Message, { role: "toolResult" }>;
 type Usage = AssistantMessage["usage"];
@@ -27,10 +28,12 @@ export type AssistantPart =
 
 /** What the transcript shows, in order. */
 export type TranscriptItem =
-  | { kind: "user"; key: string; text: string; images: PageImageBlock[] }
+  | { kind: "user"; key: string; text: string; images: PageImageBlock[]; earlier?: true }
   | {
       kind: "assistant";
       key: string;
+      /** From before a compaction: the model no longer sees it. */
+      earlier?: true;
       parts: AssistantPart[];
       /** `interrupted`: stopped by the user or by a server restart. `streaming`: still being generated. */
       ending: "complete" | "interrupted" | "failed" | "streaming";
@@ -96,13 +99,25 @@ interface UsageDoc {
   tools?: Record<string, Usage>;
 }
 
-/** Turn the durable view into what the chat renders. */
-export function toTranscript(view: ConversationView): TranscriptState {
+/**
+ * The compaction at the head of the view, when there is one, and the first entry it kept. The view leaves out what a
+ * compaction replaced, so the entries before that one are the older ones that `Conversation.history` returns.
+ */
+export function compactionHead(view: ConversationView): { id: number; firstKept: number } | undefined {
+  const [head, kept] = view.entries;
+  return head?.kind === "pi.compaction" ? { id: head.id, firstKept: (kept ?? head).id } : undefined;
+}
+
+/**
+ * Turn the durable view into what the chat renders. `earlier` are entries from before a compaction, oldest first,
+ * which go above it and are marked as such.
+ */
+export function toTranscript(view: ConversationView, earlier: readonly Entry[] = []): TranscriptState {
   const live = view.docs["pi.live"] as LiveDoc | undefined;
   const busy = live?.run !== undefined;
   const slots = new Map((live?.tools ?? []).map((slot) => [slot.callId, slot]));
   const results = new Map<string, ToolResultMessage>();
-  for (const entry of view.entries) {
+  for (const entry of [...earlier, ...view.entries]) {
     for (const message of entry.model ?? [])
       if (message.role === "toolResult") results.set(message.toolCallId, message);
   }
@@ -113,25 +128,33 @@ export function toTranscript(view: ConversationView): TranscriptState {
   // The view puts a compaction first, then the entries it kept, which were written before it and report the context
   // as it was. Only an answer written after it reports how much the summary left.
   let compactedAt = 0;
-  for (const entry of view.entries) {
+  const add = (entry: Entry, old: boolean) => {
     if (entry.kind === "pi.compaction") {
+      // One line marks where the summary starts, the one of the view's compaction.
+      if (old) return;
       items.push({ kind: "compaction", key: String(entry.id) });
       compactedAt = entry.id;
       tokens = 0;
-      continue;
+      return;
     }
-    if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") continue;
+    if (entry.kind !== "pi.user" && entry.kind !== "pi.assistant") return;
     for (const [index, message] of (entry.model ?? []).entries()) {
       const key = `${entry.id}:${index}`;
       if (message.role === "user") {
-        items.push({ kind: "user", key, text: textOf(message.content), images: imagesOf(message.content) });
+        items.push({
+          kind: "user",
+          key,
+          text: textOf(message.content),
+          images: imagesOf(message.content),
+          ...(old ? { earlier: true as const } : {}),
+        });
       } else if (message.role === "assistant") {
         const parts = partsOf(message, tool);
         const ending =
           message.stopReason === "aborted" ? "interrupted" : message.stopReason === "error" ? "failed" : "complete";
         const error = message.errorMessage;
         const used = contextTokens(message.usage);
-        if (used > 0 && entry.id > compactedAt) tokens = used;
+        if (used > 0 && !old && entry.id > compactedAt) tokens = used;
 
         const prev = items[items.length - 1];
         if (
@@ -153,10 +176,13 @@ export function toTranscript(view: ConversationView): TranscriptState {
           parts,
           ending,
           ...(error === undefined ? {} : { error }),
+          ...(old ? { earlier: true as const } : {}),
         });
       }
     }
-  }
+  };
+  for (const entry of earlier) add(entry, true);
+  for (const entry of view.entries) add(entry, false);
 
   const partial = live?.generation?.message;
   const streaming = busy && partial?.role === "assistant" && partial.content.length > 0;

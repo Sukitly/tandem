@@ -92,7 +92,7 @@ function cached<K extends object, V>(cache: WeakMap<K, V>, value: K, make: () =>
 }
 
 /** An entry with the images of its messages as references; images elsewhere in it, such as in edits, lose their data. */
-function withRefs(entry: Entry, conversationId: number): WithImageRefs<Entry> {
+export function withRefs(entry: Entry, conversationId: number): WithImageRefs<Entry> {
   const refAt = (path: readonly (string | number)[]): ImageRef | undefined => {
     const [model, messageIndex, content, blockIndex] = path;
     if (

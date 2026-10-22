@@ -38,7 +38,7 @@ vi.mock("../src/hooks/use-mobile.ts", () => ({ useIsMobile: () => false }));
 vi.mock("../src/chat/status-bar.tsx", () => ({ StatusBar: () => null }));
 vi.mock("../src/chat/usage-line.tsx", () => ({ UsageLine: () => null }));
 vi.mock("../src/chat/pull-request-line.tsx", () => ({ PullRequestLine: () => null }));
-vi.mock("../src/chat/transcript.ts", () => ({ toTranscript: () => mock.transcript }));
+vi.mock("../src/chat/transcript.ts", () => ({ toTranscript: () => mock.transcript, compactionHead: () => undefined }));
 vi.mock("../src/components/ui/message-scroller.tsx", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/components/ui/message-scroller.tsx")>();
   return {
